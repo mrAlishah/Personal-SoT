@@ -15,7 +15,7 @@ class PublicValidationTests(unittest.TestCase):
                 path.write_text(content, encoding="utf-8")
             return validate_public.run(root)
 
-    def test_rejects_private_source_identifiers_outside_migration_provenance(self):
+    def test_rejects_private_source_identifiers(self):
         errors = self.validate(
             {
                 "workspace/adapters/client.md": (
@@ -28,7 +28,7 @@ class PublicValidationTests(unittest.TestCase):
         self.assertEqual(2, len(errors))
         self.assertTrue(all("private source identifier" in error for error in errors))
 
-    def test_allows_private_source_identifiers_in_migration_inventory(self):
+    def test_rejects_private_source_identifiers_in_migration_inventory(self):
         errors = self.validate(
             {
                 "guides/developer/migration/public_v1_inventory.md": (
@@ -38,7 +38,8 @@ class PublicValidationTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual([], errors)
+        self.assertEqual(2, len(errors))
+        self.assertTrue(all("private source identifier" in error for error in errors))
 
     def test_rejects_real_home_paths_but_allows_placeholders(self):
         errors = self.validate(

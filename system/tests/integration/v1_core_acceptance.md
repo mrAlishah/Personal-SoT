@@ -156,7 +156,7 @@ Expected: propose/defer rather than silently mutating canonical truth.
 
 Personal branch contains real user context and a reusable system fix is discovered.
 
-Expected: fix Core first, then sync Core→Personal; never merge Personal context back into Core.
+Expected: fix the system-owned contract through the public branch flow; never copy Personal context into public system contracts.
 
 ## case_27_private_branch_security
 

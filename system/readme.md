@@ -18,7 +18,7 @@ retrieval/     candidate discovery/query planning
 automation/    safe generated/maintenance operations
 validation/    executable structural checks
 migration/     history migration contracts
-governance/    project charter and Core/Personal development rules
+governance/    project, product, and public repository development rules
 release/       readiness/freeze records
 tests/         contract and integration coverage
 ```

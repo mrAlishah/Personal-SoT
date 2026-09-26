@@ -73,7 +73,7 @@ reusable ai/recap and ai/context_snapshot prompts
 bounded current-thread @recap action
 cheatsheet/yaml/md/vocab/concept presentation semantics
 human/professional plain keyboard punctuation
-Core/Personal generic prompt promotion governance
+public-safe generic prompt promotion governance
 exact filename-based profile resolution
 ```
 
@@ -86,9 +86,9 @@ exact filename-based profile resolution
 5. user and developer documentation stay in separate guide subtrees;
 6. fake examples are developer documentation and never runtime context;
 7. logical directive identities do not expose physical prefixes;
-8. Core contains no real Personal/organization factual context;
+8. the public foundation contains no real Personal/organization factual context;
 9. raw secrets remain forbidden;
-10. Core → Personal lineage remains one-way.
+10. Personal facts and user-specific content never flow into public system contracts.
 
 ## freeze_rule
 
