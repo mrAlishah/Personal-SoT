@@ -43,6 +43,16 @@ class ProjectVerticalSliceTests(unittest.TestCase):
 
             self.assertTrue(any("unregistered canonical scope" in error for error in errors), errors)
 
+    def test_rejects_project_context_without_project_owner(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.write_module(root, "current_state.md", "# current_state\n\n- level: A1")
+
+            errors = validate_v1.run(root, "personal")
+
+            self.assertTrue(any("without project.md owner" in error for error in errors), errors)
+
     def test_create_register_validate_update_validate(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

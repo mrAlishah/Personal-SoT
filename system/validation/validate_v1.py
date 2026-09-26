@@ -471,6 +471,34 @@ def validate_decisions(root: Path, errors: List[str]) -> None:
                 errors.append(f"{path.relative_to(root)}: missing or invalid decision_status ({status!r})")
 
 
+def validate_project_ownership(root: Path, errors: List[str]) -> None:
+    project_roots = [root / "workspace" / "context" / "personal" / "projects"]
+    organizations = root / "workspace" / "context" / "organizations"
+    if organizations.is_dir():
+        project_roots.extend(
+            organization / "projects"
+            for organization in organizations.iterdir()
+            if organization.is_dir()
+        )
+
+    for projects in project_roots:
+        if not projects.is_dir():
+            continue
+        for context_file in sorted(projects.rglob("*.md")):
+            if context_file.name == "readme.md":
+                continue
+            directory = context_file.parent
+            while directory.is_relative_to(projects):
+                if (directory / "project.md").is_file():
+                    break
+                if directory == projects:
+                    errors.append(
+                        f"{context_file.relative_to(root)}: project context without project.md owner"
+                    )
+                    break
+                directory = directory.parent
+
+
 def validate_secret_guard(root: Path, errors: List[str]) -> None:
     assignment = re.compile(r"^\s*[-*]?\s*([a-z0-9_]+)\s*[:=]\s*(.+?)\s*$", re.I)
     for path in canonical_context_files(root):
@@ -503,6 +531,7 @@ def run(root: Path, mode: str) -> List[str]:
     validate_switch_registry(root, errors)
     validate_context_registry(root, errors)
     validate_decisions(root, errors)
+    validate_project_ownership(root, errors)
     validate_secret_guard(root, errors)
     return errors
 
