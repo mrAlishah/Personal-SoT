@@ -24,8 +24,7 @@ get repository
 
 ## Tasks
 
-- [ ] Define one client-neutral setup workflow and scenario cases.
+- [x] Define one client-neutral setup workflow and scenario cases.
 - [ ] Add a thin setup prompt and runtime entrypoint reference.
 - [ ] Add beginner installation/setup guidance with local and web capability boundaries.
 - [ ] Validate prompts, Core invariants, public distribution, and the complete branch diff.
-
