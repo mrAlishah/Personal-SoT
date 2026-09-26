@@ -38,6 +38,9 @@ The local agent can preview, confirm, write, and validate when its actual permis
 
 Then see [Create and use your first project](create_and_use_project.md) for the complete project flow.
 
+To reuse an existing capability before creating one, see
+[Find and use an existing prompt](find_and_use_prompts.md).
+
 ## Safety rule
 
 Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.
