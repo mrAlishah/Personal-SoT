@@ -8,3 +8,4 @@ guided_flow_contract: system/assistant/guided_flow_contract.md
 safe_write_contract: system/assistant/safe_write_contract.md
 setup_workflow: system/assistant/setup_workflow.md
 project_workflow: system/assistant/project_workflow.md
+doctor_contract: system/diagnostics/doctor_contract.md

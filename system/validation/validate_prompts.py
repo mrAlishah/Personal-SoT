@@ -5,7 +5,10 @@ import re
 import sys
 from pathlib import Path
 
-from validate_v1 import switch_registry_entries
+if __package__:
+    from .validate_v1 import switch_registry_entries
+else:
+    from validate_v1 import switch_registry_entries
 
 VALID_STATUS = {"active", "draft", "deprecated"}
 NAME_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")

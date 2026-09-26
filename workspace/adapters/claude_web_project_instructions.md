@@ -1,5 +1,7 @@
 # Personal-SoT — Claude Web project
 
+client_name: Claude Web
+discovery_surface: workspace/adapters/claude_web_project_instructions.md
 entrypoint: workspace/adapters/runtime_entrypoint.md
 
 Treat the synced project repository root as the canonical SoT root. Before SoT-dependent work, read and follow the entrypoint and its referenced contracts using repository-relative paths.
