@@ -25,6 +25,14 @@ It validates real `workspace/prompts/` templates and fake `guides/developer/exam
 
 Prompt execution semantics remain contract/integration-test concerns; the validator does not execute prompts.
 
+## public_distribution_validator
+
+```bash
+python3 system/validation/validate_public.py
+```
+
+It rejects known private source identifiers, user-specific home paths, and likely raw-secret assignments before public distribution. The Phase 0 migration inventory is the sole provenance exception for source identifiers; it does not permit those identifiers in runtime or user content.
+
 ## non_goals
 
 These validators are not a runtime resolver, prompt engine, semantic search engine, complete secret scanner, full YAML parser, or proof of semantic factual quality/currentness.

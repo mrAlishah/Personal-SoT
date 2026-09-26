@@ -201,6 +201,8 @@ def validate_names(root: Path, errors: List[str]) -> None:
             continue
         for path in area.rglob("*"):
             rel = path.relative_to(root)
+            if "__pycache__" in rel.parts:
+                continue
             directory_parts = rel.parts[:-1] if path.is_file() else rel.parts
             for part in directory_parts:
                 if part.startswith("."):
