@@ -53,6 +53,21 @@ class DoctorTests(unittest.TestCase):
             self.assertIn("How to fix:", rendered)
             self.assertIn("Advanced", rendered)
 
+    def test_runtime_reference_outside_repository_is_blocking(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.minimal_repository(root)
+            entrypoint = root / "workspace/adapters/runtime_entrypoint.md"
+            entrypoint.write_text(
+                "# Runtime\n\ndeployment_config: /etc/hosts\n",
+                encoding="utf-8",
+            )
+
+            report = doctor.run(root)
+
+            self.assertTrue(report.blocked)
+            self.assertIn("✗ Runtime connection is broken", doctor.render(report))
+
     def test_web_client_without_write_capability_is_preview_only(self):
         report = doctor.run(
             REPOSITORY_ROOT,

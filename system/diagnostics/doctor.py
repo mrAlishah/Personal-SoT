@@ -73,16 +73,20 @@ def _runtime_finding(root: Path) -> Finding:
         if value:
             references.append(value)
 
-    missing = tuple(value for value in references if not (root / value).is_file())
-    if missing:
+    unresolved = tuple(
+        value
+        for value in references
+        if Path(value).is_absolute() or ".." in Path(value).parts or not (root / value).is_file()
+    )
+    if unresolved:
         return Finding(
             "fail",
             "Runtime connection is broken",
-            f"{len(missing)} referenced runtime file(s) cannot be resolved.",
+            f"{len(unresolved)} referenced runtime file(s) cannot be safely resolved inside the repository.",
             "Missing runtime contracts can make Assistant behavior incomplete or unsafe.",
             True,
             "Restore the missing runtime file from a clean repository copy, then run Doctor again.",
-            missing,
+            unresolved,
         )
     return Finding("pass", "Runtime entrypoint resolves correctly")
 

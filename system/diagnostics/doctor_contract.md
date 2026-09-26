@@ -46,7 +46,7 @@ Do not require the beginner to understand paths, YAML, registries, or Git. Show 
 
 ## Privacy
 
-Never display secret values or canonical content. Do not load or quote `restricted` or `deny` content for diagnosis. A finding may identify the affected area and, in authorized Advanced output, the minimum repository-relative location needed for repair.
+Never display secret values or canonical content. Do not independently inspect or quote `restricted` or `deny` content beyond invoking its authoritative validator. A finding may identify the affected area and, in authorized Advanced output, the minimum repository-relative location needed for repair.
 
 ## Repair boundary
 
