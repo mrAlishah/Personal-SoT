@@ -52,6 +52,14 @@ class PublicValidationTests(unittest.TestCase):
         self.assertEqual(2, len(errors))
         self.assertTrue(all("user-specific home path" in error for error in errors))
 
+    def test_rejects_windows_home_paths(self):
+        errors = self.validate(
+            {"guides/user/unsafe.md": "source_root: C:\\Users\\alice\\Documents\\sot\n"}
+        )
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("user-specific home path", errors[0])
+
     def test_rejects_raw_secret_assignments_but_allows_safe_sentinels(self):
         errors = self.validate(
             {
@@ -62,6 +70,20 @@ class PublicValidationTests(unittest.TestCase):
 
         self.assertEqual(1, len(errors))
         self.assertIn("possible raw secret", errors[0])
+
+    def test_rejects_common_secret_assignments_and_private_key_blocks(self):
+        errors = self.validate(
+            {
+                "workspace/adapters/unsafe.md": (
+                    "access_token: live_access_value\n"
+                    "client_secret: live_client_value\n"
+                    "-----BEGIN PRIVATE KEY-----\n"
+                )
+            }
+        )
+
+        self.assertEqual(3, len(errors))
+        self.assertTrue(all("secret" in error or "private key" in error for error in errors))
 
 
 if __name__ == "__main__":

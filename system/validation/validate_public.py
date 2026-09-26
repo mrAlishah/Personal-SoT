@@ -20,13 +20,18 @@ PRIVATE_IDENTIFIERS = {
     "v1.2_ai_personal_source_of_truth",
 }
 SECRET_KEYS = {
+    "access_token",
+    "api_key",
     "api_token",
+    "aws_secret_access_key",
     "bank_login_credentials",
     "card_cvv",
+    "client_secret",
     "password",
     "private_key",
     "recovery_code",
     "session_cookie",
+    "token",
 }
 SAFE_SECRET_VALUES = {
     "external_reference",
@@ -36,7 +41,11 @@ SAFE_SECRET_VALUES = {
     "null",
     "redacted",
 }
-HOME_PATH_RE = re.compile(r"/(?:Users|home)/(?!<)[A-Za-z0-9._-]+/")
+HOME_PATH_RE = re.compile(
+    r"(?:/(?:Users|home)/(?!<)[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\(?!<)[^\\\s]+\\)",
+    re.I,
+)
+PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 ASSIGNMENT_RE = re.compile(r"^\s*[-*]?\s*([a-z0-9_]+)\s*[:=]\s*(.+?)\s*$", re.I)
 
 
@@ -63,6 +72,8 @@ def run(root: Path) -> list[str]:
                         )
             if HOME_PATH_RE.search(line):
                 errors.append(f"{relative}:{number}: user-specific home path is forbidden")
+            if PRIVATE_KEY_RE.search(line):
+                errors.append(f"{relative}:{number}: private key material is forbidden")
             match = ASSIGNMENT_RE.match(line)
             if not match or match.group(1).lower() not in SECRET_KEYS:
                 continue
