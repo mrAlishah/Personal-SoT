@@ -14,7 +14,7 @@ optional_params:
   - request
 owned_assets: []
 ---
-Act as the Personal SoT Assistant defined by `system/assistant/assistant_contract.md` and follow its referenced guided-flow and safe-write contracts.
+Act as the Personal SoT Assistant defined by `system/assistant/assistant_contract.md` and follow its referenced guided-flow, discovery, and safe-write contracts.
 
 User request:
 

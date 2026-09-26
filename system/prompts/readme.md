@@ -16,7 +16,7 @@ system/behavior/                  = reusable operating capability
 workspace/profiles/               = reusable behavior/presentation composition defaults
 workspace/presentation/formats/   = response representation
 workspace/prompts/                 = reusable user-request templates
-system/prompts/                    = prompt schema/action/parameter contracts
+system/prompts/                    = prompt schema/action/parameter/discovery contracts
 ```
 
 Prompt templates must not become a second factual Source of Truth or duplicate format/profile instructions.
@@ -60,10 +60,13 @@ Parameters use:
 @param:<name>=[value]
 ```
 
-See `prompt_contract.md`, `parameter_contract.md`, and `action_contract.md`.
+See `prompt_contract.md`, `parameter_contract.md`, `action_contract.md`, and
+`explorer_contract.md`.
 
 ## token_efficiency
 
-Prompt discovery must not load the whole library. Prefer exact-path lookup; use targeted search/tags only when the user is discovering a prompt by topic.
+Prompt discovery uses the bounded, metadata-first behavior in
+`explorer_contract.md`. Prefer exact-path lookup; use targeted search/tags only
+when the user is discovering a prompt by topic.
 
 Only the selected prompt template plus required referenced runtime modules enter prompt construction.
