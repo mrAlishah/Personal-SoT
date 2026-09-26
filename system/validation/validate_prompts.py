@@ -17,6 +17,7 @@ ALLOWED_FIELDS = {"prompt_status", "prompt_tags", "prompt_profiles", "prompt_for
 LIST_FIELDS = {"prompt_tags", "prompt_profiles", "prompt_formats", "required_params", "optional_params", "owned_assets"}
 RAW_SECRET_KEYS = {"password", "api_token", "private_key", "recovery_code", "session_cookie", "bank_login_credentials", "card_cvv", "cvv"}
 SAFE_SECRET_SENTINELS = {"not_stored", "none", "null", "redacted", "external_reference", "not_applicable"}
+MAX_FRONTMATTER_LINES = 256
 
 
 def text(path: Path) -> str:
@@ -61,6 +62,29 @@ def manifest(src: str):
         if stripped.startswith("- ") and current in LIST_FIELDS:
             lists[current].append(clean(stripped[2:]))
     return keys, lists, scalars, body
+
+
+def read_manifest(path: Path) -> tuple[set[str], dict[str, list[str]], dict[str, str]]:
+    """Read and parse frontmatter without loading the prompt body."""
+    lines: list[str] = []
+    try:
+        with path.open("rb") as source:
+            first = source.readline().decode("utf-8")
+            if first.strip() != "---":
+                return set(), {key: [] for key in LIST_FIELDS}, {}
+            lines.append(first)
+            for _ in range(MAX_FRONTMATTER_LINES):
+                raw = source.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8")
+                lines.append(line)
+                if line.strip() == "---":
+                    keys, lists, scalars, _ = manifest("".join(lines))
+                    return keys, lists, scalars
+    except (OSError, UnicodeDecodeError):
+        pass
+    return set(), {key: [] for key in LIST_FIELDS}, {}
 
 
 def prompt_files(root: Path):
@@ -170,6 +194,22 @@ def validate_file(
         if value in SAFE_SECRET_SENTINELS or value.startswith("<") or value.startswith("{{"):
             continue
         errors.append(f"{rel}:{n}: possible raw secret assignment to {match.group(1).lower()!r}")
+
+
+def validate_path(root: Path, path: Path, canonical: bool = True) -> list[str]:
+    """Validate one prompt with the same rules as the repository validator."""
+    errors: list[str] = []
+    entries = switch_registry_entries(root)
+    validate_file(
+        root,
+        path,
+        canonical,
+        {identifier for section, identifier, _ in entries if section == "formats"},
+        {identifier for section, identifier, _ in entries if section == "tones"},
+        {identifier for section, identifier, _ in entries if section == "depths"},
+        errors,
+    )
+    return errors
 
 
 def run(root: Path) -> list[str]:
