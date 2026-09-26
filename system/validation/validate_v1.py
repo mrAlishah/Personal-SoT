@@ -2,6 +2,7 @@
 """Dependency-free static validation for the AI Source of Truth."""
 from __future__ import annotations
 import argparse
+from dataclasses import dataclass
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,19 @@ RAW_SECRET_KEYS = {"password", "bank_password", "api_token", "private_key", "rec
 SAFE_SECRET_SENTINELS = {"not_stored", "none", "null", "redacted", "external_reference", "not_applicable"}
 PRIMARY_DIRS = {"workspace", "system", "guides"}
 LEGACY_TOP_LEVEL = {"routing", "context", "behavior", "formats", "tones", "depth", "languages", "profiles", "prompts", "migration", "adapters", "retrieval", "automation", "examples", "tests", "governance", "release", "validation"}
+
+
+@dataclass(frozen=True)
+class ProfileManifest:
+    present: bool
+    top_keys: frozenset[str]
+    behaviors: tuple[str, ...]
+    formats: tuple[str, ...]
+    tone: Optional[str]
+    depth: Optional[str]
+    primary_language: Optional[str]
+    supporting_languages: tuple[str, ...]
+    controls: tuple[tuple[str, str], ...]
 
 
 def read_text(path: Path) -> str:
@@ -274,6 +288,101 @@ def parse_profile_manifest(text: str) -> Tuple[set, Dict[str, List[str]], Dict[s
     return top_keys, lists, scalars
 
 
+def read_profile_manifest(source: str) -> ProfileManifest:
+    top_keys, lists, scalars = parse_profile_manifest(source)
+    return ProfileManifest(
+        frontmatter_lines(source) is not None,
+        frozenset(top_keys),
+        tuple(lists.get("behaviors", [])),
+        tuple(lists.get("formats", [])),
+        scalars.get("tone"),
+        scalars.get("depth"),
+        scalars.get("language.primary"),
+        tuple(lists.get("language.supporting", [])),
+        tuple(
+            (key.split(".", 1)[1], value)
+            for key, value in scalars.items()
+            if key.startswith("controls.")
+        ),
+    )
+
+
+def _validate_profile_manifest(
+    root: Path,
+    path: Path,
+    manifest: ProfileManifest,
+    control_specs: Dict[str, set],
+    format_specs: Dict[str, str],
+    tone_specs: Dict[str, str],
+    depth_specs: Dict[str, str],
+    errors: List[str],
+) -> None:
+    rel = path.relative_to(root)
+    if not manifest.present:
+        errors.append(f"{rel}: profile requires YAML frontmatter")
+        return
+    unknown = manifest.top_keys - PROFILE_TOP_LEVEL
+    if unknown:
+        errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
+    for key, value in manifest.controls:
+        allowed = control_specs.get(key)
+        if allowed is None:
+            errors.append(f"{rel}: unsupported profile control {key!r}")
+        elif value not in allowed:
+            errors.append(f"{rel}: invalid value for controls.{key} ({value!r}); expected one of {sorted(allowed)}")
+    for value in manifest.formats:
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid format identifier {value!r}")
+        elif value not in format_specs:
+            errors.append(f"{rel}: unresolved registered format reference {value!r}")
+    for field, value, specs in (
+        ("tone", manifest.tone, tone_specs),
+        ("depth", manifest.depth, depth_specs),
+    ):
+        if not value:
+            continue
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid {field} identifier {value!r}")
+        elif value not in specs:
+            errors.append(f"{rel}: unresolved registered {field} reference {value!r}")
+    refs = [("behavior", value, root / "system/behavior" / f"{value}.md") for value in manifest.behaviors]
+    if manifest.primary_language:
+        refs.append(
+            (
+                "language",
+                manifest.primary_language,
+                root / "workspace/presentation/languages" / f"{manifest.primary_language}.md",
+            )
+        )
+    refs.extend(
+        ("language", value, root / "workspace/presentation/languages" / f"{value}.md")
+        for value in manifest.supporting_languages
+    )
+    for kind, value, target in refs:
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid {kind} identifier {value!r}")
+        elif not target.is_file():
+            errors.append(f"{rel}: unresolved {kind} reference {value!r} -> {target.relative_to(root)}")
+
+
+def validate_profile_source(root: Path, path: Path, source: str) -> List[str]:
+    """Validate one proposed Profile with the repository-owned rules."""
+    errors: List[str] = []
+    control_specs = registered_control_specs(root, errors)
+    format_specs = registered_format_specs(root, errors)
+    _validate_profile_manifest(
+        root,
+        path,
+        read_profile_manifest(source),
+        control_specs,
+        format_specs,
+        registered_section_targets(root, "tones"),
+        registered_section_targets(root, "depths"),
+        errors,
+    )
+    return errors
+
+
 def validate_profiles(
     root: Path,
     control_specs: Dict[str, set],
@@ -286,45 +395,16 @@ def validate_profiles(
     if not profiles.exists():
         return
     for path in sorted(profiles.glob("*.md")):
-        top_keys, lists, scalars = parse_profile_manifest(read_text(path))
-        rel = path.relative_to(root)
-        unknown = top_keys - PROFILE_TOP_LEVEL
-        if unknown:
-            errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
-        controls = {key.split(".", 1)[1]: value for key, value in scalars.items() if key.startswith("controls.")}
-        for key, value in controls.items():
-            allowed = control_specs.get(key)
-            if allowed is None:
-                errors.append(f"{rel}: unsupported profile control {key!r}")
-            elif value not in allowed:
-                errors.append(f"{rel}: invalid value for controls.{key} ({value!r}); expected one of {sorted(allowed)}")
-        for value in lists["formats"]:
-            if not NAME_RE.fullmatch(value):
-                errors.append(f"{rel}: invalid format identifier {value!r}")
-            elif value not in format_specs:
-                errors.append(f"{rel}: unresolved registered format reference {value!r}")
-        tone = scalars.get("tone")
-        if tone:
-            if not NAME_RE.fullmatch(tone):
-                errors.append(f"{rel}: invalid tone identifier {tone!r}")
-            elif tone not in tone_specs:
-                errors.append(f"{rel}: unresolved registered tone reference {tone!r}")
-        depth = scalars.get("depth")
-        if depth:
-            if not NAME_RE.fullmatch(depth):
-                errors.append(f"{rel}: invalid depth identifier {depth!r}")
-            elif depth not in depth_specs:
-                errors.append(f"{rel}: unresolved registered depth reference {depth!r}")
-        refs = [("behavior", v, root / "system" / "behavior" / f"{v}.md") for v in lists["behaviors"]]
-        if scalars.get("language.primary"):
-            value = scalars["language.primary"]
-            refs.append(("language", value, root / "workspace" / "presentation" / "languages" / f"{value}.md"))
-        refs += [("language", v, root / "workspace" / "presentation" / "languages" / f"{v}.md") for v in lists["language.supporting"]]
-        for kind, value, target in refs:
-            if not NAME_RE.fullmatch(value):
-                errors.append(f"{rel}: invalid {kind} identifier {value!r}")
-            elif not target.is_file():
-                errors.append(f"{rel}: unresolved {kind} reference {value!r} -> {target.relative_to(root)}")
+        _validate_profile_manifest(
+            root,
+            path,
+            read_profile_manifest(read_text(path)),
+            control_specs,
+            format_specs,
+            tone_specs,
+            depth_specs,
+            errors,
+        )
 
 
 def validate_switch_registry(root: Path, errors: List[str]) -> None:
