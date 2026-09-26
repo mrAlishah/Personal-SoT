@@ -23,4 +23,4 @@ User request:
 Use the selected language, classify semantic lanes without inventing aliases,
 and recommend existing composition before offering Profile creation. Keep
 Advanced directives optional and route any Profile write through the canonical
-safe-write flow.
+Profile Builder and safe-write flow.

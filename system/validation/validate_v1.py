@@ -33,6 +33,7 @@ class ProfileManifest:
     primary_language: Optional[str]
     supporting_languages: tuple[str, ...]
     controls: tuple[tuple[str, str], ...]
+    body: str
 
 
 def read_text(path: Path) -> str:
@@ -290,6 +291,12 @@ def parse_profile_manifest(text: str) -> Tuple[set, Dict[str, List[str]], Dict[s
 
 def read_profile_manifest(source: str) -> ProfileManifest:
     top_keys, lists, scalars = parse_profile_manifest(source)
+    lines = source.splitlines()
+    closing = next(
+        (index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"),
+        None,
+    )
+    body = "\n".join(lines[closing + 1 :]) if closing is not None else ""
     return ProfileManifest(
         frontmatter_lines(source) is not None,
         frozenset(top_keys),
@@ -304,6 +311,7 @@ def read_profile_manifest(source: str) -> ProfileManifest:
             for key, value in scalars.items()
             if key.startswith("controls.")
         ),
+        body,
     )
 
 
@@ -321,6 +329,8 @@ def _validate_profile_manifest(
     if not manifest.present:
         errors.append(f"{rel}: profile requires YAML frontmatter")
         return
+    if manifest.body.strip():
+        errors.append(f"{rel}: Profile must remain a frontmatter-only composition manifest; body content is forbidden")
     unknown = manifest.top_keys - PROFILE_TOP_LEVEL
     if unknown:
         errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")

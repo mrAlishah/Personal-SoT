@@ -61,8 +61,9 @@ Direct `formal + short` composition does not justify a new Profile by itself.
 
 Format, tone, depth, control, and behavior are discover/compose-only here. Do
 not create or edit their targets, registry mappings, metadata, contracts, or
-precedence. Only `workspace/profiles/<name>.md` may enter the Profile Builder
-safe-write flow.
+precedence. Only `workspace/profiles/<name>.md` may enter the flow defined by
+`system/assistant/profile_builder_workflow.md` and the canonical safe-write
+contract.
 
 Profiles contain component identities and defaults only. Durable Personal or
 project facts, context paths, copied module instructions, policies, adapter
