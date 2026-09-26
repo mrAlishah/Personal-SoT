@@ -80,6 +80,7 @@ class DoctorTests(unittest.TestCase):
         self.assertFalse(report.blocked)
         self.assertIn("✓ ChatGPT configuration detected", rendered)
         self.assertIn("⚠ ChatGPT is preview-only", rendered)
+        self.assertNotIn("run write validation", rendered)
 
     def test_existing_validators_own_project_profile_and_prompt_diagnosis(self):
         with TemporaryDirectory() as directory:

@@ -153,7 +153,7 @@ def _client_findings(root: Path, client: str, write_capability: str) -> list[Fin
             Finding(
                 "warn",
                 f"{label} is preview-only",
-                "This session cannot apply canonical changes or run write validation.",
+                "This session cannot apply canonical changes.",
                 "Guidance and previews still work, but no mutation can be reported as complete.",
                 False,
                 "Use an authorized local agent to apply a confirmed repair proposal.",
