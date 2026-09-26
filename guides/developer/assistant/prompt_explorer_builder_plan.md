@@ -126,9 +126,13 @@ git commit -m "feat(prompts): add deterministic prompt explorer"
 - Produces: one client-neutral workflow for natural-language discovery and beginner presentation.
 - Produces: thin `sot/explore_prompts` invocation with optional use-case input; no copied ranking or validation logic.
 
-- [ ] **Step 1: Add RED scenario cases**
+- [ ] **Step 1: Add scenario acceptance cases**
 
-Cover selected-language guidance, one adaptive question, recommendation evidence, simple usage, optional Advanced identity/directive, draft/deprecated warnings, unavailable candidate safety, no invented identity, and preview-only honesty.
+Record non-executable Markdown acceptance cases for selected-language guidance,
+one adaptive question, recommendation evidence, simple usage, optional Advanced
+identity/directive, draft/deprecated warnings, unavailable candidate safety, no
+invented identity, and preview-only honesty. These cases guide semantic review;
+do not report them as RED → GREEN executable tests.
 
 - [ ] **Step 2: Add the minimum workflow and Assistant route**
 
@@ -171,9 +175,14 @@ git commit -m "feat(assistant): add beginner prompt discovery flow"
 - Produces: immutable `ReuseAssessment` with `exact_identity`, `parameterized_identity`, `composition`, `edit_identity`, and `same_semantic_owner`.
 - Produces: `choose_action(assessment: ReuseAssessment) -> tuple[str, str | None]`, returning exactly one of `reuse_exact`, `reuse_parameterized`, `compose`, `edit`, or `create`.
 
-- [ ] **Step 1: Write failing reuse-order tests**
+- [ ] **Step 1: Write failing executable reuse-order tests and scenario acceptance cases**
 
-Test exact reuse, parameterized reuse, valid composition, same-owner edit, similarity without ownership choosing create, and create only when every earlier rung is absent. Add scenario cases for durable-fact separation, adaptive questions, and forbidden prompt-to-prompt include/inheritance.
+In `test_prompt_builder.py`, test exact reuse, parameterized reuse, valid
+composition, same-owner edit, similarity without ownership choosing create, and
+create only when every earlier rung is absent. Separately record non-executable
+Markdown scenario acceptance cases for durable-fact separation, adaptive
+questions, and forbidden prompt-to-prompt include/inheritance; do not report the
+Markdown cases as RED → GREEN.
 
 - [ ] **Step 2: Run Builder tests and verify RED**
 
@@ -213,9 +222,9 @@ git commit -m "feat(prompts): add reuse first prompt builder"
 
 **Interfaces:**
 - Produces: `validate_prompts.validate_source(root: Path, path: Path, source: str, canonical: bool = True) -> list[str]`, sharing all rules with `validate_path()` and `run()`.
-- Produces: immutable `PromptProposal` containing operation, identity, repository-relative target, before digest, complete content, unified diff, confirmation digest, capability, and preflight errors.
+- Produces: immutable `PromptProposal` containing operation, identity, repository-relative target, before digest, exact before content when editing, complete proposed content, unified diff, confirmation digest, capability, and preflight errors.
 - Produces: `preview_change(root: Path, operation: str, identity: str, content: str, *, same_semantic_owner: bool, fact_safe: bool, write_capable: bool) -> PromptProposal`.
-- Produces: immutable `ApplyResult` and `apply_change(root: Path, proposal: PromptProposal, confirmation_digest: str) -> ApplyResult`.
+- Produces: immutable `ApplyResult` with `write_applied`, `validation_ran`, `validation_passed`, `validation_errors`, `success`, and the affected repository-relative path; `apply_change(root: Path, proposal: PromptProposal, confirmation_digest: str) -> ApplyResult`.
 
 - [ ] **Step 1: Add failing safe-write tests**
 
@@ -233,7 +242,8 @@ test_wrong_confirmation_digest_cannot_apply
 test_stale_edit_requires_new_preview
 test_occupied_create_target_requires_new_preview
 test_successful_local_create_runs_real_prompt_validation
-test_repository_validation_failure_is_not_success
+test_successful_local_create_runs_all_relevant_validators
+test_write_applied_but_repository_validation_failed_is_explicit_and_recoverable
 ```
 
 - [ ] **Step 2: Run safe-write tests and verify RED**
@@ -244,11 +254,38 @@ Expected: new tests fail because proposal/apply interfaces do not exist.
 
 - [ ] **Step 3: Refactor validator input without changing rules**
 
-Move the existing per-file rule body behind `validate_source()`; make `validate_path()` read once and delegate, and keep `run()` behavior/output stable. Do not parse validator stdout.
+Move the existing per-file prompt-rule body behind `validate_source()`; make
+`validate_path()` read once and delegate, and keep `run()` behavior/output
+stable. Prompt preflight calls this validator-owned interface. Do not duplicate
+prompt, secret, or public-distribution rules in Builder, and do not parse
+validator stdout.
 
 - [ ] **Step 4: Implement preview and apply**
 
-Resolve only lowercase_snake_case identities beneath `workspace/prompts/`. Require the Assistant workflow to classify proposed reusable content as fact-safe before preview; uncertainty stops the write path and routes durable truth to parameters or independently resolved context. Use `difflib.unified_diff` for the complete preview and `hashlib.sha256` for confirmation/current-state binding. Preflight the proposed source before confirmation. On apply, verify capability, confirmation digest, target existence/digest, then write one prompt file and call `validate_prompts.run(root)`. An applied file with validation errors returns `success=False`, `validation_ran=True`, and the actual errors.
+Resolve only lowercase_snake_case identities beneath `workspace/prompts/`.
+Require the Assistant workflow to classify proposed reusable content as
+fact-safe before preview; uncertainty stops the write path and routes durable
+truth to parameters or independently resolved context. Use
+`difflib.unified_diff` for the complete preview and `hashlib.sha256` for
+confirmation/current-state binding. Preflight the proposed source through the
+validator-owned `validate_source()` interface.
+
+On apply, verify capability, confirmation digest, and target existence/digest;
+write one prompt file; then call the programmatic owners directly:
+
+```text
+validate_prompts.run(root)
+validate_v1.run(root, "core")
+validate_public.run(root)
+```
+
+Do not reimplement or parse the output of any validator. Namespace each returned
+error in `validation_errors`. Set `write_applied=True` immediately after the
+filesystem mutation, set `validation_ran=True` only after all three owners were
+invoked, and derive `validation_passed` and `success` separately. If validation
+fails after mutation, keep the exact proposal diff/before content available for
+recovery, report the changed path explicitly, perform no silent repair or
+rollback, and require a new proposal for any semantic repair.
 
 - [ ] **Step 5: Run tests and validators for GREEN, then commit Loop 4**
 
