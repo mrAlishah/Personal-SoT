@@ -25,6 +25,8 @@ The reusable SoT engine, safety validators, guided setup, Personal SoT Assistant
 
 Start with [Set up Personal-SoT](setup.md).
 
+If setup or configuration seems wrong, run the [beginner-friendly Doctor](doctor.md).
+
 Open the repository in Codex or Claude Code and ask naturally:
 
 ```text

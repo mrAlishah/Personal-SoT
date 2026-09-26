@@ -49,7 +49,7 @@ Nothing material should be written before you confirm that exact preview. Do not
 
 ## 5. System check
 
-An authorized local agent runs the existing repository checks and explains the result as:
+An authorized local agent runs Personal-SoT Doctor, which reuses the existing repository checks and explains the result as:
 
 ```text
 ready
@@ -58,6 +58,8 @@ what failed → affected area → smallest next action
 ```
 
 It must not call setup successful when a required check fails.
+
+See [Check Personal-SoT with Doctor](doctor.md) for status meanings and safe repair guidance.
 
 ## Web clients
 
