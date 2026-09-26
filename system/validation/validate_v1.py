@@ -382,44 +382,81 @@ def validate_switch_registry(root: Path, errors: List[str]) -> None:
 
 def validate_context_registry(root: Path, errors: List[str]) -> None:
     path = root / "system" / "routing" / "context_registry.md"
-    if not path.exists():
-        return
-    in_fence = False
-    pending_scope: Optional[str] = None
     seen_scopes: Dict[str, str] = {}
-    for raw in read_text(path).splitlines():
-        stripped = raw.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            pending_scope = None
-            continue
-        if not in_fence or not stripped:
-            continue
-        if stripped.startswith("→ "):
-            target_text = stripped[2:].strip()
-            if pending_scope is None:
-                continue
-            if not SCOPE_RE.fullmatch(pending_scope):
-                errors.append(f"{path.relative_to(root)}: invalid runtime scope identifier {pending_scope!r}")
-            previous_target = seen_scopes.get(pending_scope)
-            if previous_target is not None:
-                errors.append(
-                    f"{path.relative_to(root)}: duplicate runtime scope {pending_scope!r} "
-                    f"maps to both {previous_target!r} and {target_text!r}"
-                )
-            else:
-                seen_scopes[pending_scope] = target_text
-            if not target_text.startswith("workspace/context/"):
+    if path.exists():
+        in_fence = False
+        pending_scope: Optional[str] = None
+        for raw in read_text(path).splitlines():
+            stripped = raw.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
                 pending_scope = None
                 continue
-            if "guides/developer/examples/" in target_text:
-                errors.append(f"{path.relative_to(root)}: example path registered as runtime scope")
-            if not (root / target_text.rstrip("/")).is_dir():
-                errors.append(f"{path.relative_to(root)}: missing scope target {target_text!r}")
-            pending_scope = None
-            continue
-        if "→" not in stripped and not stripped.startswith("#"):
-            pending_scope = stripped
+            if not in_fence or not stripped:
+                continue
+            if stripped.startswith("→ "):
+                target_text = stripped[2:].strip()
+                if pending_scope is None:
+                    continue
+                if not SCOPE_RE.fullmatch(pending_scope):
+                    errors.append(f"{path.relative_to(root)}: invalid runtime scope identifier {pending_scope!r}")
+                previous_target = seen_scopes.get(pending_scope)
+                if previous_target is not None:
+                    errors.append(
+                        f"{path.relative_to(root)}: duplicate runtime scope {pending_scope!r} "
+                        f"maps to both {previous_target!r} and {target_text!r}"
+                    )
+                else:
+                    seen_scopes[pending_scope] = target_text
+                if not target_text.startswith("workspace/context/"):
+                    pending_scope = None
+                    continue
+                if "guides/developer/examples/" in target_text:
+                    errors.append(f"{path.relative_to(root)}: example path registered as runtime scope")
+                if not (root / target_text.rstrip("/")).is_dir():
+                    errors.append(f"{path.relative_to(root)}: missing scope target {target_text!r}")
+                pending_scope = None
+                continue
+            if "→" not in stripped and not stripped.startswith("#"):
+                pending_scope = stripped
+
+    expected_scopes: Dict[str, str] = {}
+    personal = root / "workspace" / "context" / "personal"
+    if personal.is_dir() and any(personal.glob("*.md")):
+        expected_scopes["personal"] = "workspace/context/personal/"
+    personal_projects = personal / "projects"
+    if personal_projects.is_dir():
+        for project_file in sorted(personal_projects.rglob("project.md")):
+            project_path = project_file.parent.relative_to(personal_projects).as_posix()
+            expected_scopes[f"personal/projects/{project_path}"] = (
+                f"workspace/context/personal/projects/{project_path}/"
+            )
+
+    organizations = root / "workspace" / "context" / "organizations"
+    if organizations.is_dir():
+        for organization in sorted(path for path in organizations.iterdir() if path.is_dir()):
+            if any(organization.glob("*.md")):
+                expected_scopes[f"org/{organization.name}"] = (
+                    f"workspace/context/organizations/{organization.name}/"
+                )
+            projects = organization / "projects"
+            if not projects.is_dir():
+                continue
+            for project_file in sorted(projects.rglob("project.md")):
+                project_path = project_file.parent.relative_to(projects).as_posix()
+                expected_scopes[f"org/{organization.name}/projects/{project_path}"] = (
+                    f"workspace/context/organizations/{organization.name}/projects/{project_path}/"
+                )
+
+    for scope, target in expected_scopes.items():
+        registered_target = seen_scopes.get(scope)
+        if registered_target is None:
+            errors.append(f"{target}: unregistered canonical scope {scope!r}")
+        elif registered_target.rstrip("/") != target.rstrip("/"):
+            errors.append(
+                f"{path.relative_to(root)}: canonical scope {scope!r} maps to {registered_target!r}; "
+                f"expected {target!r}"
+            )
 
 
 def validate_decisions(root: Path, errors: List[str]) -> None:
@@ -432,6 +469,34 @@ def validate_decisions(root: Path, errors: List[str]) -> None:
             status = simple_frontmatter(read_text(path)).get("decision_status")
             if status not in VALID_DECISION_STATUS:
                 errors.append(f"{path.relative_to(root)}: missing or invalid decision_status ({status!r})")
+
+
+def validate_project_ownership(root: Path, errors: List[str]) -> None:
+    project_roots = [root / "workspace" / "context" / "personal" / "projects"]
+    organizations = root / "workspace" / "context" / "organizations"
+    if organizations.is_dir():
+        project_roots.extend(
+            organization / "projects"
+            for organization in organizations.iterdir()
+            if organization.is_dir()
+        )
+
+    for projects in project_roots:
+        if not projects.is_dir():
+            continue
+        for context_file in sorted(projects.rglob("*.md")):
+            if context_file.name == "readme.md":
+                continue
+            directory = context_file.parent
+            while directory.is_relative_to(projects):
+                if (directory / "project.md").is_file():
+                    break
+                if directory == projects:
+                    errors.append(
+                        f"{context_file.relative_to(root)}: project context without project.md owner"
+                    )
+                    break
+                directory = directory.parent
 
 
 def validate_secret_guard(root: Path, errors: List[str]) -> None:
@@ -466,6 +531,7 @@ def run(root: Path, mode: str) -> List[str]:
     validate_switch_registry(root, errors)
     validate_context_registry(root, errors)
     validate_decisions(root, errors)
+    validate_project_ownership(root, errors)
     validate_secret_guard(root, errors)
     return errors
 

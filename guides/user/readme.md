@@ -19,17 +19,26 @@ Assistant:
 7. teaches you what to ask next.
 ```
 
-## What works in the foundation milestone
+## What works now
 
-The reusable SoT engine and safety validators are present. The repository contains no real Personal facts and does not create empty Personal modules just to fill a template.
+The reusable SoT engine, safety validators, Personal SoT Assistant contracts, and first Project Builder flow are present. The repository starts without real Personal facts and creates only the modules your confirmed project actually needs.
 
-The guided setup and Personal SoT Assistant are not implemented yet. You do not need to hand-edit internal files to simulate them; the next vertical slice will add the supported beginner path.
+Open the repository in Codex or Claude Code and ask naturally:
+
+```text
+Help me create my first Personal-SoT project.
+Please guide me in English.
+```
+
+The local agent can preview, confirm, write, and validate when its actual permissions allow it. ChatGPT and Claude Web can run the same questions and preview, but must tell you when they cannot write the repository.
+
+See [Create and use your first project](create_and_use_project.md) for the complete flow.
 
 ## Safety rule
 
 Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.
 
-## How the finished beginner flow will work
+## Product journey
 
 ```text
 [1 Install]
