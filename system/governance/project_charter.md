@@ -6,6 +6,9 @@ Define the durable purpose, design principles, and decision priorities for evolv
 
 This charter is the canonical governance basis for architecture changes, refactors, new runtime capabilities, context-model changes, adapters, prompts, profiles, retrieval, and maintenance automation.
 
+The public V1 product audience, experience, scope, and completion standard are
+owned by `system/governance/public_v1_product_contract.md`.
+
 ## project_definition
 
 The SoT is a canonical, client-neutral, Git-backed context and runtime-governance system for AI clients such as ChatGPT, Claude, Codex, and compatible agents.
