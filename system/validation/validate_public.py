@@ -14,7 +14,6 @@ SELF_FIXTURES = {
     "system/tests/validation/test_validate_public.py",
     "system/validation/validate_public.py",
 }
-MIGRATION_PROVENANCE = "guides/developer/migration/public_v1_inventory.md"
 PRIVATE_IDENTIFIERS = {
     "mrAlishah/obsidian-ai-context-source-of-truth",
     "v1.2_ai_personal_source_of_truth",
@@ -62,14 +61,12 @@ def candidate_files(root: Path):
 def run(root: Path) -> list[str]:
     errors: list[str] = []
     for path, relative in candidate_files(root):
-        relative_text = relative.as_posix()
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if relative_text != MIGRATION_PROVENANCE:
-                for identifier in PRIVATE_IDENTIFIERS:
-                    if identifier in line:
-                        errors.append(
-                            f"{relative}:{number}: private source identifier {identifier!r} is forbidden"
-                        )
+            for identifier in PRIVATE_IDENTIFIERS:
+                if identifier in line:
+                    errors.append(
+                        f"{relative}:{number}: private source identifier {identifier!r} is forbidden"
+                    )
             if HOME_PATH_RE.search(line):
                 errors.append(f"{relative}:{number}: user-specific home path is forbidden")
             if PRIVATE_KEY_RE.search(line):

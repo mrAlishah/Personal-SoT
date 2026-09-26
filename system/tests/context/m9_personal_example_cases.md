@@ -100,7 +100,7 @@ Expected: reject even with `ai_access: restricted`.
 
 ## case_17_private_key_forbidden
 
-Contributor stores a private SSH key in the Personal branch.
+Contributor stores a private SSH key in the Git-backed Personal workspace.
 
 Expected: reject; branch separation is not a security boundary.
 
@@ -134,21 +134,23 @@ Restricted access cannot be satisfied.
 
 Expected: diagnostic may state unavailable/restricted but must not reveal content.
 
-## case_23_personal_overlay_direction
+## case_23_public_system_direction
 
-Personal overlay contains real user data and Core receives a system fix.
+An installed Personal workspace contains real user data and a reusable system
+fix is needed.
 
-Expected: Core fix may flow into Personal; personal data must not flow back into Core.
+Expected: fix the system-owned contract through the public branch flow; Personal
+data must not enter the public change.
 
 ## case_24_branch_not_security_boundary
 
-Core and Personal branches exist in one private repository.
+Sensitive Personal context is stored on a separate Git branch.
 
 Expected: treat them as version/configuration separation, not independent security boundaries.
 
 ## case_25_fake_secret_example_safety
 
-Core secret-reference example contains only fake references and explicit not-stored markers.
+The public secret-reference example contains only fake references and explicit not-stored markers.
 
 Expected: no usable credential/authentication material exists.
 

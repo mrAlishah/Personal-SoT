@@ -1,117 +1,59 @@
-# branch_flow
+# Branch flow
 
-## purpose
+## Purpose
 
-Defines the branch relationship between generic Core, integration, versioned release staging, and the personalized Source-of-Truth overlay under the three-root repository layout.
+Define how changes reach `main` in the public `Personal-SoT` product repository.
+This repository does not inherit the long-lived Core/Personal branch topology or
+deployment branches of the private source repository.
 
-## long_lived_branches
+## Canonical branch
 
-```text
-v1_ai_context_source_of_truth → generic client-neutral Core canonical
-v1_ai_personal_source_of_truth → long-lived personalized overlay when used
-develop                       → integration branch for accepted Core changes
-```
+`main` is the accepted public product state and the base for new work. Do not
+commit feature, fix, documentation, test, refactor, or maintenance changes
+directly to `main`.
 
-Personal may contain real end-user content under `workspace/`: context, Personal-only prompts and adapter configuration.
+## Change flow
 
-## revision_branches
-
-A stabilization/revision cycle may use versioned staging branches such as:
-
-```text
-v<release>_ai_context_source_of_truth
-v<release>_ai_personal_source_of_truth
-```
-
-A Core revision branch stages reusable changes before promotion to Core canonical. A Personal revision branch stages the corresponding release overlay after accepted Core changes have flowed through `develop`.
-
-Revision branches are release staging surfaces, not new semantic owners. They must not create a parallel implementation of reusable Core semantics.
-
-## one_way_invariant
+Create one short-lived branch from current `main` using the naming contract in
+`system/governance/development_conventions.md`:
 
 ```text
-CORE → PERSONAL allowed
-PERSONAL → CORE forbidden
+main
+→ <type>_<scope>_<goal>
+→ relevant tests and validators
+→ diff, semantic-duplication, and public-data review
+→ pull request
+→ main
 ```
 
-Personal facts, sensitive context, project state and Personal-specific prompt contents never merge into generic Core.
+Keep each branch and commit coherent. Independent changes use independent
+branches rather than being accumulated into a release or integration branch.
 
-A prompt first authored on Personal may be promoted only through explicit generic reclassification/review and a separate Core-owned change with no Personal facts/assumptions.
+## Source repository boundary
 
-## reusable_system_change_flow
+Material may be migrated from an upstream source only after classification,
+sanitization, and public validation. Do not copy Personal branches, deployment
+configuration, Personal facts, private project state, secrets, user-specific
+paths, or Git history into this repository.
 
-Outside a versioned revision cycle:
+The upstream source branch model is migration evidence, not governance for this
+public product. Reusable semantics belong to the public product only after an
+explicit public-safe change is accepted through the flow above.
 
-```text
-v1_ai_context_source_of_truth
-→ fix/feat/refactor Core branch
-→ review + python3 system/validation/...
-→ v1_ai_context_source_of_truth
-→ develop
-→ sync accepted Core into the intended Personal branch
-```
+## Merge and release meaning
 
-Inside a versioned revision cycle:
+A merge to `main` means the change is accepted into the public repository. It
+does not activate or mutate any user's Personal workspace, external deployment,
+AI client configuration, or installed copy.
 
-```text
-v<release>_ai_context_source_of_truth
-→ validate/review
-→ v1_ai_context_source_of_truth
-→ develop
-→ v<release>_ai_personal_source_of_truth
-→ Personal validation
-```
+## Security boundary
 
-Do not independently reimplement the same system change on Personal.
+A Git branch is a review and versioning boundary, not a security boundary. Raw
+secrets and private Personal content remain forbidden on every branch.
 
-## reusable_prompt_promotion_flow
+## Acceptance
 
-```text
-Personal prompt candidate
-→ generic applicability review
-→ reject/remove Personal facts and assumptions
-→ add under workspace/prompts/ through a Core-owned change
-→ validate/review Core
-→ Core + develop
-→ sync Core → intended Personal staging/canonical branch
-```
-
-Core becomes authoritative owner after promotion; never merge Personal branch into Core to perform promotion.
-
-## personal_content_change_flow
-
-Conforming Personal facts/prompts/profiles/presentation/config changes are made on Personal-only branches under `workspace/` and validated without changing system contracts.
-
-Prompt schema/routing/action semantics remain system-owned under `system/` and require Core-first change.
-
-## merge_rule
-
-When Core advances, merge/sync Core into Personal while preserving Personal-only `workspace/` content. Never resolve conflict by moving Personal facts/templates into Core.
-
-## deployment_activation
-
-Branch promotion and deployment activation are separate states.
-
-A versioned Personal staging branch may exist and validate while production continues using an older `active_ref`. Production changes only when the authoritative deployment manifest is deliberately updated after the required Core/Personal validation and release gate.
-
-Do not change a deployment manifest merely because a staging branch was created, merged, or synchronized.
-
-## security_boundary
-
-A Git branch is a versioning/logical boundary, not a security boundary. Raw secrets remain forbidden throughout `workspace/`.
-
-## deletion_governance
-
-`@delete:prompt` produces a plan first. Confirmation does not bypass active branch ownership or Git change discipline.
-
-Shared modules are never cascade-deleted merely because a prompt referenced them.
-
-## release_flow
-
-Accepted reusable changes flow Core revision/change → Core canonical → `develop` → intended Personal staging/canonical branch. `main` remains untouched unless a deployment/release action is separately authorized.
-
-A release is not considered active merely because its implementation branches are merged. Deployment manifest selection and final validation remain explicit release gates.
-
-## acceptance
-
-Reusable system semantics evolve in Core; end-user Personal content evolves independently in `workspace/`; Core → Personal lineage remains one-way; versioned revision branches stage rather than duplicate semantics; and deployment activation remains separate from branch promotion.
+The branch model is compliant when work starts from current `main`, uses a
+convention-compliant short-lived branch, passes the relevant checks and review,
+and reaches `main` through a pull request without importing private source
+repository branch semantics.

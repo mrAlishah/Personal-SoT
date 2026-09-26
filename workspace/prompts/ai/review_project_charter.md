@@ -147,15 +147,16 @@ Do not automatically perform material follow-up implementation unless the user a
 
 ## governance_and_execution
 
-Changes to the charter are reusable architecture/governance changes and must follow Core-first governance.
+Changes to the charter are reusable architecture/governance changes and must
+follow `system/governance/branch_flow.md`.
 
 When write capability is available and approval has been received:
 
-1. modify the Core charter on an appropriate feature/revision branch;
+1. modify the charter on a convention-compliant short-lived branch from current `main`;
 2. update tests/references only where needed to keep the approved governance semantics coherent;
 3. validate with the strongest relevant available checks;
-4. promote Core -> develop -> intended Personal staging/canonical branch only when authorized by the task/governance;
-5. never claim deployment/sync or validator success without evidence.
+4. review the diff and merge through a pull request when authorized;
+5. never claim merge, deployment, or validator success without evidence.
 
 If write capability is unavailable, provide the exact proposed patch and affected paths.
 

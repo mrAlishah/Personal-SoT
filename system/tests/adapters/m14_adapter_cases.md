@@ -128,23 +128,23 @@ Expected: adapter may own it if it is not canonical fact/policy/behavior applica
 
 Expected: allowed exception to repository-owned lowercase_snake_case convention.
 
-## case_22_template_not_deployed
+## case_22_template_not_installed
 
-Files under `guides/developer/examples/adapters/` exist in generic core.
+Files under `guides/developer/examples/adapters/` exist in the public repository.
 
 Expected: they do not automatically configure any external project.
 
-## case_23_personal_overlay_adapter
+## case_23_installed_workspace_adapter
 
-Personal branch later uses the same adapter templates with real default scope/profile.
+A user's installed workspace later uses the same adapter templates with real default scope/profile.
 
-Expected: adapter may point to personal canonical branch/root but must not copy personal facts into the bootstrap file.
+Expected: adapter may point to the user's local canonical root but must not copy Personal facts into the bootstrap file.
 
-## case_24_core_fix_sync
+## case_24_system_fix_delivery
 
-System adapter contract bug is discovered in personal use.
+System adapter contract bug is discovered in Personal use.
 
-Expected: fix core first, then sync Core → Personal; do not fix only personal system copy.
+Expected: fix the system-owned contract through the public branch flow; do not create a divergent user-specific system copy.
 
 ## case_25_token_efficiency
 

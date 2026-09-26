@@ -65,12 +65,12 @@ Adding/updating a conforming Personal fact, prompt, profile or concrete presenta
 
 ### Case 8 - system change boundary
 
-Changing prompt schema, access semantics, routing grammar, precedence, validator logic, behavior algorithms, or generic adapter semantics belongs under `system/` and follows Core-first governance.
+Changing prompt schema, access semantics, routing grammar, precedence, validator logic, behavior algorithms, or generic adapter semantics belongs under `system/` and follows `system/governance/branch_flow.md`.
 
-### Case 9 - Core isolation
+### Case 9 - public foundation isolation
 
-Generic Core may contain reusable prompts/profiles/presentation modules in `workspace/`, but must not contain real `workspace/context/personal/*.md` or organization facts.
+The public foundation may contain reusable prompts/profiles/presentation modules in `workspace/`, but must not contain real `workspace/context/personal/*.md` or organization facts.
 
-### Case 10 - Personal overlay
+### Case 10 - installed Personal workspace
 
-After Core sync, Personal may add real `workspace/context/personal/`, Personal-only `workspace/prompts/`, and `workspace/adapters/` while preserving latest Core ancestry.
+After installation, a user may add real `workspace/context/personal/`, Personal-only `workspace/prompts/`, and `workspace/adapters/` without changing public system contracts.
