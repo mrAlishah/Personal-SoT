@@ -68,6 +68,25 @@ class DoctorTests(unittest.TestCase):
             self.assertTrue(report.blocked)
             self.assertIn("✗ Runtime connection is broken", doctor.render(report))
 
+    def test_runtime_symlink_outside_repository_is_blocking(self):
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repository"
+            root.mkdir()
+            self.minimal_repository(root)
+            bootstrap = root / "workspace/adapters/public_bootstrap.md"
+            bootstrap.write_text("# Bootstrap\n", encoding="utf-8")
+            outside = base / "outside_runtime.md"
+            outside.write_text("# Outside\n", encoding="utf-8")
+            runtime = root / "system/adapters/runtime_bootstrap.md"
+            runtime.parent.mkdir(parents=True)
+            runtime.symlink_to(outside)
+
+            report = doctor.run(root)
+
+            self.assertTrue(report.blocked)
+            self.assertIn("✗ Runtime connection is broken", doctor.render(report))
+
     def test_web_client_without_write_capability_is_preview_only(self):
         report = doctor.run(
             REPOSITORY_ROOT,

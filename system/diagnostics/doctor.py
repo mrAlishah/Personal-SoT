@@ -53,7 +53,7 @@ class Report:
 
 def _runtime_finding(root: Path) -> Finding:
     entrypoint = root / ENTRYPOINT
-    if not entrypoint.is_file():
+    if not entrypoint.is_file() or not entrypoint.resolve().is_relative_to(root):
         return Finding(
             "fail",
             "Runtime connection is broken",
@@ -76,7 +76,10 @@ def _runtime_finding(root: Path) -> Finding:
     unresolved = tuple(
         value
         for value in references
-        if Path(value).is_absolute() or ".." in Path(value).parts or not (root / value).is_file()
+        if Path(value).is_absolute()
+        or ".." in Path(value).parts
+        or not (root / value).is_file()
+        or not (root / value).resolve().is_relative_to(root)
     )
     if unresolved:
         return Finding(
