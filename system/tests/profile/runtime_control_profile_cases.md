@@ -1,6 +1,7 @@
 # runtime_control_profile_cases
 
-These scenarios validate the bounded `controls` map in profile manifests.
+These non-executable acceptance scenarios validate the bounded `controls` map
+in Profile manifests. They are not RED → GREEN test evidence.
 
 ## case_01_registered_control
 
@@ -9,7 +10,7 @@ Profile:
 ```yaml
 ---
 controls:
-  clarify_risk: false
+  clarify_risk: off
 ---
 ```
 
@@ -22,7 +23,7 @@ Profile:
 ```yaml
 ---
 controls:
-  unknown_control: true
+  unknown_control: on
 ---
 ```
 
@@ -35,11 +36,12 @@ Profile:
 ```yaml
 ---
 controls:
-  clarify_risk: off
+  clarify_risk: false
 ---
 ```
 
-Expected: configuration error; only exact `true` or `false` are valid.
+Expected: configuration error; only exact canonical `on`, `off`, or `auto`
+values are valid for this control.
 
 ## case_04_omitted_control
 
@@ -49,12 +51,14 @@ Expected: valid; lower-priority project/global control defaults remain available
 
 ## case_05_multiple_profiles
 
-Profile A sets `clarify_risk: true`; later selected Profile B sets `clarify_risk: false`.
+Profile A sets `clarify_risk: on`; later selected Profile B sets
+`clarify_risk: off`.
 
-Expected among profile defaults: `false`.
+Expected among profile defaults: `off`.
 
 ## case_06_profile_control_has_no_policy_authority
 
-Profile sets `clarify_risk: false` while a hard policy independently requires user confirmation.
+Profile sets `clarify_risk: off` while a hard policy independently requires
+user confirmation.
 
 Expected: hard policy remains authoritative; profile control cannot weaken it.

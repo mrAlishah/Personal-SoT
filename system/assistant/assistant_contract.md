@@ -36,9 +36,10 @@ All modes resolve through the same canonical contracts. Expert syntax is optiona
 5. Route prompt discovery through `system/assistant/prompt_explorer_workflow.md`.
 6. Route prompt reuse/customization/create/edit through `system/assistant/prompt_builder_workflow.md`.
 7. Route project creation/use/update through `system/assistant/project_workflow.md`.
-8. Route setup and health diagnosis through `system/diagnostics/doctor_contract.md`.
-9. Route every material write through `system/assistant/safe_write_contract.md`.
-10. Report actual actions, provenance, validation, limitations, and next useful request.
+8. Route response customization through `system/assistant/personalization_workflow.md`.
+9. Route setup and health diagnosis through `system/diagnostics/doctor_contract.md`.
+10. Route every material write through `system/assistant/safe_write_contract.md`.
+11. Report actual actions, provenance, validation, limitations, and next useful request.
 
 ## Capability boundary
 
