@@ -44,9 +44,9 @@
 **Interfaces:**
 - Produces: the single semantic source used by every adapter and Assistant prompt.
 
-- [ ] Define capability negotiation, multilingual guided behavior, preview/confirmation, project creation, use, and current-state update.
-- [ ] Add scenario cases for local write, web preview-only, ambiguity, stale preview, and validation failure.
-- [ ] Run existing validators and commit as `feat(assistant): define client neutral project workflow`.
+- [x] Define capability negotiation, multilingual guided behavior, preview/confirmation, project creation, use, and current-state update.
+- [x] Add scenario cases for local write, web preview-only, ambiguity, stale preview, and validation failure.
+- [x] Run existing validators and commit as `feat(assistant): define client neutral project workflow`.
 
 ### Task 2: Thin runtime and client adapters
 
@@ -65,9 +65,9 @@
 - Consumes: Task 1 contracts.
 - Produces: repo-relative local write adapters and web preview-only adapters.
 
-- [ ] Add thin wrappers that reference the runtime entrypoint and declare actual host capability.
-- [ ] Verify adapters do not restate project/safe-write steps.
-- [ ] Run validators and commit as `feat(adapters): wire assistant capability boundaries`.
+- [x] Add thin wrappers that reference the runtime entrypoint and declare actual host capability.
+- [x] Verify adapters do not restate project/safe-write steps.
+- [x] Run validators and commit as `feat(adapters): wire assistant capability boundaries`.
 
 ### Task 3: Assistant entry prompts
 
@@ -80,8 +80,8 @@
 - Consumes: Task 1 contracts and Task 2 runtime entrypoint.
 - Produces: prompt identities `sot/assistant`, `sot/create_project`, and `sot/update_project`.
 
-- [ ] Add minimal fact-free prompts that invoke canonical contracts instead of copying them.
-- [ ] Run prompt and repository validators and commit as `feat(prompts): add assistant project flows`.
+- [x] Add minimal fact-free prompts that invoke canonical contracts instead of copying them.
+- [x] Run prompt and repository validators and commit as `feat(prompts): add assistant project flows`.
 
 ### Task 4: Runnable vertical-slice validation
 
@@ -92,10 +92,10 @@
 - Consumes: existing `validate_v1.run(root, mode)` and the canonical project shape.
 - Produces: a runnable create/register/validate/update/validate check.
 
-- [ ] Write the integration test first and verify it fails before its complete valid fixture exists.
-- [ ] Complete the minimum fake fixture behavior inside the test.
-- [ ] Run all Python tests and validators.
-- [ ] Commit as `test(assistant): cover project vertical slice`.
+- [x] Write the integration test first and verify it fails before its complete valid fixture exists.
+- [x] Complete the minimum fake fixture behavior inside the test.
+- [x] Run all Python tests and validators.
+- [x] Commit as `test(assistant): cover project vertical slice`.
 
 ### Task 5: Beginner usage path
 
@@ -108,6 +108,6 @@
 - Consumes: the completed Assistant prompts and adapter capabilities.
 - Produces: an honest beginner path for local write and web preview-only use.
 
-- [ ] Document natural-language create/use/update examples before optional expert syntax.
-- [ ] State current client capability boundaries without implementation jargon.
-- [ ] Run the complete validation suite, inspect the branch diff, and commit as `docs(user): explain first project workflow`.
+- [x] Document natural-language create/use/update examples before optional expert syntax.
+- [x] State current client capability boundaries without implementation jargon.
+- [x] Run the complete validation suite, inspect the branch diff, and commit as `docs(user): explain first project workflow`.
