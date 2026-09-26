@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dependency-free structural validation for reusable prompt templates."""
 from __future__ import annotations
+from hashlib import sha256
 import re
 import sys
 from pathlib import Path
@@ -104,6 +105,47 @@ def prompt_files(root: Path):
     return out
 
 
+def _registry_ids(root: Path, section_name: str) -> set[str]:
+    return {
+        identifier
+        for section, identifier, target_text in switch_registry_entries(root)
+        if section == section_name
+        and (root / target_text).is_file()
+        and not (root / target_text).is_symlink()
+        and (root / target_text).resolve().is_relative_to(root.resolve())
+    }
+
+
+def validation_state_digest(root: Path, source: str) -> str:
+    """Bind a preview to prompt inventory and validation dependencies."""
+    root = root.resolve()
+    _, lists, scalars, _ = manifest(source)
+    paths = [path for path, canonical in prompt_files(root) if canonical]
+    registry = root / "system/routing/switch_registry.md"
+    paths.append(registry)
+    paths.extend(root / "workspace/profiles" / f"{name}.md" for name in lists["prompt_profiles"])
+    entries = {
+        (section, identifier): root / target
+        for section, identifier, target in switch_registry_entries(root)
+    }
+    for section, values in (
+        ("formats", lists["prompt_formats"]),
+        ("tones", [scalars.get("prompt_tone")]),
+        ("depths", [scalars.get("prompt_depth")]),
+    ):
+        paths.extend(entries[(section, value)] for value in values if value and (section, value) in entries)
+    digest = sha256()
+    for path in sorted(set(paths), key=lambda item: item.as_posix()):
+        try:
+            relative = path.relative_to(root).as_posix()
+            safe = not path.is_symlink() and path.resolve().is_relative_to(root)
+            content = path.read_bytes() if safe and path.is_file() else b"<unavailable>"
+        except (OSError, ValueError):
+            relative, content = "<unsafe>", b"<unavailable>"
+        digest.update(relative.encode("utf-8") + b"\0" + content + b"\0")
+    return digest.hexdigest()
+
+
 def _validate_source(
     root: Path,
     path: Path,
@@ -119,6 +161,8 @@ def _validate_source(
     if not keys:
         errors.append(f"{rel}: prompt template requires YAML frontmatter")
         return
+    if canonical and path.name == "readme.md":
+        errors.append(f"{rel}: 'readme' is reserved for prompt documentation")
     unknown = keys - ALLOWED_FIELDS
     if unknown:
         errors.append(f"{rel}: unsupported prompt fields {sorted(unknown)}")
@@ -206,29 +250,24 @@ def validate_file(
     depth_ids: set[str],
     errors: list[str],
 ):
-    _validate_source(
-        root,
-        path,
-        canonical,
-        format_ids,
-        tone_ids,
-        depth_ids,
-        errors,
-        text(path),
-    )
+    try:
+        source = text(path)
+    except (OSError, UnicodeError):
+        errors.append(f"{path.relative_to(root)}: prompt file is unreadable")
+        return
+    _validate_source(root, path, canonical, format_ids, tone_ids, depth_ids, errors, source)
 
 
 def validate_source(root: Path, path: Path, source: str, canonical: bool = True) -> list[str]:
     """Validate proposed prompt content without writing it."""
     errors: list[str] = []
-    entries = switch_registry_entries(root)
     _validate_source(
         root,
         path,
         canonical,
-        {identifier for section, identifier, _ in entries if section == "formats"},
-        {identifier for section, identifier, _ in entries if section == "tones"},
-        {identifier for section, identifier, _ in entries if section == "depths"},
+        _registry_ids(root, "formats"),
+        _registry_ids(root, "tones"),
+        _registry_ids(root, "depths"),
         errors,
         source,
     )
@@ -237,15 +276,18 @@ def validate_source(root: Path, path: Path, source: str, canonical: bool = True)
 
 def validate_path(root: Path, path: Path, canonical: bool = True) -> list[str]:
     """Validate one prompt with the same rules as the repository validator."""
-    return validate_source(root, path, text(path), canonical)
+    try:
+        source = text(path)
+    except (OSError, UnicodeError):
+        return [f"{path.relative_to(root)}: prompt file is unreadable"]
+    return validate_source(root, path, source, canonical)
 
 
 def run(root: Path) -> list[str]:
     errors: list[str] = []
-    entries = switch_registry_entries(root)
-    format_ids = {identifier for section, identifier, _ in entries if section == "formats"}
-    tone_ids = {identifier for section, identifier, _ in entries if section == "tones"}
-    depth_ids = {identifier for section, identifier, _ in entries if section == "depths"}
+    format_ids = _registry_ids(root, "formats")
+    tone_ids = _registry_ids(root, "tones")
+    depth_ids = _registry_ids(root, "depths")
     for path, canonical in prompt_files(root):
         validate_file(root, path, canonical, format_ids, tone_ids, depth_ids, errors)
     return errors

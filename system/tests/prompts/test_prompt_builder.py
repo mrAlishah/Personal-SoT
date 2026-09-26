@@ -233,6 +233,72 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
             self.assertFalse(result.write_applied)
             self.assertFalse((root / tampered.target).exists())
 
+    def test_change_during_preflight_is_not_overwritten(self):
+        for operation in ("create", "edit"):
+            with self.subTest(operation=operation), TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.repository(root)
+                path = root / "workspace/prompts/custom/helpful_prompt.md"
+                if operation == "edit":
+                    self.write_prompt(root, "custom/helpful_prompt", self.source("Before."))
+                proposal = self.preview(root, operation, content=self.source("Proposed."))
+                original = validate_prompts.validate_source
+
+                def concurrent_change(*args, **kwargs):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(self.source("Concurrent change."), encoding="utf-8")
+                    return original(*args, **kwargs)
+
+                with patch.object(validate_prompts, "validate_source", side_effect=concurrent_change):
+                    result = apply_change(root, proposal, proposal.confirmation_digest)
+
+                self.assertFalse(result.write_applied)
+                self.assertIn("Concurrent change.", path.read_text(encoding="utf-8"))
+
+    def test_symlink_ancestor_cannot_redirect_prompt_write(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            prompt_root = root / "workspace/prompts"
+            profiles = root / "workspace/profiles"
+            prompt_root.mkdir()
+            profiles.mkdir()
+            (prompt_root / "custom").symlink_to(profiles, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                self.preview(root)
+
+            self.assertFalse((profiles / "helpful_prompt.md").exists())
+
+    def test_referenced_state_change_requires_new_preview(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            profile = root / "workspace/profiles/helper.md"
+            profile.parent.mkdir()
+            profile.write_text("first behavior", encoding="utf-8")
+            content = self.source().replace(
+                "prompt_profiles: []", "prompt_profiles:\n  - helper"
+            )
+            proposal = self.preview(root, content=content)
+            profile.write_text("changed behavior", encoding="utf-8")
+
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.write_applied)
+            self.assertFalse((root / proposal.target).exists())
+
+    def test_reserved_readme_identity_cannot_be_created(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+
+            proposal = self.preview(root, identity="custom/readme")
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(any("reserved" in error for error in proposal.preflight_errors))
+            self.assertFalse(result.write_applied)
+
     def test_stale_edit_requires_new_preview(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

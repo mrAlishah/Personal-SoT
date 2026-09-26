@@ -164,6 +164,23 @@ class PromptExplorerTests(unittest.TestCase):
             self.assertEqual((), report.matches)
             self.assertEqual(1, report.unavailable_count)
 
+    def test_registry_entry_with_missing_target_is_unavailable(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            registry = root / "system/routing/switch_registry.md"
+            registry.parent.mkdir(parents=True)
+            registry.write_text(
+                "# registry\n\n## formats\n\n```text\nghost → workspace/presentation/formats/ghost.md\n```\n",
+                encoding="utf-8",
+            )
+            self.write_prompt(root, "coding/ghost", tags=("coding",), formats=("ghost",))
+
+            report = search(root, PromptQuery(text="coding"))
+
+            self.assertEqual((), report.matches)
+            self.assertEqual(1, report.unavailable_count)
+
     def test_owned_assets_do_not_filter_or_rank(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -250,6 +267,35 @@ class PromptExplorerTests(unittest.TestCase):
             report = search(root, PromptQuery(text="private"))
 
             self.assertEqual((), report.matches)
+
+    def test_skips_external_symlink_used_as_prompt_root(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            self.repository(root)
+            external = Path(outside)
+            self.write_prompt(external, "private/external", tags=("private",))
+            (root / "workspace/prompts").symlink_to(external, target_is_directory=True)
+
+            report = search(root, PromptQuery(text="private"))
+
+            self.assertEqual((), report.matches)
+
+    def test_invalid_utf8_body_is_unavailable_without_aborting_search(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.write_prompt(root, "coding/healthy", tags=("coding",))
+            broken = root / "workspace/prompts/coding/broken.md"
+            broken.write_bytes(
+                b"---\nprompt_status: active\nprompt_tags:\n  - coding\n"
+                b"prompt_profiles: []\nprompt_formats: []\nrequired_params: []\n"
+                b"optional_params: []\nowned_assets: []\n---\n\xff\n"
+            )
+
+            report = search(root, PromptQuery(text="coding"))
+
+            self.assertEqual(["coding/healthy"], [item.identity for item in report.matches])
+            self.assertEqual(1, report.unavailable_count)
 
     def test_unclosed_frontmatter_is_unavailable_without_body_validation(self):
         with TemporaryDirectory() as directory:

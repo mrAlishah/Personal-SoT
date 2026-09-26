@@ -84,14 +84,15 @@ def _prompt_paths(root: Path) -> tuple[Path, ...]:
     base = root / "workspace" / "prompts"
     if not base.is_dir():
         return ()
-    resolved_base = base.resolve()
+    if base.is_symlink() or base.resolve() != base:
+        return ()
     paths = []
     for path in base.rglob("*.md"):
         relative = path.relative_to(base)
         if path.name == "readme.md" or "_assets" in relative.parts or path.is_symlink():
             continue
         try:
-            if not path.is_file() or not path.resolve().is_relative_to(resolved_base):
+            if not path.is_file() or not path.resolve().is_relative_to(base):
                 continue
         except OSError:
             continue

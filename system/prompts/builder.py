@@ -27,6 +27,7 @@ class PromptProposal:
     target: str
     before_digest: str | None
     before_content: str | None
+    validation_state_digest: str
     content: str
     diff: str
     confirmation_digest: str
@@ -71,8 +72,11 @@ def _target(root: Path, identity: str) -> tuple[str, Path]:
         raise ValueError("prompt identity must use lowercase_snake_case path segments")
     relative = (PurePosixPath("workspace/prompts") / logical).with_suffix(".md").as_posix()
     target = root / relative
-    if not target.resolve().is_relative_to(root):
-        raise ValueError("prompt target must remain inside the repository")
+    prompt_root = root / "workspace/prompts"
+    if prompt_root.is_symlink() or prompt_root.resolve() != prompt_root:
+        raise ValueError("prompt root must not contain a symbolic link")
+    if target.resolve() != target:
+        raise ValueError("prompt target ancestors must not contain a symbolic link")
     return relative, target
 
 
@@ -80,9 +84,12 @@ def _confirmation_digest(
     operation: str,
     identity: str,
     before_digest: str | None,
+    validation_state_digest: str,
     content: str,
 ) -> str:
-    return _digest("\0".join((operation, identity, before_digest or "absent", content)))
+    return _digest(
+        "\0".join((operation, identity, before_digest or "absent", validation_state_digest, content))
+    )
 
 
 def preview_change(
@@ -124,15 +131,17 @@ def preview_change(
     if diff:
         diff += "\n"
     errors = tuple(validate_prompts.validate_source(root, target, content))
+    state_digest = validate_prompts.validation_state_digest(root, content)
     return PromptProposal(
         operation,
         identity,
         relative,
         before_digest,
         before,
+        state_digest,
         content,
         diff,
-        _confirmation_digest(operation, identity, before_digest, content),
+        _confirmation_digest(operation, identity, before_digest, state_digest, content),
         write_capable,
         errors,
     )
@@ -165,6 +174,7 @@ def apply_change(root: Path, proposal: PromptProposal, confirmation_digest: str)
         proposal.operation,
         proposal.identity,
         proposal.before_digest,
+        proposal.validation_state_digest,
         proposal.content,
     ):
         return _not_applied(proposal, "proposal changed after confirmation")
@@ -180,8 +190,18 @@ def apply_change(root: Path, proposal: PromptProposal, confirmation_digest: str)
         current = target.read_text(encoding="utf-8")
         if _digest(current) != proposal.before_digest:
             return _not_applied(proposal, "edit target changed after preview")
+    if validate_prompts.validation_state_digest(root, proposal.content) != proposal.validation_state_digest:
+        return _not_applied(proposal, "canonical validation state changed after preview")
     if validate_prompts.validate_source(root, target, proposal.content):
         return _not_applied(proposal, "proposal no longer passes prompt preflight")
+    if validate_prompts.validation_state_digest(root, proposal.content) != proposal.validation_state_digest:
+        return _not_applied(proposal, "canonical validation state changed during preflight")
+    relative, target = _target(root, proposal.identity)
+    if proposal.operation == "create" and target.exists():
+        return _not_applied(proposal, "create target appeared during preflight")
+    if proposal.operation == "edit":
+        if not target.is_file() or _digest(target.read_text(encoding="utf-8")) != proposal.before_digest:
+            return _not_applied(proposal, "edit target changed during preflight")
 
     temporary = None
     try:
