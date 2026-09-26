@@ -17,6 +17,7 @@ class CapabilityQuery:
     text: str = ""
     lanes: tuple[str, ...] = ()
     identity: str | None = None
+    required_components: tuple[str, ...] = ()
     limit: int = 5
 
 
@@ -150,7 +151,7 @@ def _validated(root: Path, candidate: _Candidate) -> CapabilityMatch | None:
         components = (f"placement:{metadata['placement']}",)
     elif candidate.lane == "control":
         metadata, values = validate_v1.parse_control_manifest(source)
-        if metadata.get("control_id") != candidate.identity or not values or metadata.get("control_default") not in values:
+        if validate_v1.validate_control_source(root, candidate.path, candidate.identity, source):
             return None
         allowed_values = tuple(values)
         default_value = metadata["control_default"]
@@ -173,17 +174,33 @@ def search(root: Path, query: CapabilityQuery) -> SearchReport:
         raise ValueError(f"unsupported Personalization lanes {sorted(unknown)}")
 
     root = root.resolve()
-    candidates = _profile_candidates(root) + _registry_candidates(root) + _behavior_candidates(root)
+    candidates = []
+    if "profile" in lanes:
+        candidates.extend(_profile_candidates(root))
+    if lanes.intersection({"format", "tone", "depth", "control"}):
+        candidates.extend(_registry_candidates(root))
+    if "behavior" in lanes:
+        candidates.extend(_behavior_candidates(root))
+    required = set(query.required_components)
     ranked = []
     for candidate in candidates:
         if candidate.lane not in lanes or (query.identity is not None and candidate.identity != query.identity):
+            continue
+        if required and not required.issubset(candidate.components):
             continue
         score = _score(candidate, query)
         if query.text and score[2] == 0:
             continue
         ranked.append((score, candidate))
     ranked.sort(
-        key=lambda item: (-item[0][0], -item[0][1], -item[0][2], item[1].lane, item[1].identity)
+        key=lambda item: (
+            -item[0][0],
+            -item[0][1],
+            -item[0][2],
+            len(set(item[1].components) - required) if required else 0,
+            item[1].lane,
+            item[1].identity,
+        )
     )
 
     matches = []

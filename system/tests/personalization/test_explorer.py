@@ -84,6 +84,26 @@ class PersonalizationExplorerTests(unittest.TestCase):
         self.assertEqual(("on", "off", "auto"), match.allowed_values)
         self.assertEqual("auto", match.default_value)
 
+    def test_control_rejected_by_validator_is_unavailable(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            (root / "system/routing/switch_registry.md").write_text(
+                "# registry\n\n## registered_controls\n\n```text\n"
+                "learning → system/behavior/learning.md\n```\n",
+                encoding="utf-8",
+            )
+            (root / "system/behavior/learning.md").write_text(
+                "---\ncontrol_id: learning\ncontrol_values:\n  - on\n  - on\n"
+                "control_default: on\n---\n",
+                encoding="utf-8",
+            )
+
+            report = search(root, CapabilityQuery(identity="learning", lanes=("control",)))
+
+            self.assertEqual((), report.matches)
+            self.assertEqual(1, report.unavailable_count)
+
     def test_invalid_profile_is_unavailable_not_recommended(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -121,6 +141,17 @@ class PersonalizationExplorerTests(unittest.TestCase):
             report = search(root, CapabilityQuery(text="private", lanes=("profile",)))
 
             self.assertEqual((), report.matches)
+
+    def test_unreadable_irrelevant_registry_does_not_break_profile_search(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.write_profile(root, "empty", "---\n---\n")
+            (root / "system/routing/switch_registry.md").write_bytes(b"\xff")
+
+            report = search(root, CapabilityQuery(identity="empty", lanes=("profile",)))
+
+            self.assertEqual(["empty"], [match.identity for match in report.matches])
 
     def test_unmatched_target_body_is_not_read(self):
         with TemporaryDirectory() as directory:

@@ -67,28 +67,44 @@ def recommend(root: Path, intent: PersonalizationIntent) -> CompositionRecommend
             False,
         )
 
+    required = {
+        *(f"behavior:{value}" for value in intent.behaviors),
+        *(f"format:{value}" for value in intent.formats),
+        *(f"control:{key}={value}" for key, value in intent.controls),
+    }
+    if intent.tone:
+        required.add(f"tone:{intent.tone}")
+    if intent.depth:
+        required.add(f"depth:{intent.depth}")
+
     profiles: tuple[str, ...] = ()
-    if intent.behaviors:
-        required = {
-            *(f"behavior:{value}" for value in intent.behaviors),
-            *(f"format:{value}" for value in intent.formats),
-        }
-        if intent.tone:
-            required.add(f"tone:{intent.tone}")
-        if intent.depth:
-            required.add(f"depth:{intent.depth}")
-        candidates = search(root, CapabilityQuery(lanes=("profile",), limit=10)).matches
-        suitable = [match for match in candidates if required.issubset(_profile_terms(match))]
-        if suitable:
-            selected = min(
-                suitable,
-                key=lambda match: (len(_profile_terms(match) - required), match.identity),
-            )
-            profiles = (selected.identity,)
+    full_coverage = False
+    if required:
+        candidates = search(
+            root,
+            CapabilityQuery(
+                lanes=("profile",),
+                required_components=tuple(sorted(required)),
+                limit=10,
+            ),
+        ).matches
+        if candidates:
+            selected = candidates[0]
+            if intent.behaviors or _profile_terms(selected) == required:
+                profiles = (selected.identity,)
+                full_coverage = True
+    if not profiles and intent.behaviors:
+        behavior_terms = tuple(sorted(f"behavior:{value}" for value in intent.behaviors))
+        candidates = search(
+            root,
+            CapabilityQuery(lanes=("profile",), required_components=behavior_terms, limit=10),
+        ).matches
+        if candidates:
+            profiles = (candidates[0].identity,)
 
     direct_count = len(intent.formats) + bool(intent.tone) + bool(intent.depth) + len(intent.controls)
     creation_eligible = intent.reusable and not profiles and direct_count + len(intent.behaviors) >= 2
-    action = "reuse_profile" if profiles and not intent.controls else "compose"
+    action = "reuse_profile" if profiles and full_coverage else "compose"
     return CompositionRecommendation(
         action,
         profiles,

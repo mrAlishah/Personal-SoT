@@ -40,6 +40,12 @@ result reports separately whether the write occurred, whether validation ran,
 and whether validation passed. A failed post-write validation never hides that
 the file changed; repair requires a new proposal.
 
+Local Builder applies for the same Profile are serialized with a short-lived
+per-Profile lock. Creates use an atomic no-clobber operation, and all writes are
+anchored to the verified Profile directory. Direct filesystem edits do not
+participate in that lock; make them before preview or wait for the Builder to
+finish so its stale-state reread can detect them.
+
 Only `workspace/profiles/<name>.md` may be created or edited. This workflow
 never writes format, tone, depth, control, behavior, registry, or precedence
 owners.

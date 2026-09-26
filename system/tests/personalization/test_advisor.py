@@ -1,4 +1,5 @@
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from system.personalization.advisor import PersonalizationIntent, recommend
@@ -58,6 +59,56 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         self.assertEqual("reuse_profile", result.action)
         self.assertEqual(("research",), result.profiles)
         self.assertFalse(result.profile_creation_eligible)
+
+    def test_existing_behavior_profile_composes_requested_overrides_before_creation(self):
+        result = recommend(
+            ROOT,
+            PersonalizationIntent(
+                behaviors=("research",),
+                tone="formal",
+                depth="short",
+                reusable=True,
+            ),
+        )
+
+        self.assertEqual("compose", result.action)
+        self.assertEqual(("research",), result.profiles)
+        self.assertFalse(result.profile_creation_eligible)
+
+    def test_exact_profile_reuse_is_not_lost_after_ten_unrelated_profiles(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("workspace/profiles", "workspace/presentation/tones", "workspace/presentation/depth", "system/routing", "system/behavior", "guides"):
+                (root / name).mkdir(parents=True)
+            (root / "system/routing/switch_registry.md").write_text(
+                "# registry\n\n## tones\n\n```text\n"
+                "formal → workspace/presentation/tones/formal.md\n"
+                "professional → workspace/presentation/tones/professional.md\n```\n\n"
+                "## depths\n\n```text\n"
+                "short → workspace/presentation/depth/short.md\n"
+                "deep → workspace/presentation/depth/deep.md\n```\n",
+                encoding="utf-8",
+            )
+            for name in ("formal", "professional"):
+                (root / f"workspace/presentation/tones/{name}.md").write_text(f"# {name}\n", encoding="utf-8")
+            for name in ("short", "deep"):
+                (root / f"workspace/presentation/depth/{name}.md").write_text(f"# {name}\n", encoding="utf-8")
+            for index in range(10):
+                (root / f"workspace/profiles/a_{index}.md").write_text(
+                    "---\ntone: professional\ndepth: deep\n---\n", encoding="utf-8"
+                )
+            (root / "workspace/profiles/z_exact.md").write_text(
+                "---\ntone: formal\ndepth: short\n---\n", encoding="utf-8"
+            )
+
+            result = recommend(
+                root,
+                PersonalizationIntent(tone="formal", depth="short", reusable=True),
+            )
+
+            self.assertEqual("reuse_profile", result.action)
+            self.assertEqual(("z_exact",), result.profiles)
+            self.assertFalse(result.profile_creation_eligible)
 
     def test_unknown_identity_is_unavailable_not_guessed(self):
         result = recommend(ROOT, PersonalizationIntent(tone="friendliest"))
