@@ -77,7 +77,7 @@ A user may update facts, prompts, profiles, concrete presentation modules, and P
 
 ## developer_boundary
 
-Changes to grammar, precedence, access semantics, schemas, validators, behavior algorithms, generic adapter semantics, governance or tests belong under `system/` and follow Core-first development flow.
+Changes to grammar, precedence, access semantics, schemas, validators, behavior algorithms, generic adapter semantics, governance or tests belong under `system/` and follow `system/governance/branch_flow.md`.
 
 ## guide_boundary
 

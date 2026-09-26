@@ -2,15 +2,15 @@
 
 These scenarios define expected behavior for `system/validation/validate_v1.py`.
 
-## case_01_core_isolation
+## case_01_public_foundation_isolation
 
-Generic Core contains `workspace/context/personal/identity.md`.
+The public foundation contains `workspace/context/personal/identity.md`.
 
 Expected: fail.
 
 ## case_02_personal_mode_allows_personal_context
 
-Personal checkout contains canonical `workspace/context/personal/` modules.
+An installed Personal workspace contains canonical `workspace/context/personal/` modules.
 
 Expected: valid when the modules satisfy all other checks.
 

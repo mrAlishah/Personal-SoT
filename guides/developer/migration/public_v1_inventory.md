@@ -1,55 +1,37 @@
 # Public V1 migration inventory
 
-## Resolved source
+## Status
 
-```text
-repository: mrAlishah/obsidian-ai-context-source-of-truth
-default_branch: main
-default_branch_sha: eed051fae42cf3cc78c5b61b2d0a46f52457b903
-deployment_manifest: deployments/personal.yaml
-active_ref: v1.2_ai_personal_source_of_truth
-active_ref_sha: f4032444a361292a1d986fef1a445fe0a24328ee
-entrypoint: workspace/adapters/runtime_entrypoint.md
-generic_core_ref: v1.2_ai_context_source_of_truth
-generic_core_sha: d66dec7a94c7f79b4a5340e8c0d8c76bf5c548cb
-```
-
-The deployment selection was resolved from `deployments/personal.yaml` on source `main`. The entrypoint and its referenced deployment/runtime/base instruction files were read from the active Personal ref. Migration content is sourced from the generic Core ref unless a row below explicitly says otherwise.
+This sanitized historical record explains M1 classification decisions without
+publishing the private source repository, refs, commit history, deployment
+manifest, or Personal runtime selection. Current product governance is owned by
+`system/governance/public_v1_product_contract.md`.
 
 ## Classification
 
-Paths ending in `/` classify the whole subtree except where a later row is more specific.
+Source-area labels below describe semantic origin only. They are not repository
+or branch identities.
 
-| source_path | classification | destination_path | action | reason |
+| source_area | classification | destination_path | action | reason |
 |---|---|---|---|---|
-| `v1.2_ai_context_source_of_truth:system/` | public_core | `system/` | MIGRATE | Generic client-neutral contracts, governance, validation, and tests; no Personal overlay. |
-| `v1.2_ai_context_source_of_truth:workspace/presentation/` | public_core | `workspace/presentation/` | MIGRATE | Generic registered presentation modules. |
-| `v1.2_ai_context_source_of_truth:workspace/profiles/` | public_core | `workspace/profiles/` | MIGRATE | Generic fact-free composition manifests. |
-| `v1.2_ai_context_source_of_truth:workspace/prompts/` | public_core | `workspace/prompts/` | MIGRATE | Generic reusable prompts that already satisfy Core ownership. |
-| `v1.2_ai_context_source_of_truth:workspace/adapters/readme.md` | public_core | same | MIGRATE | Generic adapter guidance only. |
-| `v1.2_ai_context_source_of_truth:workspace/context/readme.md` | public_core | same | MIGRATE | Contract navigation; contains no canonical Personal facts. |
-| `v1.2_ai_context_source_of_truth:workspace/readme.md` | public_core | same | MIGRATE | Generic workspace ownership guidance. |
-| `v1.2_ai_context_source_of_truth:guides/developer/` | public_core | `guides/developer/` | MIGRATE | Architecture guidance and explicitly fake examples. |
-| `v1.2_ai_context_source_of_truth:guides/user/readme.md` | public_product | `guides/user/readme.md` | REPLACE | Existing guide assumes SoT knowledge; M1 needs beginner navigation. |
-| `v1.2_ai_context_source_of_truth:guides/readme.md` | public_product | same | GENERALIZE | Keep audience navigation but make the beginner path primary. |
-| `v1.2_ai_context_source_of_truth:readme.md` | public_product | `readme.md` | REPLACE | Existing root entrypoint is framework-first rather than product-first. |
-| `v1.2_ai_personal_source_of_truth:workspace/context/personal/` | private_personal | none | DO_NOT_MIGRATE | Real identity, employment, goals, current state, projects, finance, tax, health, family, residence, and other Personal facts. |
-| `v1.2_ai_personal_source_of_truth:workspace/context/personal/sensitive/` | private_personal | none | DO_NOT_MIGRATE | Restricted/sensitive facts and secret references are forbidden in the public destination. |
-| `v1.2_ai_personal_source_of_truth:workspace/adapters/` except inherited Core readme | private_personal | none | DO_NOT_MIGRATE | Private deployment defaults, repository identity, client wrappers, and local paths/configuration. Public adapters will be built from placeholders later. |
-| `v1.2_ai_personal_source_of_truth:guides/developer/migration/personal_history_inventory.md` | private_personal | none | DO_NOT_MIGRATE | Personal migration provenance and history are not public product content. |
-| `v1.2_ai_personal_source_of_truth:system/release/personal_v1_readiness.md` | private_personal | none | DO_NOT_MIGRATE | Release evidence is specific to the private Personal overlay. |
-| `v1.2_ai_personal_source_of_truth:system/tests/personal/` | needs_review | none in M1 | NEEDS_REVIEW | Tests encode Personal overlay behavior; reusable cases require independent sanitization. |
-| `v1.2_ai_personal_source_of_truth:system/behavior/interpersonal_communication.md` and registry/catalog changes | needs_review | none in M1 | NEEDS_REVIEW | Potential generic Core feature, but it exists only on Personal and must follow Core-first promotion. |
-| `v1.2_ai_personal_source_of_truth:workspace/prompts/coding/`, `knowledge/`, `language/`, `research/` | public_product | same candidate paths | GENERALIZE | Potential reusable product prompts; migrate only in a later reviewed slice after removing Personal assumptions and validating the prompt contract. |
-| `v1.2_ai_personal_source_of_truth:workspace/prompts/job_search/` | needs_review | none in M1 | NEEDS_REVIEW | Useful product capability but likely coupled to Personal job-search context. |
-| `v1.2_ai_personal_source_of_truth:workspace/profiles/gn_*` and `friendly_multilingual_chat.md` | public_product | same candidate paths | GENERALIZE | Potential beginner presets; each must be fact-free, deduplicated, and promoted through Core-first review. |
-| `v1.2_ai_personal_source_of_truth:workspace/presentation/formats/communication_translation.md`, `tbl_multilingual.md` | public_product | same candidate paths | GENERALIZE | Potential multilingual product formats; require generic contract and test review first. |
-| `v1.2_ai_personal_source_of_truth:workspace/context/personal/policies/development_conventions.md` | public_core | `system/governance/development_conventions.md` | GENERALIZE | The naming rules are repository governance, not a Personal fact; M1 records them without copying the Personal path. |
-| new minimal Personal workspace | public_product | `workspace/context/readme.md` | KEEP | Existing owner explains create-on-demand; no empty Personal context module is created before onboarding confirmation. |
+| reusable system contracts | public_core | `system/` | MIGRATE | Client-neutral contracts, governance, validation, and tests were eligible after public review. |
+| reusable presentation modules | public_core | `workspace/presentation/` | MIGRATE | Registered modules contained no Personal facts. |
+| reusable profiles | public_core | `workspace/profiles/` | MIGRATE | Fact-free composition manifests were eligible. |
+| reusable prompts | public_core | `workspace/prompts/` | MIGRATE | Independently usable prompts were eligible after prompt validation. |
+| generic adapter guidance | public_core | `workspace/adapters/readme.md` | MIGRATE | Guidance was reusable; private adapter configuration was excluded. |
+| generic workspace guidance | public_core | `workspace/context/readme.md`, `workspace/readme.md` | MIGRATE | Ownership guidance contained no canonical Personal facts. |
+| developer guides and fake examples | public_core | `guides/developer/` | MIGRATE | Examples remained explicitly fake and non-runtime. |
+| former user and root navigation | public_product | `guides/user/readme.md`, `guides/readme.md`, `readme.md` | REPLACE | M1 required beginner-first product navigation. |
+| Personal context and sensitive context | private_personal | none | DO_NOT_MIGRATE | Real identity, goals, projects, finance, health, residence, and restricted facts are private. |
+| Personal adapters and deployment defaults | private_personal | none | DO_NOT_MIGRATE | Private roots, defaults, client wrappers, and local configuration are not public product content. |
+| Personal migration/release history | private_personal | none | DO_NOT_MIGRATE | Private provenance and deployment evidence are not public product content. |
+| Personal behavior or test candidates | needs_review | none in M1 | NEEDS_REVIEW | Reusable behavior required independent generic reclassification and sanitization. |
+| Personal prompt/profile/presentation candidates | public_product or needs_review | candidate public paths | GENERALIZE | Each candidate required fact removal, deduplication, ownership review, and validation before a later slice. |
+| development naming rules | public_core | `system/governance/development_conventions.md` | GENERALIZE | Repository governance is not a Personal fact. |
+| minimal Personal workspace | public_product | `workspace/context/readme.md` | KEEP | Context is created on demand; M1 did not add empty Personal fact modules. |
 
 ## Phase 0 gate
 
-- No file from the Personal context subtree is eligible for M1.
-- No Personal adapter or Personal history artifact is eligible for M1.
-- Personal-only reusable candidates remain excluded until a separate Core-first classification loop.
-- The M1 migration source is the exact generic Core SHA recorded above.
+- No Personal context, adapter, deployment, or history file was eligible for M1.
+- Reusable candidates remained excluded until a separate public-safe review.
+- Every migrated file required classification, sanitization, and public validation.

@@ -82,6 +82,6 @@ Expected: benefits, costs, compatibility/migration implications, recommendation.
 
 ### approved charter change
 
-Given explicit approval for a defined charter patch, apply the smallest coherent Core-first change and separate required consistency follow-up from optional improvements.
+Given explicit approval for a defined charter patch, apply the smallest coherent system-owned change through the public branch flow and separate required consistency follow-up from optional improvements.
 
 Expected: no unrelated charter edits; validation status reported truthfully.

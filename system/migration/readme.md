@@ -40,6 +40,8 @@ workspace/context/ → current authoritative home after review
 
 Do not copy whole conversations into canonical context merely because they contain useful facts.
 
-## personal_overlay_use
+## installed_workspace_use
 
-Generic Core contains migration workflow and fake examples only. Real Personal migration inventory belongs only on the Personal overlay and must not flow back into Core.
+The public repository contains migration workflow and fake examples only. A
+real Personal migration inventory belongs only in the user's installed
+workspace and must not flow into the public repository.

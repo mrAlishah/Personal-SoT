@@ -6,6 +6,9 @@ Define the durable purpose, design principles, and decision priorities for evolv
 
 This charter is the canonical governance basis for architecture changes, refactors, new runtime capabilities, context-model changes, adapters, prompts, profiles, retrieval, and maintenance automation.
 
+The public V1 product audience, experience, scope, and completion standard are
+owned by `system/governance/public_v1_product_contract.md`.
+
 ## project_definition
 
 The SoT is a canonical, client-neutral, Git-backed context and runtime-governance system for AI clients such as ChatGPT, Claude, Codex, and compatible agents.
@@ -145,9 +148,11 @@ Never claim validation passed unless the relevant validator/check actually ran a
 
 Distinguish inspected, implemented, merged, deployed, synced, and validated states.
 
-### core_first_reuse
+### system_owned_reuse
 
-Reusable runtime/contracts belong in Core first and flow through the governed branch path into Personal deployments. Personal facts and deliberately Personal-specific overlays remain Personal-owned.
+Reusable runtime contracts belong under `system/` and follow the public
+repository branch flow. Personal facts and deliberately Personal-specific
+content remain user-owned under `workspace/`.
 
 ## decision_test
 
@@ -162,7 +167,7 @@ Before accepting a material SoT change, ask:
 7. Can progressive disclosure avoid loading unrelated material?
 8. Does it preserve correctness, access, privacy, and conflict resistance?
 9. Is current state being confused with history or implementation noise?
-10. Is this reusable Core behavior or a Personal/client-specific overlay?
+10. Is this reusable system behavior or user/client-specific content?
 11. Is there a smaller coherent root-cause change that achieves the same result?
 12. What validation actually proves the result and critical boundaries?
 
@@ -209,4 +214,4 @@ Material modifications to the SoT architecture or reusable system contracts shou
 
 If a requested change materially conflicts with the charter, make the conflict explicit and use the applicable clarification/decision authority rather than silently weakening the charter.
 
-Changes to this charter itself are architecture/governance changes and should follow Core-first branch governance and normal validation discipline.
+Changes to this charter itself are architecture/governance changes and should follow `system/governance/branch_flow.md` and normal validation discipline.

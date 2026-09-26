@@ -152,11 +152,11 @@ Automation cannot deterministically classify semantic home.
 
 Expected: propose/defer rather than silently mutating canonical truth.
 
-## case_26_branch_direction
+## case_26_public_system_direction
 
-Personal branch contains real user context and a reusable system fix is discovered.
+An installed Personal workspace contains real user context and a reusable system fix is discovered.
 
-Expected: fix Core first, then sync Core→Personal; never merge Personal context back into Core.
+Expected: fix the system-owned contract through the public branch flow; never copy Personal context into public system contracts.
 
 ## case_27_private_branch_security
 
@@ -244,6 +244,8 @@ Expected: choose the higher-quality/correct composition. Token efficiency remain
 
 ## acceptance_result
 
-V1 Core is accepted architecturally when these invariants are mutually satisfiable without contradictory contracts or duplicate canonical authority.
+The V1 public foundation is accepted architecturally when these invariants are mutually satisfiable without contradictory contracts or duplicate canonical authority.
 
-Full release freeze additionally requires local execution of `system/validation/validate_v1.py` on the target Core/Personal checkout because the GitHub connector itself does not execute the repository locally.
+Full release freeze additionally requires local execution of
+`system/validation/validate_v1.py` in the applicable validation mode because a
+repository review alone does not execute local validators.

@@ -24,17 +24,20 @@ The contracts that interpret those files live under `system/`.
 
 ## Development flow
 
-Reusable system change:
+Start from current `main` and follow
+`system/governance/branch_flow.md`:
 
 ```text
-Core feature/fix/refactor
--> review + validation
--> v1_ai_context_source_of_truth
--> develop
--> sync Core -> Personal
+main
+-> short-lived <type>_<scope>_<goal> branch
+-> relevant tests, validators, and review
+-> pull request
+-> main
 ```
 
-Personal facts and Personal-only prompt content never flow into Core.
+Reusable runtime semantics belong under `system/`. Personal facts and
+Personal-only content remain under `workspace/` and never become system
+contracts.
 
 ## Validation
 

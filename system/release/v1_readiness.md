@@ -25,10 +25,10 @@ V1 remains the hardened semantic baseline. V1.1 may change physical layout and a
 - profiles remain compact/fact-free;
 - adapters remain thin;
 - retrieval does not create authority;
-- Core → Personal remains one-way;
+- public system contracts do not absorb Personal facts or user-specific content;
 - presentation composition remains deterministic;
 - static validation is structural and does not replace semantic review;
-- `main` remains untouched unless separately authorized.
+- `main` changes only through the governed public pull-request flow.
 
 ## current_physical_mapping
 

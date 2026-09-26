@@ -299,16 +299,16 @@ Do not add observability infrastructure whose own complexity exceeds the value o
 
 When authorized repository write capability exists:
 
-1. create/use an appropriate feature or revision branch according to governance;
+1. create/use a convention-compliant short-lived branch from current `main`;
 2. apply only safe automatic fixes and user-approved material fixes;
-3. keep reusable changes Core-first;
-4. keep Personal facts/overlays Personal-owned;
+3. keep reusable runtime contracts under `system/`;
+4. keep Personal facts and user content under `workspace/`;
 5. work in bounded loops: inspect → classify → root cause → smallest coherent patch → validate → review effect → continue;
 6. preserve compatibility unless an approved change intentionally alters it;
 7. add/update tests when a changed contract or behavior needs coverage;
 8. run the strongest relevant available validators/checks;
 9. never claim a check passed unless its actual output confirms it;
-10. promote changes through governed branches only when the user request and repository governance authorize that execution.
+10. merge changes through a reviewed pull request only when the user request and repository governance authorize that execution.
 
 If validation fails, resolve the regression before continuing dependent optimization work.
 

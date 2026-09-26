@@ -57,10 +57,12 @@ See:
 context/sensitive_data_contract.md
 ```
 
-## personal_overlay
+## installed_personal_workspace
 
-The generic core should remain free of person-specific data.
+The public repository should remain free of person-specific data.
 
-A personalized branch or repository may later copy these examples and replace them with real user-owned context.
+A user's installed workspace may use these examples to create real user-owned
+context after review.
 
-System changes flow from core to personal overlay. Personal data must never merge back into generic core.
+System changes follow the public repository branch flow. Personal data must
+never enter public system contracts or examples.

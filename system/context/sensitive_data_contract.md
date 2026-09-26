@@ -172,7 +172,7 @@ They are non-runtime and never registered as real scopes.
 
 ## personal_overlay_rule
 
-Personal may contain deliberately reviewed real sensitive context and may adopt the `main_info/general_info` convention above. System changes flow Core -> Personal. Personal/sensitive data never flows back into generic Core.
+An installed Personal workspace may contain deliberately reviewed real sensitive context and may adopt the `main_info/general_info` convention above. System changes follow the public repository branch flow. Personal/sensitive data never flows into public system contracts.
 
 ## acceptance
 
