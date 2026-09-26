@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 from dataclasses import dataclass
+from hashlib import sha256
 import re
 import sys
 from pathlib import Path
@@ -115,10 +116,17 @@ def switch_registry_entries(root: Path) -> List[Tuple[str, str, str]]:
     return entries
 
 
+def _safe_canonical_file(root: Path, path: Path) -> bool:
+    try:
+        return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
 def registered_section_targets(root: Path, section_name: str) -> Dict[str, str]:
     specs: Dict[str, str] = {}
     for section, identifier, target_text in switch_registry_entries(root):
-        if section == section_name and (root / target_text).is_file():
+        if section == section_name and _safe_canonical_file(root, root / target_text):
             specs[identifier] = target_text
     return specs
 
@@ -130,7 +138,7 @@ def registered_control_specs(root: Path, errors: List[str]) -> Dict[str, set]:
         if section != "registered_controls":
             continue
         target = root / target_text
-        if not target.is_file():
+        if not _safe_canonical_file(root, target):
             continue
         scalars, values = parse_control_manifest(read_text(target))
         rel = target.relative_to(root)
@@ -165,7 +173,7 @@ def registered_format_specs(root: Path, errors: List[str]) -> Dict[str, str]:
         if section != "formats":
             continue
         target = root / target_text
-        if not target.is_file():
+        if not _safe_canonical_file(root, target):
             continue
         metadata = simple_frontmatter(read_text(target))
         rel = target.relative_to(root)
@@ -371,7 +379,7 @@ def _validate_profile_manifest(
     for kind, value, target in refs:
         if not NAME_RE.fullmatch(value):
             errors.append(f"{rel}: invalid {kind} identifier {value!r}")
-        elif not target.is_file():
+        elif not _safe_canonical_file(root, target):
             errors.append(f"{rel}: unresolved {kind} reference {value!r} -> {target.relative_to(root)}")
 
 
@@ -391,6 +399,30 @@ def validate_profile_source(root: Path, path: Path, source: str) -> List[str]:
         errors,
     )
     return errors
+
+
+def profile_validation_state_digest(root: Path, source: str) -> str:
+    """Bind a Profile preview to its canonical inventory and dependencies."""
+    root = root.resolve()
+    manifest = read_profile_manifest(source)
+    profiles = root / "workspace" / "profiles"
+    paths = list(profiles.glob("*.md")) if profiles.is_dir() and not profiles.is_symlink() else []
+    registry = root / "system" / "routing" / "switch_registry.md"
+    paths.append(registry)
+    paths.extend(root / target for _, _, target in switch_registry_entries(root))
+    paths.extend(root / "system" / "behavior" / f"{name}.md" for name in manifest.behaviors)
+    languages = ([manifest.primary_language] if manifest.primary_language else []) + list(manifest.supporting_languages)
+    paths.extend(root / "workspace" / "presentation" / "languages" / f"{name}.md" for name in languages)
+
+    digest = sha256()
+    for path in sorted(set(paths), key=lambda item: item.as_posix()):
+        try:
+            relative = path.relative_to(root).as_posix()
+            content = path.read_bytes() if _safe_canonical_file(root, path) else b"<unavailable>"
+        except (OSError, ValueError):
+            relative, content = "<unsafe>", b"<unavailable>"
+        digest.update(relative.encode("utf-8") + b"\0" + content + b"\0")
+    return digest.hexdigest()
 
 
 def validate_profiles(

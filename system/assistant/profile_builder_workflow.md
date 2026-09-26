@@ -33,6 +33,13 @@ Profiles and direct composition, validate through the Profile validator owner,
 and show the complete manifest and diff. Route confirmation and apply through
 `safe_write_contract.md`.
 
+After confirmation, re-read the target and validation dependencies. If either
+changed, stop and produce a new preview. A successful local write runs the
+repository-owned Profile/Core, prompt, and public-distribution validators. The
+result reports separately whether the write occurred, whether validation ran,
+and whether validation passed. A failed post-write validation never hides that
+the file changed; repair requires a new proposal.
+
 Only `workspace/profiles/<name>.md` may be created or edited. This workflow
 never writes format, tone, depth, control, behavior, registry, or precedence
 owners.
