@@ -19,15 +19,17 @@ This repository currently contains the safe public foundation and the first runn
 - no real Personal data or private configuration;
 - local structural, prompt, and public-distribution validation;
 - a minimal workspace that creates Personal modules only when needed;
+- client-neutral guided setup from repository connection to first useful task;
 - client-neutral guided project creation and current-state maintenance;
 - authorized local writes in Codex and Claude Code;
 - truthful preview-only behavior when a web client cannot write the repository.
 
-The automated installer and full onboarding flow are not implemented yet. The first create → use → update project workflow is available through a local agent opened at the repository root.
+The guided onboarding and first create → use → update project workflow are available through a local agent opened at the repository root. A one-click installer is not included.
 
 ## Start here
 
-- New user: [Beginner guide](guides/user/readme.md)
+- New user: [Setup guide](guides/user/setup.md)
+- Product tour: [Beginner guide](guides/user/readme.md)
 - Create and use a project: [First project guide](guides/user/create_and_use_project.md)
 - Developer or contributor: [Developer guide](guides/developer/readme.md)
 - Migration decisions: [Public V1 inventory](guides/developer/migration/public_v1_inventory.md)
