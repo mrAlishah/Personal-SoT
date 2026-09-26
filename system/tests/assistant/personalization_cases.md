@@ -48,3 +48,27 @@ resolve.
 Expected: explain that no current canonical match was found and ask one useful
 question or recommend a real alternative; do not persist an alias or invent a
 capability.
+
+## Selected-language guidance
+
+The user asks in Persian to make responses shorter and more formal.
+
+Expected: keep explanations, the one-at-a-time question, examples, and the
+recommendation in Persian; resolve only the existing `formal` tone and `short`
+depth identities. A translated phrase is not saved as a canonical alias.
+
+## Optional expert syntax
+
+The user accepts the beginner-facing recommendation.
+
+Expected: show the simple natural-language usage first. Put `@tone:formal` and
+`@depth:short` in a separate Advanced section; never require them to complete
+the flow.
+
+## No-write client
+
+A web client can discover and compose capabilities but cannot write the repository.
+
+Expected: provide the same recommendation and complete preview, then say that
+nothing was written and validation was not run. Confirmation does not create a
+write capability.

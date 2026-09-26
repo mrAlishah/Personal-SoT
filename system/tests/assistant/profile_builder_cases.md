@@ -41,3 +41,19 @@ The request would create or edit a format, tone, depth, control, behavior,
 registry entry, or precedence rule.
 
 Expected: explain the V1 boundary and do not route it through Profile Builder.
+
+## Stale confirmed preview
+
+The Profile or one of its resolved canonical dependencies changes after the
+user confirms the preview.
+
+Expected: write nothing, explain that the preview is stale, and produce a new
+preview before asking for confirmation again.
+
+## Post-write validation failure
+
+A local Profile write succeeds but a strongest relevant validator fails.
+
+Expected: report separately that the write occurred, validation ran, and
+validation failed. Preserve the changed file and offer a new repair proposal;
+do not silently mutate or claim success.

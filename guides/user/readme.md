@@ -46,6 +46,10 @@ If no current prompt fits, continue with
 search first, show a complete preview before any change, and tell you truthfully
 whether your client can write and validate it.
 
+To change response style or guidance in natural language, see
+[Customize responses](customize_responses.md). Existing capabilities are
+combined first; only a reusable Profile can be created or edited in Public V1.
+
 ## Safety rule
 
 Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.
