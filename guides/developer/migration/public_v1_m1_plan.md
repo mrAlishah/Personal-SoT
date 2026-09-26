@@ -82,7 +82,7 @@
 - Modify: `readme.md`
 - Modify: `guides/readme.md`
 - Modify: `guides/user/readme.md`
-- Create: `workspace/context/personal/readme.md`
+- Modify: `workspace/context/readme.md`
 - Create: `system/governance/development_conventions.md`
 
 **Interfaces:**
@@ -95,4 +95,3 @@
 - [ ] Run all three validators plus the public validator.
 - [ ] Inspect the complete diff against the empty destination and the source inventory.
 - [ ] Commit as `docs(user): add beginner foundation`.
-

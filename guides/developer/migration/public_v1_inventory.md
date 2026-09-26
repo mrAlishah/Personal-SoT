@@ -45,7 +45,7 @@ Paths ending in `/` classify the whole subtree except where a later row is more 
 | `v1.2_ai_personal_source_of_truth:workspace/profiles/gn_*` and `friendly_multilingual_chat.md` | public_product | same candidate paths | GENERALIZE | Potential beginner presets; each must be fact-free, deduplicated, and promoted through Core-first review. |
 | `v1.2_ai_personal_source_of_truth:workspace/presentation/formats/communication_translation.md`, `tbl_multilingual.md` | public_product | same candidate paths | GENERALIZE | Potential multilingual product formats; require generic contract and test review first. |
 | `v1.2_ai_personal_source_of_truth:workspace/context/personal/policies/development_conventions.md` | public_core | `system/governance/development_conventions.md` | GENERALIZE | The naming rules are repository governance, not a Personal fact; M1 records them without copying the Personal path. |
-| new minimal Personal workspace | public_product | `workspace/context/personal/readme.md` | KEEP | Data-free instructions establish the user-owned destination without inventing facts or empty semantic modules. |
+| new minimal Personal workspace | public_product | `workspace/context/readme.md` | KEEP | Existing owner explains create-on-demand; no empty Personal context module is created before onboarding confirmation. |
 
 ## Phase 0 gate
 
@@ -53,4 +53,3 @@ Paths ending in `/` classify the whole subtree except where a later row is more 
 - No Personal adapter or Personal history artifact is eligible for M1.
 - Personal-only reusable candidates remain excluded until a separate Core-first classification loop.
 - The M1 migration source is the exact generic Core SHA recorded above.
-

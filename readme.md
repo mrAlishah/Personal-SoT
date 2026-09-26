@@ -1,54 +1,49 @@
-# Obsidian AI Context Source of Truth
+# Personal-SoT
 
-Canonical, client-neutral AI Source of Truth for ChatGPT, Codex, Claude, and compatible agents.
+Personal-SoT gives your AI one controlled place to understand your goals, projects, preferences, and current situation.
 
-```text
-repository_root == vault/99_system/ai/
-```
-
-The repository is intentionally organized into three ownership boundaries:
+The product goal is simple:
 
 ```text
-workspace/  -> end-user managed content and configuration
-system/     -> runtime contracts, algorithms, validation, governance, tests
-Guides are under guides/ (user and developer documentation)
+install → choose your language → connect your AI
+→ meet the Personal SoT Assistant → complete a useful task
 ```
 
-Canonical roots:
+You should not need to understand Git, YAML, prompt engineering, repository paths, or SoT architecture for normal use.
+
+## Current milestone
+
+This repository currently contains the safe public foundation:
+
+- generic, client-neutral SoT contracts;
+- no real Personal data or private configuration;
+- local structural, prompt, and public-distribution validation;
+- a minimal workspace that creates Personal modules only when needed.
+
+Guided setup, the Personal SoT Assistant, and the first Project Builder flow are the next vertical slice. Until that slice lands, this is a foundation release rather than a finished beginner installation.
+
+## Start here
+
+- New user: [Beginner guide](guides/user/readme.md)
+- Developer or contributor: [Developer guide](guides/developer/readme.md)
+- Migration decisions: [Public V1 inventory](guides/developer/migration/public_v1_inventory.md)
+
+## Safety
+
+Never store passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, or other credentials in Personal-SoT.
+
+Before any public release, run:
+
+```bash
+python3 system/validation/validate_v1.py --mode core
+python3 system/validation/validate_prompts.py
+python3 system/validation/validate_public.py
+```
+
+Personal-SoT keeps the canonical three-root model:
 
 ```text
-workspace/
-system/
-guides/
+workspace/  your content and configuration
+system/     shared contracts and validation
+guides/     beginner and developer documentation
 ```
-
-Logical runtime identities do not expose physical storage paths. Existing directives remain stable:
-
-```text
-@ctx:personal
-@profile:technical_learning
-@fmt:yaml
-@tone:human
-@do:prompt:ai/recap
-```
-
-Physical resolution is owned by the system contracts:
-
-```text
-context   -> workspace/context/
-prompts   -> workspace/prompts/
-profiles  -> workspace/profiles/
-formats   -> workspace/presentation/formats/
-tones     -> workspace/presentation/tones/
-depth     -> workspace/presentation/depth/
-languages -> workspace/presentation/languages/
-```
-
-Start here:
-
-```text
-End user  -> guides/user/readme.md
-Developer -> guides/developer/readme.md
-```
-
-Do not edit `system/` for ordinary personal/content maintenance. Reusable runtime or contract changes remain Core-first and then sync Core -> Personal.
