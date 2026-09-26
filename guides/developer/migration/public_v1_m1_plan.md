@@ -41,8 +41,8 @@
 - Consumes: resolved source deployment, Core tree, and Personal/Core diff.
 - Produces: authoritative M1 allow/deny map and exact Core SHA for Task 2.
 
-- [ ] Verify the three records contain no placeholder decisions and name the resolved refs/SHAs.
-- [ ] Commit as `docs(migration): record public v1 migration baseline`.
+- [x] Verify the three records contain no placeholder decisions and name the resolved refs/SHAs.
+- [x] Commit as `docs(migration): record public v1 migration baseline`.
 
 ### Task 2: Generic Core baseline
 
@@ -53,11 +53,11 @@
 - Consumes: exact Core SHA from Task 1.
 - Produces: existing `validate_v1.py` and `validate_prompts.py` commands for later tasks.
 
-- [ ] Import the exact Core tree without source history.
-- [ ] Run `python3 system/validation/validate_v1.py --mode core` and confirm it passes.
-- [ ] Run `python3 system/validation/validate_prompts.py` and confirm it passes.
-- [ ] Confirm no path from the inventory's `DO_NOT_MIGRATE` rows exists.
-- [ ] Commit as `feat(core): migrate generic v1.2 foundation`.
+- [x] Import the exact Core tree without source history.
+- [x] Run `python3 system/validation/validate_v1.py --mode core` and confirm it passes.
+- [x] Run `python3 system/validation/validate_prompts.py` and confirm it passes.
+- [x] Confirm no path from the inventory's `DO_NOT_MIGRATE` rows exists.
+- [x] Commit as `feat(core): migrate generic v1.2 foundation`.
 
 ### Task 3: Public distribution gate
 
@@ -70,11 +70,11 @@
 - Consumes: repository root and text files.
 - Produces: `validate_public.run(root) -> list[str]` and CLI exit status 0/1.
 
-- [ ] Write tests for forbidden Personal identifiers, home paths, credential assignments, and safe placeholders.
-- [ ] Run the test file and verify the expected failures occur because `validate_public` is missing.
-- [ ] Implement the smallest standard-library scanner that satisfies the tests.
-- [ ] Run the test file and full Core validators.
-- [ ] Commit as `test(validation): add public distribution gate`.
+- [x] Write tests for forbidden Personal identifiers, home paths, credential assignments, and safe placeholders.
+- [x] Run the test file and verify the expected failures occur because `validate_public` is missing.
+- [x] Implement the smallest standard-library scanner that satisfies the tests.
+- [x] Run the test file and full Core validators.
+- [x] Commit as `test(validation): add public distribution gate`.
 
 ### Task 4: Beginner foundation
 
@@ -82,17 +82,16 @@
 - Modify: `readme.md`
 - Modify: `guides/readme.md`
 - Modify: `guides/user/readme.md`
-- Create: `workspace/context/personal/readme.md`
+- Modify: `workspace/context/readme.md`
 - Create: `system/governance/development_conventions.md`
 
 **Interfaces:**
 - Consumes: canonical Core contracts and public validation command.
 - Produces: beginner navigation and a data-free Personal workspace entrypoint.
 
-- [ ] Replace framework-first navigation with the beginner journey and an explicit not-yet-implemented boundary.
-- [ ] Add the minimal starter workspace instructions without empty fact modules.
-- [ ] Record the generalized development convention in its system-owned destination.
-- [ ] Run all three validators plus the public validator.
-- [ ] Inspect the complete diff against the empty destination and the source inventory.
-- [ ] Commit as `docs(user): add beginner foundation`.
-
+- [x] Replace framework-first navigation with the beginner journey and an explicit not-yet-implemented boundary.
+- [x] Add the minimal starter workspace instructions without empty fact modules.
+- [x] Record the generalized development convention in its system-owned destination.
+- [x] Run all three validators plus the public validator.
+- [x] Inspect the complete diff against the empty destination and the source inventory.
+- [x] Commit as `docs(user): add beginner foundation`.

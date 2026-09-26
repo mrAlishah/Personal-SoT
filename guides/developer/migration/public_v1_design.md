@@ -69,4 +69,3 @@ M1 is acceptable only when:
 2. the public validator rejects known Personal identifiers, private source/deployment references, user-specific home paths, and likely raw secrets;
 3. the public validator accepts placeholders and the clean repository;
 4. the Git diff contains no unclassified Personal source file.
-
