@@ -104,7 +104,7 @@ def prompt_files(root: Path):
     return out
 
 
-def validate_file(
+def _validate_source(
     root: Path,
     path: Path,
     canonical: bool,
@@ -112,9 +112,10 @@ def validate_file(
     tone_ids: set[str],
     depth_ids: set[str],
     errors: list[str],
+    src: str,
 ):
     rel = path.relative_to(root)
-    keys, lists, scalars, body = manifest(text(path))
+    keys, lists, scalars, body = manifest(src)
     if not keys:
         errors.append(f"{rel}: prompt template requires YAML frontmatter")
         return
@@ -186,7 +187,7 @@ def validate_file(
     elif lists["owned_assets"]:
         errors.append(f"{rel}: example prompts must not claim real owned_assets")
     assignment = re.compile(r"^\s*[-*]?\s*([a-z0-9_]+)\s*[:=]\s*(.+?)\s*$", re.I)
-    for n, raw in enumerate(text(path).splitlines(), 1):
+    for n, raw in enumerate(src.splitlines(), 1):
         match = assignment.match(raw)
         if not match or match.group(1).lower() not in RAW_SECRET_KEYS:
             continue
@@ -196,11 +197,32 @@ def validate_file(
         errors.append(f"{rel}:{n}: possible raw secret assignment to {match.group(1).lower()!r}")
 
 
-def validate_path(root: Path, path: Path, canonical: bool = True) -> list[str]:
-    """Validate one prompt with the same rules as the repository validator."""
+def validate_file(
+    root: Path,
+    path: Path,
+    canonical: bool,
+    format_ids: set[str],
+    tone_ids: set[str],
+    depth_ids: set[str],
+    errors: list[str],
+):
+    _validate_source(
+        root,
+        path,
+        canonical,
+        format_ids,
+        tone_ids,
+        depth_ids,
+        errors,
+        text(path),
+    )
+
+
+def validate_source(root: Path, path: Path, source: str, canonical: bool = True) -> list[str]:
+    """Validate proposed prompt content without writing it."""
     errors: list[str] = []
     entries = switch_registry_entries(root)
-    validate_file(
+    _validate_source(
         root,
         path,
         canonical,
@@ -208,8 +230,14 @@ def validate_path(root: Path, path: Path, canonical: bool = True) -> list[str]:
         {identifier for section, identifier, _ in entries if section == "tones"},
         {identifier for section, identifier, _ in entries if section == "depths"},
         errors,
+        source,
     )
     return errors
+
+
+def validate_path(root: Path, path: Path, canonical: bool = True) -> list[str]:
+    """Validate one prompt with the same rules as the repository validator."""
+    return validate_source(root, path, text(path), canonical)
 
 
 def run(root: Path) -> list[str]:
