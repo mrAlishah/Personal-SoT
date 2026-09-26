@@ -21,7 +21,9 @@ Assistant:
 
 ## What works now
 
-The reusable SoT engine, safety validators, Personal SoT Assistant contracts, and first Project Builder flow are present. The repository starts without real Personal facts and creates only the modules your confirmed project actually needs.
+The reusable SoT engine, safety validators, guided setup, Personal SoT Assistant contracts, and first Project Builder flow are present. The repository starts without real Personal facts and creates only the modules your confirmed setup or project actually needs.
+
+Start with [Set up Personal-SoT](setup.md).
 
 Open the repository in Codex or Claude Code and ask naturally:
 
@@ -32,7 +34,7 @@ Please guide me in English.
 
 The local agent can preview, confirm, write, and validate when its actual permissions allow it. ChatGPT and Claude Web can run the same questions and preview, but must tell you when they cannot write the repository.
 
-See [Create and use your first project](create_and_use_project.md) for the complete flow.
+Then see [Create and use your first project](create_and_use_project.md) for the complete project flow.
 
 ## Safety rule
 
