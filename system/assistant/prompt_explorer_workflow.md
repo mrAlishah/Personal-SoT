@@ -67,7 +67,7 @@ Keep the canonical identity, path, matching metadata, and
   category level without exposing unselected bodies, secrets, or restricted data.
 
 When no usable prompt exists, say so without guessing and offer
-`system/assistant/prompt_builder_workflow.md` once that workflow is available.
+`system/assistant/prompt_builder_workflow.md`.
 
 ## Client capability
 
