@@ -164,6 +164,34 @@ class DoctorTests(unittest.TestCase):
             self.assertNotIn("supersecretvalue", rendered)
             self.assertEqual(before, context.read_bytes())
 
+    def test_advanced_prompt_and_public_findings_do_not_expose_secret_values(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.minimal_repository(root)
+            prompt = root / "workspace/prompts/unsafe_prompt.md"
+            prompt.parent.mkdir(parents=True)
+            prompt.write_text(
+                "---\n"
+                "prompt_status: active\n"
+                "prompt_tags: []\n"
+                "prompt_profiles: []\n"
+                "prompt_formats: []\n"
+                "prompt_tone: professional\n"
+                "prompt_depth: medium\n"
+                "required_params: []\n"
+                "optional_params: []\n"
+                "owned_assets: []\n"
+                "---\n"
+                "api_token: promptsecretvalue\n",
+                encoding="utf-8",
+            )
+
+            rendered = doctor.render(doctor.run(root), advanced=True)
+
+            self.assertIn("✗ One or more prompts are invalid", rendered)
+            self.assertIn("✗ Public-distribution safety check found a problem", rendered)
+            self.assertNotIn("promptsecretvalue", rendered)
+
     def test_direct_cli_invocation_works_from_repository_root(self):
         result = subprocess.run(
             (
