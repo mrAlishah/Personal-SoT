@@ -54,12 +54,10 @@ Every material personal-context write follows `system/assistant/safe_write_contr
 
 ## 5. System check
 
-On a capable local host, run from the repository root:
+On a capable local host, execute `system/diagnostics/doctor_contract.md`. Its implementation reuses the canonical validators and produces the beginner report.
 
 ```text
-python3 system/validation/validate_v1.py
-python3 system/validation/validate_prompts.py
-python3 system/validation/validate_public.py
+python3 system/diagnostics/doctor.py
 ```
 
 Translate results into beginner language: ready, what failed, which area is affected, and the smallest next action. Report commands and actual results; do not convert a failure into setup success.

@@ -34,8 +34,9 @@ All modes resolve through the same canonical contracts. Expert syntax is optiona
 3. Resolve actual host read/write/tool capability; do not infer it from the prompt.
 4. Search for an existing capability before proposing creation.
 5. Route project creation/use/update through `system/assistant/project_workflow.md`.
-6. Route every material write through `system/assistant/safe_write_contract.md`.
-7. Report actual actions, provenance, validation, limitations, and next useful request.
+6. Route setup and health diagnosis through `system/diagnostics/doctor_contract.md`.
+7. Route every material write through `system/assistant/safe_write_contract.md`.
+8. Report actual actions, provenance, validation, limitations, and next useful request.
 
 ## Capability boundary
 
