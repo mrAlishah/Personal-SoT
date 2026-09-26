@@ -29,6 +29,8 @@ The design adds no prompt registry, generated catalog, persistent index, cache, 
 The existing contracts remain authoritative:
 
 ```text
+system/governance/public_v1_product_contract.md
+system/assistant/assistant_contract.md
 system/prompts/prompt_contract.md
 system/prompts/parameter_contract.md
 system/prompts/action_contract.md
@@ -93,6 +95,12 @@ prompt_formats
 prompt_tone
 prompt_depth
 ```
+
+Every supplied filter must match. For list-valued filters, every requested value
+must be present in the corresponding canonical list; extra canonical values do
+not invalidate the match. Scalar filters require exact equality. An explicit
+identity requires exact equality, while a path-prefix filter matches only a
+canonical identity beneath that exact prefix.
 
 Explorer does not invent or normalize a missing canonical identity, tag, parameter, profile, format, tone, depth, or capability. A search term is evidence for discovery only; it never becomes a canonical alias.
 
@@ -169,6 +177,10 @@ Builder must follow this order and stop at the first rung that satisfies the use
 ```
 
 Composition/customization may use only contracted parameters, profiles, formats, tone, depth, and registered controls. It does not introduce prompt-to-prompt runtime inheritance or inclusion.
+
+Registered controls may be applied as invocation/runtime composition only. They
+must not be written into prompt frontmatter unless Prompt Contract adds a
+canonical control field through a separate approved contract change.
 
 High similarity alone never authorizes editing an existing prompt. Edit is appropriate only when the requested change modifies the same semantic prompt and its canonical identity/ownership is clear. When edit-versus-new is materially ambiguous, show both effects and ask the user to choose before building a write proposal.
 
