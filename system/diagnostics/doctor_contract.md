@@ -20,7 +20,7 @@ Validator results remain authoritative for workspace, context, project, prompt, 
 
 ## Execution
 
-On a capable local host, run Doctor from the repository root and supply the actual client and write capability when known. The Assistant translates the report into the user's selected language without changing finding status, blocking state, or meaning.
+On a capable local host, run Doctor from the repository root and supply the active repository-owned adapter plus the actual write capability. The adapter owns its client label, discovery surface, and entrypoint wiring; Doctor does not maintain a client registry. The Assistant translates the report into the user's selected language without changing finding status, blocking state, or meaning.
 
 A host that cannot run local commands may explain the workflow and capability limitation, but must state that Doctor was not run there.
 

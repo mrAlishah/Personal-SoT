@@ -26,7 +26,7 @@ class DoctorTests(unittest.TestCase):
     def test_ready_repository_has_beginner_summary(self):
         report = doctor.run(
             REPOSITORY_ROOT,
-            client="codex",
+            adapter="workspace/adapters/AGENTS.md",
             write_capability="available",
         )
 
@@ -90,7 +90,7 @@ class DoctorTests(unittest.TestCase):
     def test_web_client_without_write_capability_is_preview_only(self):
         report = doctor.run(
             REPOSITORY_ROOT,
-            client="chatgpt",
+            adapter="workspace/adapters/chatgpt_project_instructions.md",
             write_capability="unavailable",
         )
 
@@ -100,6 +100,33 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("✓ ChatGPT configuration detected", rendered)
         self.assertIn("⚠ ChatGPT is preview-only", rendered)
         self.assertNotIn("run write validation", rendered)
+
+    def test_client_topology_comes_from_adapter_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.minimal_repository(root)
+            adapter = root / "workspace/adapters/example_client.md"
+            adapter.write_text(
+                "# Example client\n\n"
+                "client_name: Example Client\n"
+                "discovery_surface: EXAMPLE.md\n"
+                "entrypoint: workspace/adapters/runtime_entrypoint.md\n",
+                encoding="utf-8",
+            )
+            (root / "EXAMPLE.md").write_text(
+                "Read workspace/adapters/example_client.md\n",
+                encoding="utf-8",
+            )
+
+            report = doctor.run(
+                root,
+                adapter="workspace/adapters/example_client.md",
+                write_capability="unavailable",
+            )
+            rendered = doctor.render(report)
+
+            self.assertIn("✓ Example Client configuration detected", rendered)
+            self.assertIn("⚠ Example Client is preview-only", rendered)
 
     def test_existing_validators_own_project_profile_and_prompt_diagnosis(self):
         with TemporaryDirectory() as directory:
@@ -142,8 +169,8 @@ class DoctorTests(unittest.TestCase):
             (
                 sys.executable,
                 "system/diagnostics/doctor.py",
-                "--client",
-                "codex",
+                "--adapter",
+                "workspace/adapters/AGENTS.md",
                 "--write-capability",
                 "available",
             ),

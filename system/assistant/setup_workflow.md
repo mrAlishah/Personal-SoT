@@ -54,10 +54,12 @@ Every material personal-context write follows `system/assistant/safe_write_contr
 
 ## 5. System check
 
-On a capable local host, execute `system/diagnostics/doctor_contract.md`. Its implementation reuses the canonical validators and produces the beginner report.
+On a capable local host, execute `system/diagnostics/doctor_contract.md`. Pass the active adapter descriptor and the host's actual write capability; do not infer either from the prompt. Doctor reuses the canonical validators and produces the beginner report.
 
 ```text
-python3 system/diagnostics/doctor.py
+python3 system/diagnostics/doctor.py \
+  --adapter <active_repository_adapter> \
+  --write-capability <available_or_unavailable>
 ```
 
 Translate results into beginner language: ready, what failed, which area is affected, and the smallest next action. Report commands and actual results; do not convert a failure into setup success.

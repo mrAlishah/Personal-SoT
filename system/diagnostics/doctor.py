@@ -14,20 +14,6 @@ from system.validation import validate_prompts, validate_public, validate_v1
 
 
 ENTRYPOINT = "workspace/adapters/runtime_entrypoint.md"
-CLIENT_CONFIGS = {
-    "codex": ("Codex", "AGENTS.md", "workspace/adapters/AGENTS.md"),
-    "claude_code": ("Claude Code", "CLAUDE.md", "workspace/adapters/CLAUDE.md"),
-    "chatgpt": (
-        "ChatGPT",
-        "workspace/adapters/chatgpt_project_instructions.md",
-        "workspace/adapters/chatgpt_project_instructions.md",
-    ),
-    "claude_web": (
-        "Claude Web",
-        "workspace/adapters/claude_web_project_instructions.md",
-        "workspace/adapters/claude_web_project_instructions.md",
-    ),
-}
 SYMBOLS = {"pass": "✓", "warn": "⚠", "fail": "✗"}
 
 
@@ -51,9 +37,31 @@ class Report:
         return any(finding.blocking for finding in self.findings)
 
 
+def _repository_file(root: Path, value: str) -> bool:
+    path = Path(value)
+    target = root / path
+    return (
+        not path.is_absolute()
+        and ".." not in path.parts
+        and target.is_file()
+        and target.resolve().is_relative_to(root)
+    )
+
+
+def _fields(path: Path) -> dict[str, str]:
+    fields = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if ":" not in raw or raw.startswith(("#", " ", "\t")):
+            continue
+        key, value = raw.split(":", 1)
+        if value.strip():
+            fields[key.strip()] = value.strip()
+    return fields
+
+
 def _runtime_finding(root: Path) -> Finding:
     entrypoint = root / ENTRYPOINT
-    if not entrypoint.is_file() or not entrypoint.resolve().is_relative_to(root):
+    if not _repository_file(root, ENTRYPOINT):
         return Finding(
             "fail",
             "Runtime connection is broken",
@@ -64,23 +72,7 @@ def _runtime_finding(root: Path) -> Finding:
             (ENTRYPOINT,),
         )
 
-    references = []
-    for raw in entrypoint.read_text(encoding="utf-8").splitlines():
-        if ":" not in raw or raw.startswith(("#", " ", "\t")):
-            continue
-        _, value = raw.split(":", 1)
-        value = value.strip()
-        if value:
-            references.append(value)
-
-    unresolved = tuple(
-        value
-        for value in references
-        if Path(value).is_absolute()
-        or ".." in Path(value).parts
-        or not (root / value).is_file()
-        or not (root / value).resolve().is_relative_to(root)
-    )
+    unresolved = tuple(value for value in _fields(entrypoint).values() if not _repository_file(root, value))
     if unresolved:
         return Finding(
             "fail",
@@ -114,8 +106,8 @@ def _validator_finding(
     )
 
 
-def _client_findings(root: Path, client: str, write_capability: str) -> list[Finding]:
-    if client == "unknown":
+def _adapter_findings(root: Path, adapter: str | None, write_capability: str) -> list[Finding]:
+    if adapter is None:
         return [
             Finding(
                 "warn",
@@ -127,16 +119,34 @@ def _client_findings(root: Path, client: str, write_capability: str) -> list[Fin
             )
         ]
 
-    label, surface_path, config_path = CLIENT_CONFIGS[client]
-    surface = root / surface_path
+    if not _repository_file(root, adapter):
+        return [
+            Finding(
+                "fail",
+                "AI client configuration is not connected",
+                "The selected adapter cannot be safely resolved inside the repository.",
+                "The client may answer without the canonical runtime.",
+                True,
+                "Select the repository-owned adapter for this client, then run Doctor again.",
+                (adapter,),
+            )
+        ]
+
+    config_path = adapter
     config = root / config_path
+    metadata = _fields(config)
+    label = metadata.get("client_name")
+    surface_path = metadata.get("discovery_surface")
+    surface = root / surface_path if surface_path else None
     connected = (
-        surface.is_file()
-        and config.is_file()
+        bool(label)
+        and bool(surface_path)
+        and metadata.get("entrypoint") == ENTRYPOINT
+        and _repository_file(root, surface_path)
         and (surface_path == config_path or config_path in surface.read_text(encoding="utf-8"))
-        and f"entrypoint: {ENTRYPOINT}" in config.read_text(encoding="utf-8")
     )
     if not connected:
+        label = label or "AI client"
         findings = [
             Finding(
                 "fail",
@@ -145,7 +155,7 @@ def _client_findings(root: Path, client: str, write_capability: str) -> list[Fin
                 "This client may answer without the canonical runtime.",
                 True,
                 f"Restore the standard {label} configuration, then run Doctor again.",
-                (surface_path, config_path),
+                (surface_path or "missing discovery_surface", config_path),
             )
         ]
     else:
@@ -178,7 +188,7 @@ def _client_findings(root: Path, client: str, write_capability: str) -> list[Fin
 
 def run(
     root: Path,
-    client: str = "unknown",
+    adapter: str | None = None,
     write_capability: str = "unknown",
 ) -> Report:
     root = root.resolve()
@@ -207,7 +217,7 @@ def run(
             "Remove or safely replace the reported material through a confirmed repair proposal.",
         ),
     ]
-    findings.extend(_client_findings(root, client, write_capability))
+    findings.extend(_adapter_findings(root, adapter, write_capability))
     return Report(tuple(findings))
 
 
@@ -234,7 +244,7 @@ def render(report: Report, advanced: bool = False) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
-    parser.add_argument("--client", choices=("unknown", *CLIENT_CONFIGS), default="unknown")
+    parser.add_argument("--adapter")
     parser.add_argument(
         "--write-capability",
         choices=("unknown", "available", "unavailable"),
@@ -242,7 +252,7 @@ def main() -> int:
     )
     parser.add_argument("--advanced", action="store_true")
     args = parser.parse_args()
-    report = run(args.root, args.client, args.write_capability)
+    report = run(args.root, args.adapter, args.write_capability)
     print(render(report, args.advanced))
     return 1 if report.blocked else 0
 

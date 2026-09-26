@@ -1,5 +1,7 @@
 # Personal-SoT — Claude Code
 
+client_name: Claude Code
+discovery_surface: CLAUDE.md
 entrypoint: workspace/adapters/runtime_entrypoint.md
 
 The repository root is the canonical SoT root. Before SoT-dependent work, read and follow the entrypoint and its referenced contracts using repository-relative paths.

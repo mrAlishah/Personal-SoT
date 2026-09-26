@@ -1,5 +1,7 @@
 # Personal-SoT — ChatGPT project
 
+client_name: ChatGPT
+discovery_surface: workspace/adapters/chatgpt_project_instructions.md
 entrypoint: workspace/adapters/runtime_entrypoint.md
 
 Treat the connected/synced repository root as the canonical SoT root. Before SoT-dependent work, read and follow the entrypoint and its referenced contracts using repository-relative paths.
