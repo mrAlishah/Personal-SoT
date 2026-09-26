@@ -66,6 +66,26 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("✓ ChatGPT configuration detected", rendered)
         self.assertIn("⚠ ChatGPT is preview-only", rendered)
 
+    def test_existing_validators_own_project_profile_and_prompt_diagnosis(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.minimal_repository(root)
+            project = root / "workspace/context/personal/projects/broken_project/project.md"
+            project.parent.mkdir(parents=True)
+            project.write_text("---\nai_access: allow\n---\n# Broken project\n", encoding="utf-8")
+            profile = root / "workspace/profiles/broken_profile.md"
+            profile.parent.mkdir(parents=True)
+            profile.write_text("---\ntone: missing_tone\n---\n", encoding="utf-8")
+            prompt = root / "workspace/prompts/broken_prompt.md"
+            prompt.parent.mkdir(parents=True)
+            prompt.write_text("# Missing prompt manifest\n", encoding="utf-8")
+
+            report = doctor.run(root)
+            rendered = doctor.render(report)
+
+            self.assertIn("✗ Personal workspace has validation problems", rendered)
+            self.assertIn("✗ One or more prompts are invalid", rendered)
+
     def test_diagnostics_do_not_expose_secret_values_or_mutate_files(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
