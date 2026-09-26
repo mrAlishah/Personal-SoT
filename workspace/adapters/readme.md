@@ -1,5 +1,13 @@
 # workspace adapters
 
-This area is reserved for end-user or Personal client bootstrap/configuration, such as Personal ChatGPT, Codex, or Claude instructions.
+Client bootstrap files live here. Generic adapter semantics remain under `system/adapters/`; Assistant and write semantics remain under `system/assistant/`.
 
-Generic adapter contracts and client capability semantics live under `system/adapters/`.
+```text
+runtime_entrypoint.md                 shared canonical entrypoint
+public_bootstrap.md                   safe public defaults
+AGENTS.md / CLAUDE.md                 local write-capable agent adapters
+chatgpt_project_instructions.md       capability-aware web adapter
+claude_web_project_instructions.md    capability-aware web adapter
+```
+
+Root `AGENTS.md` and `CLAUDE.md` are thin host discovery wrappers. Adapters declare only source, entrypoint, defaults, and actual host capability; they do not copy canonical workflows.
