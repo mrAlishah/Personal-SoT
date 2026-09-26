@@ -41,6 +41,11 @@ Then see [Create and use your first project](create_and_use_project.md) for the 
 To reuse an existing capability before creating one, see
 [Find and use an existing prompt](find_and_use_prompts.md).
 
+If no current prompt fits, continue with
+[Build or improve a reusable prompt](build_a_prompt.md). The Assistant will
+search first, show a complete preview before any change, and tell you truthfully
+whether your client can write and validate it.
+
 ## Safety rule
 
 Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.

@@ -37,7 +37,9 @@ draft, or deprecated prompt is never presented as a normal executable
 recommendation.
 
 If no usable prompt exists, the Assistant says so instead of inventing one and
-can offer the guided Prompt Builder when available.
+offers the [guided Prompt Builder](build_a_prompt.md). The Builder searches
+again, prefers parameters and supported customization, and creates something
+new only when those options cannot satisfy the use case.
 
 ## Advanced (optional)
 

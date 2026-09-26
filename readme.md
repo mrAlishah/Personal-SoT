@@ -22,6 +22,7 @@ This repository currently contains the safe public foundation and the first runn
 - client-neutral guided setup from repository connection to first useful task;
 - a read-only beginner Doctor for setup, workspace, reference and client diagnostics;
 - client-neutral guided project creation and current-state maintenance;
+- on-demand prompt discovery and reuse-first guided prompt creation;
 - authorized local writes in Codex and Claude Code;
 - truthful preview-only behavior when a web client cannot write the repository.
 
@@ -33,6 +34,8 @@ The guided onboarding and first create → use → update project workflow are a
 - Product tour: [Beginner guide](guides/user/readme.md)
 - Diagnose a problem: [Personal-SoT Doctor](guides/user/doctor.md)
 - Create and use a project: [First project guide](guides/user/create_and_use_project.md)
+- Find an existing prompt: [Prompt Explorer guide](guides/user/find_and_use_prompts.md)
+- Build or improve a prompt: [Prompt Builder guide](guides/user/build_a_prompt.md)
 - Developer or contributor: [Developer guide](guides/developer/readme.md)
 - Migration decisions: [Public V1 inventory](guides/developer/migration/public_v1_inventory.md)
 

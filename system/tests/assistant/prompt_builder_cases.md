@@ -64,3 +64,18 @@ repository write capability.
 
 Expected: provide the same classification and complete preview, then state that
 nothing was written and local validation was not run.
+
+## End-to-end beginner journey
+
+User describes a use case in natural language, reuses an exact or parameterized
+prompt when one is sufficient, then asks for an outcome no current prompt owns.
+
+Expected: Explorer searches canonical metadata without creating an inventory;
+Builder proposes the minimum new prompt, shows the complete preview, and waits
+for confirmation. A write-capable local agent re-checks the proposal, writes it,
+runs prompt, core, and public validation, and reports their real result. A later
+same-owner edit follows a new preview and confirmation. If the file changed
+after preview, the edit stops without overwriting that change and asks for a new
+proposal. This scenario is executable in
+`system/tests/prompts/test_prompt_explorer_builder_e2e.py`; this Markdown file
+remains review guidance, not RED → GREEN evidence.
