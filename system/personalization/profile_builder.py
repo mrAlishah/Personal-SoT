@@ -56,7 +56,7 @@ def choose_profile_action(assessment: ProfileAssessment) -> tuple[str, str | Non
     if (
         assessment.edit_identity
         and assessment.same_semantic_owner
-        and profile_identity_kind(assessment.edit_identity) != "built_in"
+        and profile_identity_kind(assessment.edit_identity) == "custom"
     ):
         return "edit", assessment.edit_identity
     if assessment.reusable:

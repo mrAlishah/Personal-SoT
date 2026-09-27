@@ -98,6 +98,17 @@ class ProfileBuilderTests(unittest.TestCase):
 
         self.assertEqual(("create", None), action)
 
+    def test_invalid_reserved_identity_is_never_selected_for_edit(self):
+        action = choose_profile_action(
+            ProfileAssessment(
+                edit_identity="g.problem_solving",
+                same_semantic_owner=True,
+                reusable=True,
+            )
+        )
+
+        self.assertEqual(("create", None), action)
+
     def test_create_preview_contains_complete_profile_diff(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
