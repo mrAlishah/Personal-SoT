@@ -2,6 +2,8 @@
 """Dependency-free static validation for the AI Source of Truth."""
 from __future__ import annotations
 import argparse
+from dataclasses import dataclass
+from hashlib import sha256
 import re
 import sys
 from pathlib import Path
@@ -19,6 +21,21 @@ RAW_SECRET_KEYS = {"password", "bank_password", "api_token", "private_key", "rec
 SAFE_SECRET_SENTINELS = {"not_stored", "none", "null", "redacted", "external_reference", "not_applicable"}
 PRIMARY_DIRS = {"workspace", "system", "guides"}
 LEGACY_TOP_LEVEL = {"routing", "context", "behavior", "formats", "tones", "depth", "languages", "profiles", "prompts", "migration", "adapters", "retrieval", "automation", "examples", "tests", "governance", "release", "validation"}
+
+
+@dataclass(frozen=True)
+class ProfileManifest:
+    present: bool
+    top_keys: frozenset[str]
+    behaviors: tuple[str, ...]
+    formats: tuple[str, ...]
+    tone: Optional[str]
+    depth: Optional[str]
+    primary_language: Optional[str]
+    supporting_languages: tuple[str, ...]
+    controls: tuple[tuple[str, str], ...]
+    body: str
+    syntax_errors: tuple[str, ...]
 
 
 def read_text(path: Path) -> str:
@@ -83,7 +100,11 @@ def switch_registry_entries(root: Path) -> List[Tuple[str, str, str]]:
     entries: List[Tuple[str, str, str]] = []
     section = ""
     in_fence = False
-    for raw in read_text(path).splitlines():
+    try:
+        lines = read_text(path).splitlines()
+    except (OSError, UnicodeError):
+        return []
+    for raw in lines:
         stripped = raw.strip()
         if stripped.startswith("## "):
             section = stripped[3:].strip()
@@ -100,47 +121,70 @@ def switch_registry_entries(root: Path) -> List[Tuple[str, str, str]]:
     return entries
 
 
+def _safe_canonical_file(root: Path, path: Path) -> bool:
+    try:
+        return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
 def registered_section_targets(root: Path, section_name: str) -> Dict[str, str]:
     specs: Dict[str, str] = {}
     for section, identifier, target_text in switch_registry_entries(root):
-        if section == section_name and (root / target_text).is_file():
+        if section == section_name and _safe_canonical_file(root, root / target_text):
             specs[identifier] = target_text
     return specs
 
 
 def registered_control_specs(root: Path, errors: List[str]) -> Dict[str, set]:
-    registry_path = root / "system" / "routing" / "switch_registry.md"
     specs: Dict[str, set] = {}
     for section, identifier, target_text in switch_registry_entries(root):
         if section != "registered_controls":
             continue
         target = root / target_text
-        if not target.is_file():
+        if not _safe_canonical_file(root, target):
             continue
-        scalars, values = parse_control_manifest(read_text(target))
-        rel = target.relative_to(root)
-        control_id = scalars.get("control_id")
-        default = scalars.get("control_default")
-        if control_id is None:
-            errors.append(f"{rel}: registered control requires frontmatter control_id")
-        elif not NAME_RE.fullmatch(control_id):
-            errors.append(f"{rel}: invalid control_id {control_id!r}")
-        elif control_id != identifier:
-            errors.append(
-                f"{registry_path.relative_to(root)}: registered control {identifier!r} points to {target_text!r} "
-                f"whose control_id is {control_id!r}"
-            )
-        if not values:
-            errors.append(f"{rel}: registered control requires non-empty control_values")
-        elif len(values) != len(set(values)):
-            errors.append(f"{rel}: duplicate entries in control_values")
-        if default is None:
-            errors.append(f"{rel}: registered control requires control_default")
-        elif values and default not in values:
-            errors.append(f"{rel}: control_default {default!r} is not present in control_values {values!r}")
-        if identifier not in specs and values:
+        source = read_text(target)
+        local_errors = validate_control_source(root, target, identifier, source, target_text)
+        errors.extend(local_errors)
+        _, values = parse_control_manifest(source)
+        if identifier not in specs and values and not local_errors:
             specs[identifier] = set(values)
     return specs
+
+
+def validate_control_source(
+    root: Path,
+    path: Path,
+    identifier: str,
+    source: str,
+    target_text: Optional[str] = None,
+) -> List[str]:
+    """Validate one registered control target with validator-owned rules."""
+    errors: List[str] = []
+    scalars, values = parse_control_manifest(source)
+    rel = path.relative_to(root)
+    control_id = scalars.get("control_id")
+    default = scalars.get("control_default")
+    if control_id is None:
+        errors.append(f"{rel}: registered control requires frontmatter control_id")
+    elif not NAME_RE.fullmatch(control_id):
+        errors.append(f"{rel}: invalid control_id {control_id!r}")
+    elif control_id != identifier:
+        target = target_text or rel.as_posix()
+        errors.append(
+            f"system/routing/switch_registry.md: registered control {identifier!r} points to {target!r} "
+            f"whose control_id is {control_id!r}"
+        )
+    if not values:
+        errors.append(f"{rel}: registered control requires non-empty control_values")
+    elif len(values) != len(set(values)):
+        errors.append(f"{rel}: duplicate entries in control_values")
+    if default is None:
+        errors.append(f"{rel}: registered control requires control_default")
+    elif values and default not in values:
+        errors.append(f"{rel}: control_default {default!r} is not present in control_values {values!r}")
+    return errors
 
 
 def registered_format_specs(root: Path, errors: List[str]) -> Dict[str, str]:
@@ -150,7 +194,7 @@ def registered_format_specs(root: Path, errors: List[str]) -> Dict[str, str]:
         if section != "formats":
             continue
         target = root / target_text
-        if not target.is_file():
+        if not _safe_canonical_file(root, target):
             continue
         metadata = simple_frontmatter(read_text(target))
         rel = target.relative_to(root)
@@ -274,6 +318,205 @@ def parse_profile_manifest(text: str) -> Tuple[set, Dict[str, List[str]], Dict[s
     return top_keys, lists, scalars
 
 
+def _profile_syntax_errors(text: str) -> tuple[str, ...]:
+    lines = frontmatter_lines(text)
+    if lines is None:
+        return ()
+    errors: List[str] = []
+    current: Optional[str] = None
+    language_sub: Optional[str] = None
+    top_seen: set[str] = set()
+    language_seen: set[str] = set()
+    controls_seen: set[str] = set()
+    for number, raw in enumerate(lines, 2):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            errors.append(f"line {number}: comments are forbidden in Profile manifests")
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent == 0:
+            if ":" not in stripped:
+                errors.append(f"line {number}: malformed Profile field")
+                current = None
+                continue
+            key, value = stripped.split(":", 1)
+            current, value, language_sub = key.strip(), clean_scalar(value), None
+            if current in top_seen:
+                errors.append(f"line {number}: duplicate Profile field {current!r}")
+            top_seen.add(current)
+            if current in {"behaviors", "formats"} and value not in {"", "[]"}:
+                errors.append(f"line {number}: {current} must be a list")
+            elif current in {"language", "controls"} and value:
+                errors.append(f"line {number}: {current} must be a mapping")
+            elif current in {"tone", "depth"} and not value:
+                errors.append(f"line {number}: {current} requires one value")
+            continue
+        if indent == 2 and current in {"behaviors", "formats"} and stripped.startswith("- "):
+            if not clean_scalar(stripped[2:]):
+                errors.append(f"line {number}: empty {current} item")
+            continue
+        if indent == 2 and current == "language" and ":" in stripped:
+            key, value = stripped.split(":", 1)
+            language_sub, value = key.strip(), clean_scalar(value)
+            if language_sub in language_seen:
+                errors.append(f"line {number}: duplicate language field {language_sub!r}")
+            language_seen.add(language_sub)
+            if language_sub == "primary" and not value:
+                errors.append(f"line {number}: language.primary requires one value")
+            elif language_sub == "supporting" and value not in {"", "[]"}:
+                errors.append(f"line {number}: language.supporting must be a list")
+            elif language_sub not in {"primary", "supporting"}:
+                errors.append(f"line {number}: unsupported language field {language_sub!r}")
+            continue
+        if indent == 4 and current == "language" and language_sub == "supporting" and stripped.startswith("- "):
+            if not clean_scalar(stripped[2:]):
+                errors.append(f"line {number}: empty language.supporting item")
+            continue
+        if indent == 2 and current == "controls" and ":" in stripped:
+            key, value = stripped.split(":", 1)
+            key = key.strip()
+            if key in controls_seen:
+                errors.append(f"line {number}: duplicate Profile control {key!r}")
+            controls_seen.add(key)
+            if not key or not clean_scalar(value):
+                errors.append(f"line {number}: Profile control requires an identity and value")
+            continue
+        errors.append(f"line {number}: unsupported Profile structure")
+    return tuple(errors)
+
+
+def read_profile_manifest(source: str) -> ProfileManifest:
+    top_keys, lists, scalars = parse_profile_manifest(source)
+    lines = source.splitlines()
+    closing = next(
+        (index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"),
+        None,
+    )
+    body = "\n".join(lines[closing + 1 :]) if closing is not None else ""
+    return ProfileManifest(
+        frontmatter_lines(source) is not None,
+        frozenset(top_keys),
+        tuple(lists.get("behaviors", [])),
+        tuple(lists.get("formats", [])),
+        scalars.get("tone"),
+        scalars.get("depth"),
+        scalars.get("language.primary"),
+        tuple(lists.get("language.supporting", [])),
+        tuple(
+            (key.split(".", 1)[1], value)
+            for key, value in scalars.items()
+            if key.startswith("controls.")
+        ),
+        body,
+        _profile_syntax_errors(source),
+    )
+
+
+def _validate_profile_manifest(
+    root: Path,
+    path: Path,
+    manifest: ProfileManifest,
+    control_specs: Dict[str, set],
+    format_specs: Dict[str, str],
+    tone_specs: Dict[str, str],
+    depth_specs: Dict[str, str],
+    errors: List[str],
+) -> None:
+    rel = path.relative_to(root)
+    if not manifest.present:
+        errors.append(f"{rel}: profile requires YAML frontmatter")
+        return
+    if manifest.body.strip():
+        errors.append(f"{rel}: Profile must remain a frontmatter-only composition manifest; body content is forbidden")
+    errors.extend(f"{rel}: {error}" for error in manifest.syntax_errors)
+    unknown = manifest.top_keys - PROFILE_TOP_LEVEL
+    if unknown:
+        errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
+    for key, value in manifest.controls:
+        allowed = control_specs.get(key)
+        if allowed is None:
+            errors.append(f"{rel}: unsupported profile control {key!r}")
+        elif value not in allowed:
+            errors.append(f"{rel}: invalid value for controls.{key} ({value!r}); expected one of {sorted(allowed)}")
+    for value in manifest.formats:
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid format identifier {value!r}")
+        elif value not in format_specs:
+            errors.append(f"{rel}: unresolved registered format reference {value!r}")
+    for field, value, specs in (
+        ("tone", manifest.tone, tone_specs),
+        ("depth", manifest.depth, depth_specs),
+    ):
+        if not value:
+            continue
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid {field} identifier {value!r}")
+        elif value not in specs:
+            errors.append(f"{rel}: unresolved registered {field} reference {value!r}")
+    refs = [("behavior", value, root / "system/behavior" / f"{value}.md") for value in manifest.behaviors]
+    if manifest.primary_language:
+        refs.append(
+            (
+                "language",
+                manifest.primary_language,
+                root / "workspace/presentation/languages" / f"{manifest.primary_language}.md",
+            )
+        )
+    refs.extend(
+        ("language", value, root / "workspace/presentation/languages" / f"{value}.md")
+        for value in manifest.supporting_languages
+    )
+    for kind, value, target in refs:
+        if not NAME_RE.fullmatch(value):
+            errors.append(f"{rel}: invalid {kind} identifier {value!r}")
+        elif not _safe_canonical_file(root, target):
+            errors.append(f"{rel}: unresolved {kind} reference {value!r} -> {target.relative_to(root)}")
+
+
+def validate_profile_source(root: Path, path: Path, source: str) -> List[str]:
+    """Validate one proposed Profile with the repository-owned rules."""
+    errors: List[str] = []
+    control_specs = registered_control_specs(root, errors)
+    format_specs = registered_format_specs(root, errors)
+    _validate_profile_manifest(
+        root,
+        path,
+        read_profile_manifest(source),
+        control_specs,
+        format_specs,
+        registered_section_targets(root, "tones"),
+        registered_section_targets(root, "depths"),
+        errors,
+    )
+    return errors
+
+
+def profile_validation_state_digest(root: Path, source: str) -> str:
+    """Bind a Profile preview to its canonical inventory and dependencies."""
+    root = root.resolve()
+    manifest = read_profile_manifest(source)
+    profiles = root / "workspace" / "profiles"
+    paths = list(profiles.glob("*.md")) if profiles.is_dir() and not profiles.is_symlink() else []
+    registry = root / "system" / "routing" / "switch_registry.md"
+    paths.append(registry)
+    paths.extend(root / target for _, _, target in switch_registry_entries(root))
+    paths.extend(root / "system" / "behavior" / f"{name}.md" for name in manifest.behaviors)
+    languages = ([manifest.primary_language] if manifest.primary_language else []) + list(manifest.supporting_languages)
+    paths.extend(root / "workspace" / "presentation" / "languages" / f"{name}.md" for name in languages)
+
+    digest = sha256()
+    for path in sorted(set(paths), key=lambda item: item.as_posix()):
+        try:
+            relative = path.relative_to(root).as_posix()
+            content = path.read_bytes() if _safe_canonical_file(root, path) else b"<unavailable>"
+        except (OSError, ValueError):
+            relative, content = "<unsafe>", b"<unavailable>"
+        digest.update(relative.encode("utf-8") + b"\0" + content + b"\0")
+    return digest.hexdigest()
+
+
 def validate_profiles(
     root: Path,
     control_specs: Dict[str, set],
@@ -286,45 +529,16 @@ def validate_profiles(
     if not profiles.exists():
         return
     for path in sorted(profiles.glob("*.md")):
-        top_keys, lists, scalars = parse_profile_manifest(read_text(path))
-        rel = path.relative_to(root)
-        unknown = top_keys - PROFILE_TOP_LEVEL
-        if unknown:
-            errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
-        controls = {key.split(".", 1)[1]: value for key, value in scalars.items() if key.startswith("controls.")}
-        for key, value in controls.items():
-            allowed = control_specs.get(key)
-            if allowed is None:
-                errors.append(f"{rel}: unsupported profile control {key!r}")
-            elif value not in allowed:
-                errors.append(f"{rel}: invalid value for controls.{key} ({value!r}); expected one of {sorted(allowed)}")
-        for value in lists["formats"]:
-            if not NAME_RE.fullmatch(value):
-                errors.append(f"{rel}: invalid format identifier {value!r}")
-            elif value not in format_specs:
-                errors.append(f"{rel}: unresolved registered format reference {value!r}")
-        tone = scalars.get("tone")
-        if tone:
-            if not NAME_RE.fullmatch(tone):
-                errors.append(f"{rel}: invalid tone identifier {tone!r}")
-            elif tone not in tone_specs:
-                errors.append(f"{rel}: unresolved registered tone reference {tone!r}")
-        depth = scalars.get("depth")
-        if depth:
-            if not NAME_RE.fullmatch(depth):
-                errors.append(f"{rel}: invalid depth identifier {depth!r}")
-            elif depth not in depth_specs:
-                errors.append(f"{rel}: unresolved registered depth reference {depth!r}")
-        refs = [("behavior", v, root / "system" / "behavior" / f"{v}.md") for v in lists["behaviors"]]
-        if scalars.get("language.primary"):
-            value = scalars["language.primary"]
-            refs.append(("language", value, root / "workspace" / "presentation" / "languages" / f"{value}.md"))
-        refs += [("language", v, root / "workspace" / "presentation" / "languages" / f"{v}.md") for v in lists["language.supporting"]]
-        for kind, value, target in refs:
-            if not NAME_RE.fullmatch(value):
-                errors.append(f"{rel}: invalid {kind} identifier {value!r}")
-            elif not target.is_file():
-                errors.append(f"{rel}: unresolved {kind} reference {value!r} -> {target.relative_to(root)}")
+        _validate_profile_manifest(
+            root,
+            path,
+            read_profile_manifest(read_text(path)),
+            control_specs,
+            format_specs,
+            tone_specs,
+            depth_specs,
+            errors,
+        )
 
 
 def validate_switch_registry(root: Path, errors: List[str]) -> None:
