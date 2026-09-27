@@ -52,4 +52,8 @@ Claude-specific memory/instruction files are adapter configuration, not canonica
 
 ## capability_boundary
 
+Use `system/connectors/source_contract.md` and its host integration guide for
+connector-backed sources. Claude Code may use a permitted host executor;
+Claude Web must report limited capability if no pre-exposure gate is available.
+
 Filesystem, network, tool, model, and permission capabilities are external runtime constraints. Surface unavailable canonical content/write capability rather than simulating success.

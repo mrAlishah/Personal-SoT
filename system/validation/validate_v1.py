@@ -602,24 +602,30 @@ def validate_switch_registry(root: Path, errors: List[str]) -> None:
                 )
 
 
+def context_registry_entries(source: str) -> List[Tuple[str, str]]:
+    entries = []
+    in_fence = False
+    pending_scope = None
+    for raw in source.splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            pending_scope = None
+        elif in_fence and stripped:
+            if stripped.startswith("→ "):
+                if pending_scope is not None:
+                    entries.append((pending_scope, stripped[2:].strip()))
+                pending_scope = None
+            elif "→" not in stripped and not stripped.startswith("#"):
+                pending_scope = stripped
+    return entries
+
+
 def validate_context_registry(root: Path, errors: List[str]) -> None:
     path = root / "system" / "routing" / "context_registry.md"
     seen_scopes: Dict[str, str] = {}
     if path.exists():
-        in_fence = False
-        pending_scope: Optional[str] = None
-        for raw in read_text(path).splitlines():
-            stripped = raw.strip()
-            if stripped.startswith("```"):
-                in_fence = not in_fence
-                pending_scope = None
-                continue
-            if not in_fence or not stripped:
-                continue
-            if stripped.startswith("→ "):
-                target_text = stripped[2:].strip()
-                if pending_scope is None:
-                    continue
+        for pending_scope, target_text in context_registry_entries(read_text(path)):
                 if not SCOPE_RE.fullmatch(pending_scope):
                     errors.append(f"{path.relative_to(root)}: invalid runtime scope identifier {pending_scope!r}")
                 previous_target = seen_scopes.get(pending_scope)
@@ -631,16 +637,11 @@ def validate_context_registry(root: Path, errors: List[str]) -> None:
                 else:
                     seen_scopes[pending_scope] = target_text
                 if not target_text.startswith("workspace/context/"):
-                    pending_scope = None
                     continue
                 if "guides/developer/examples/" in target_text:
                     errors.append(f"{path.relative_to(root)}: example path registered as runtime scope")
                 if not (root / target_text.rstrip("/")).is_dir():
                     errors.append(f"{path.relative_to(root)}: missing scope target {target_text!r}")
-                pending_scope = None
-                continue
-            if "→" not in stripped and not stripped.startswith("#"):
-                pending_scope = stripped
 
     expected_scopes: Dict[str, str] = {}
     personal = root / "workspace" / "context" / "personal"
