@@ -18,7 +18,7 @@ adapter
 ≠ duplicated runtime orchestration
 ```
 
-Reusable conversational bootstrap/re-anchor behavior is canonical in `system/adapters/runtime_bootstrap.md`.
+Reusable conversational bootstrap/re-anchor behavior is canonical in `system/adapters/runtime_bootstrap.md`. Provider-neutral local/connector source binding, capability, freshness, provenance, and failure semantics are canonical in `system/adapters/source_access_contract.md`.
 
 ## canonical_adapter_fields
 
@@ -47,7 +47,7 @@ Only configure a field when the client/runtime actually needs it. Avoid adapter-
 Conceptually:
 
 ```text
-1. locate authorized Source-of-Truth root and active deployment/bootstrap
+1. resolve one authorized canonical Source-of-Truth binding through `system/adapters/source_access_contract.md`, including actual host capability and current revision/version evidence when available
 2. load minimal runtime/routing/discovery contracts needed for the task
 3. parse explicit leading control block
 4. if @do:sot: execute system/adapters/runtime_bootstrap.md and return its compact diagnostic
@@ -61,7 +61,7 @@ Conceptually:
 12. validate module access before relevance
 13. load minimum sufficient authoritative atoms/contracts
 14. execute/render/recap/maintain according to the fully resolved effective configuration and selected action
-15. preserve diagnostics/provenance/coverage where useful
+15. preserve source/module provenance and truthful capability/coverage limitations where useful
 ```
 
 Profile manifests are executable configuration, not descriptive metadata. A runtime must not claim a profile is active while silently omitting referenced behavior, presentation, or registered-control configuration. If a required selected module/control contract cannot be read or resolved, surface the limitation/configuration error instead of approximating or dropping it.
@@ -185,6 +185,14 @@ Adapter direct defaults remain inside their contracted precedence lanes and do n
 
 Host/UI Markdown used for ordinary readability is not itself activation of canonical `md`; presentation must follow `system/presentation/formats/format_contract.md`.
 
+## source_access
+
+Local filesystems, repository connectors, project sources, apps, and equivalent host mechanisms are transport/capability surfaces. They follow `system/adapters/source_access_contract.md` and do not create a second authority model.
+
+A mapped source is not considered loaded until it is actually resolved and its canonical entrypoint can be read. If the source is unavailable, unauthorized, ambiguous, or only partially accessible, report that limitation rather than substituting conversation memory or another source.
+
+Connector-backed search/list operations must not expose protected snippets before canonical access can be evaluated. Adapters should request the minimum source operations needed by canonical path/scope/module retrieval.
+
 ## sensitive_context
 
 An adapter may participate in deterministic authorization for `ai_access: restricted` only when the host exposes a real authorization boundary.
@@ -207,7 +215,7 @@ Adapter entrypoints and external wrappers should be short. Put repeated executio
 
 Prompt templates remain client-neutral Markdown. Recap semantics remain client-neutral but actual available history depth depends on the host/client capability.
 
-A new AI client should normally need only minimal wiring for source location, runtime entrypoint, authorized file/action/history capabilities, and genuine defaults—not rewritten canonical contracts.
+A new AI client should normally need only minimal wiring for source location, runtime entrypoint, authorized source/file/action/history capabilities, and genuine defaults—not rewritten canonical contracts. A connector-backed client translates provider operations into the source-access contract rather than introducing client-specific authority or retrieval semantics.
 
 ## acceptance
 
