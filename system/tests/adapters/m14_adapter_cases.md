@@ -34,15 +34,15 @@ Expected: fail closed; do not fall back to adapter default.
 
 ## case_06_default_profile
 
-Adapter selects `coding`; prompt has no explicit profile.
+Adapter selects `g.coding`; prompt has no explicit profile.
 
-Expected: coding profile may apply.
+Expected: `g.coding` profile may apply.
 
 ## case_07_explicit_profile_replaces_default
 
-Adapter default profile = coding; prompt explicitly selects research.
+Adapter default profile = `g.coding`; prompt explicitly selects `g.research`.
 
-Expected: research explicit profile selection replaces lower default profile selection.
+Expected: explicit `g.research` selection replaces lower `g.coding` default selection.
 
 ## case_08_presentation_precedence
 
@@ -154,19 +154,19 @@ Expected: prefer the thinnest adapter that still lets the client locate and exec
 
 ## case_26_initial_sot_bootstrap
 
-User invokes `@do:initialSoT` at the beginning of a chat.
+User invokes `@do:sot` at the beginning of a chat.
 
 Expected: runtime resolves active deployment defaults, exact profile manifest and all referenced behavior/format/tone/depth/language modules, loads minimum relevant authorized context, then returns compact truthful diagnostics.
 
 ## case_27_initial_sot_drift_reanchor
 
-Later in the same chat, user invokes `@do:initialSoT` again because of drift.
+Later in the same chat, user invokes `@do:sot` again because of drift.
 
 Expected: same resolve + reload + re-anchor semantics as first invocation; no separate refreshed/stale state machine.
 
 ## case_28_same_chat_reuse
 
-After successful `@do:initialSoT`, next ordinary prompt requires no configuration change and no different factual context.
+After successful `@do:sot`, next ordinary prompt requires no configuration change and no different factual context.
 
 Expected: reuse already resolved effective profile/presentation configuration; do not reread unchanged modules merely for freshness.
 
@@ -232,13 +232,13 @@ Expected: valid thin bootstrap; do not copy runtime semantics into the wrapper. 
 
 ## case_39_reanchor_invalidates_negative_fact_lookup
 
-In Chat A, a Personal fact lookup returns `not found`. In Chat B, that fact is later canonicalized in the same active SoT deployment. The user returns to Chat A and invokes `@do:initialSoT`.
+In Chat A, a Personal fact lookup returns `not found`. In Chat B, that fact is later canonicalized in the same active SoT deployment. The user returns to Chat A and invokes `@do:sot`.
 
 Expected: the old `not found` conclusion is invalidated as a freshness-sensitive factual conclusion. It must not remain evidence that the fact is absent after re-anchor.
 
 ## case_40_reanchor_does_not_eager_load_all_facts
 
-After the scenario in case 39, `@do:initialSoT` re-anchors successfully.
+After the scenario in case 39, `@do:sot` re-anchors successfully.
 
 Expected: runtime does not load the entire Personal or restricted context merely to refresh freshness. It invalidates stale conclusions and retains progressive disclosure.
 
@@ -250,4 +250,4 @@ Expected: runtime performs targeted retrieval against the current canonical sour
 
 ## exit_criterion
 
-M14 passes when ChatGPT, Codex, Claude, and future clients can bootstrap/re-anchor the same canonical architecture using thin client-specific configuration, explicitly load the resolved canonical entrypoint when required by the host wrapper, execute `@do:initialSoT`, invalidate stale factual and negative-lookup conclusions at re-anchor without eager-loading all context, reuse unchanged same-chat configuration safely, selectively resolve current facts on demand, preserve host-native normal-chat presentation, default to normal chat delivery unless an explicit document-style deliverable is requested, apply canonical formats only as bounded deltas, and avoid duplicating knowledge or runtime orchestration.
+M14 passes when ChatGPT, Codex, Claude, and future clients can bootstrap/re-anchor the same canonical architecture using thin client-specific configuration, explicitly load the resolved canonical entrypoint when required by the host wrapper, execute `@do:sot`, invalidate stale factual and negative-lookup conclusions at re-anchor without eager-loading all context, reuse unchanged same-chat configuration safely, selectively resolve current facts on demand, preserve host-native normal-chat presentation, default to normal chat delivery unless an explicit document-style deliverable is requested, apply canonical formats only as bounded deltas, and avoid duplicating knowledge or runtime orchestration.

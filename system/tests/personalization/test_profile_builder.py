@@ -52,13 +52,13 @@ class ProfileBuilderTests(unittest.TestCase):
     def test_exact_profile_reuse_wins(self):
         action = choose_profile_action(
             ProfileAssessment(
-                exact_identity="research",
+                exact_identity="g.research",
                 direct_composition_sufficient=True,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("reuse_profile", "research"), action)
+        self.assertEqual(("reuse_profile", "g.research"), action)
 
     def test_direct_composition_wins_before_creation(self):
         action = choose_profile_action(
@@ -74,18 +74,40 @@ class ProfileBuilderTests(unittest.TestCase):
 
     def test_edit_requires_clear_same_semantic_owner(self):
         allowed = choose_profile_action(
-            ProfileAssessment(edit_identity="research", same_semantic_owner=True)
+            ProfileAssessment(edit_identity="research_notes", same_semantic_owner=True)
         )
         blocked = choose_profile_action(
             ProfileAssessment(
-                edit_identity="research",
+                edit_identity="research_notes",
                 same_semantic_owner=False,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("edit", "research"), allowed)
+        self.assertEqual(("edit", "research_notes"), allowed)
         self.assertEqual(("create", None), blocked)
+
+    def test_built_in_customization_creates_separate_profile(self):
+        action = choose_profile_action(
+            ProfileAssessment(
+                edit_identity="g.research",
+                same_semantic_owner=True,
+                reusable=True,
+            )
+        )
+
+        self.assertEqual(("create", None), action)
+
+    def test_invalid_reserved_identity_is_never_selected_for_edit(self):
+        action = choose_profile_action(
+            ProfileAssessment(
+                edit_identity="g.problem_solving",
+                same_semantic_owner=True,
+                reusable=True,
+            )
+        )
+
+        self.assertEqual(("create", None), action)
 
     def test_create_preview_contains_complete_profile_diff(self):
         with TemporaryDirectory() as directory:
@@ -108,6 +130,41 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertIn("tone: formal", proposal.diff)
             self.assertIn("depth: short", proposal.diff)
             self.assertEqual((), proposal.preflight_errors)
+
+    def test_create_rejects_reserved_built_in_identity(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+
+            with self.assertRaisesRegex(ValueError, "reserved"):
+                preview_change(
+                    root,
+                    "create",
+                    "g.custom.profile",
+                    self.source(),
+                    same_semantic_owner=False,
+                    fact_safe=True,
+                    write_capable=True,
+                )
+
+    def test_edit_rejects_reserved_built_in_identity(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            (root / "workspace/profiles/g.coding.md").write_text(
+                self.source(), encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(ValueError, "reserved"):
+                preview_change(
+                    root,
+                    "edit",
+                    "g.coding",
+                    self.source(),
+                    same_semantic_owner=True,
+                    fact_safe=True,
+                    write_capable=True,
+                )
 
     def test_edit_preview_requires_same_owner(self):
         with TemporaryDirectory() as directory:

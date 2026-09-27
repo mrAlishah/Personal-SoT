@@ -18,7 +18,7 @@ class PromptBuilderReuseTests(unittest.TestCase):
         assessment = ReuseAssessment(
             exact_identity="coding/review_pr",
             parameterized_identity="coding/review_generic",
-            composition=("profile:coding",),
+            composition=("profile:g.coding",),
             edit_identity="coding/old_review",
             same_semantic_owner=True,
         )
@@ -28,7 +28,7 @@ class PromptBuilderReuseTests(unittest.TestCase):
     def test_parameterized_reuse_wins_before_composition_or_creation(self):
         assessment = ReuseAssessment(
             parameterized_identity="coding/review_pr",
-            composition=("profile:coding",),
+            composition=("profile:g.coding",),
         )
 
         self.assertEqual(
@@ -38,7 +38,7 @@ class PromptBuilderReuseTests(unittest.TestCase):
 
     def test_composition_wins_before_edit_or_creation(self):
         assessment = ReuseAssessment(
-            composition=("profile:coding", "tone:professional"),
+            composition=("profile:g.coding", "tone:professional"),
             edit_identity="coding/review_pr",
             same_semantic_owner=True,
         )

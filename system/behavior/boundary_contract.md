@@ -96,7 +96,7 @@ A profile SHOULD reference behavior modules rather than copying their content.
 Conceptually:
 
 ```text
-profile: technical_learning
+profile: g.technical.learning
 behaviors:
   - reasoning
   - teaching
@@ -113,7 +113,7 @@ Client-specific wiring belongs in adapters, not reusable behavior.
 use careful source verification
 → system/behavior/research.md
 
-ChatGPT project default_profile = research
+ChatGPT project default_profile = g.research
 → adapter/project configuration
 ```
 

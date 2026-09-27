@@ -6,7 +6,7 @@
 
 - source_of_truth_root: `<SOURCE_OF_TRUTH_ROOT>` <!-- EDIT_ME -->
 - default_scope: `<OPTIONAL_RUNTIME_SCOPE>` <!-- EDIT_ME_OR_DELETE -->
-- default_profile: `coding` <!-- EDIT_ME_OR_DELETE -->
+- default_profile: `g.coding` <!-- EDIT_ME_OR_DELETE -->
 
 ## operating rules
 

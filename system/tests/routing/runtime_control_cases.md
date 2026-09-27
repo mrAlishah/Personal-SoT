@@ -92,7 +92,7 @@ Expected: prompt-local only; do not persist the value into later prompts.
 
 ## case_11_initial_sot_exclusive
 
-Input combines `@do:initialSoT` with `@control:clarify_risk=off`.
+Input combines `@do:sot` with `@control:clarify_risk=off`.
 
 Expected: invalid control block; bootstrap resolves configured controls itself.
 

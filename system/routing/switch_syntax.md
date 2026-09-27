@@ -27,7 +27,7 @@ Executable directives are allowed only in a leading control block that starts at
 
 Multiline `@param` is the exception: after `@param:<name>=[[`, every following line is literal parameter content until a line whose trimmed content is exactly `]]`. Switch-like text inside that value is data, not executable directives. A standalone `]` is ordinary data; a literal standalone `]]` content line is escaped as `\]]`.
 
-Switch-like text after the body starts, or inside bullets/quotes/code fences, is ordinary text. Directives are prompt-local by default except the contracted same-chat basis established by `@do:initialSoT`.
+Switch-like text after the body starts, or inside bullets/quotes/code fences, is ordinary text. Directives are prompt-local by default except the contracted same-chat basis established by `@do:sot`.
 
 ## canonical_namespaces
 
@@ -41,7 +41,7 @@ Switch-like text after the body starts, or inside bullets/quotes/code fences, is
 @control:<registered_control>=<allowed_value>
 @no:fmt:<registered_format>
 
-@do:initialSoT
+@do:sot
 @do:prompt:<path>
 @edit:prompt:<path>
 @delete:prompt:<path>
@@ -52,13 +52,13 @@ Switch-like text after the body starts, or inside bullets/quotes/code fences, is
 @recap:<positive_integer>
 ```
 
-`@do:initialSoT` is a reserved literal runtime spelling. Its exact case is canonical and it is not a repository-owned identifier subject to lowercase_snake_case naming.
+`@do:sot` is a reserved literal runtime spelling. Its exact case is canonical and it is not a repository-owned identifier subject to lowercase_snake_case naming.
 
 Bare `@prompt:<path>` is unsupported because action intent must be explicit.
 
 ## lexical_rules
 
-Repository-owned identifiers use lowercase snake_case; hierarchical context/prompt identities use `/`. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
+Repository-owned identifiers generally use lowercase snake_case; shipped Profile identities use the reserved hierarchical `g.*` grammar defined by `system/profiles/profile_contract.md`; hierarchical context/prompt identities use `/`. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
 
 `@fmt`, `@tone`, and `@depth` accept exact identifiers registered in the corresponding `system/routing/switch_registry.md` sections. This syntax contract does not maintain duplicate current-identity lists.
 
@@ -165,15 +165,19 @@ No control value can disable external mandatory constraints, host/tool permissio
 
 At most one high-level action may appear in one control block: one bootstrap action, one prompt action, or one recap action. Combining high-level actions is invalid.
 
-## initial_sot_action
+## sot_action
 
 ```text
-@do:initialSoT
+@do:sot
 ```
 
 Invokes `system/adapters/runtime_bootstrap.md` semantics. It accepts no `@param`, needs no body, and every invocation performs the same resolve + reload + re-anchor operation for the current accessible chat. It may be used at chat start or later after drift.
 
-Do not combine `@do:initialSoT` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
+Do not combine `@do:sot` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
+
+For migration compatibility only, the exact legacy literal
+`@do:initialSoT` resolves to this action and emits a deprecation diagnostic
+recommending `@do:sot`. No other bootstrap alias is recognized.
 
 ## prompt_action
 

@@ -17,6 +17,10 @@ workspace/profiles/<profile_name>.md
 
 Do not maintain a second canonical list of selectable profile identities in this README. The exact filename under `workspace/profiles/` is the runtime identity, as defined by `profile_contract.md`.
 
+Shipped Profiles use the reserved hierarchical `g.*` namespace. Custom
+Profiles use `lowercase_snake_case`. Resolution is exact: neither form creates
+aliases for the other, and user create/edit flows do not write `g.*` Profiles.
+
 Read `profile_contract.md` for schema, composition, precedence, validation, and exact runtime-resolution rules.
 
 Profiles are referenced through `@profile:<name>` or adapter/default profile configuration.

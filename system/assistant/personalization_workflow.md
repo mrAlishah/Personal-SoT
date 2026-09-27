@@ -50,9 +50,9 @@ Examples:
 - “Make answers shorter” recommends the current `short` depth.
 - “Answer more formally” recommends the current `formal` tone.
 - “Use a comparison table” recommends the current `comparison_table` format.
-- “Teach step by step” may compose `technical_learning` with canonical
+- “Teach step by step” may compose `g.technical.learning` with canonical
   `learning=on` and `step_execution=on` controls.
-- “Deep professional research” reuses `research` when its current manifest
+- “Deep professional research” reuses `g.research` when its current manifest
   supplies that composition.
 
 Direct `formal + short` composition does not justify a new Profile by itself.
@@ -75,7 +75,7 @@ Lead with the outcome and a natural-language example. After that, Advanced may
 show exact optional syntax such as:
 
 ```text
-@profile:research
+@profile:g.research
 @fmt:comparison_table
 @tone:formal
 @depth:short

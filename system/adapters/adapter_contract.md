@@ -50,7 +50,7 @@ Conceptually:
 1. locate authorized Source-of-Truth root and active deployment/bootstrap
 2. load minimal runtime/routing/discovery contracts needed for the task
 3. parse explicit leading control block
-4. if @do:initialSoT: execute system/adapters/runtime_bootstrap.md and return its compact diagnostic
+4. if @do:sot: execute system/adapters/runtime_bootstrap.md and return its compact diagnostic
 5. otherwise resolve the effective configuration from applicable adapter/project defaults, reusable same-chat configuration when still applicable, prompt/session overrides, selected profile defaults, registered-control defaults, and explicit directives
 6. if an effective profile is selected, read its exact manifest and resolve/apply every referenced behavior, format, tone, depth, language module, and registered control value required by the effective configuration
 7. resolve registered runtime-control contracts required by the effective configuration
@@ -66,12 +66,12 @@ Conceptually:
 
 Profile manifests are executable configuration, not descriptive metadata. A runtime must not claim a profile is active while silently omitting referenced behavior, presentation, or registered-control configuration. If a required selected module/control contract cannot be read or resolved, surface the limitation/configuration error instead of approximating or dropping it.
 
-## initial_sot
+## sot_action
 
 Adapters supporting conversational runtime bootstrapping must recognize the reserved parameterless action:
 
 ```text
-@do:initialSoT
+@do:sot
 ```
 
 Its semantics are defined only by `system/adapters/runtime_bootstrap.md`. Client/project wrappers must not maintain rewritten copies of that sequence.
@@ -84,7 +84,7 @@ When the host exposes the same conversation context, a successful bootstrap/re-a
 
 Reuse unchanged profile/presentation/control resolution instead of re-reading the same modules on every turn merely for freshness. Resolve additional factual context selectively when the new request materially requires it.
 
-Re-resolve when explicit directives/configuration change, relevant canonical source is known to have changed, previous resolution is unavailable/uncertain, or `@do:initialSoT` is invoked again.
+Re-resolve when explicit directives/configuration change, relevant canonical source is known to have changed, previous resolution is unavailable/uncertain, or `@do:sot` is invoked again.
 
 This is an optimization only: canonical current source still outranks stale conversation state.
 
@@ -211,4 +211,4 @@ A new AI client should normally need only minimal wiring for source location, ru
 
 ## acceptance
 
-A compliant adapter can locate the canonical runtime through a thin external surface, execute parameterless `@do:initialSoT`, resolve effective defaults and explicit overrides including registered runtime controls, fully compose selected profiles and their referenced modules, reuse unchanged same-chat configuration when safe, selectively reload context, preserve format boundaries, resolve exact prompt actions when capabilities permit, preserve render-vs-execute-vs-delete semantics, select bounded recap history without inventing unavailable exchanges, keep context authority independent, and fail clearly when source/module/write/tool/history capabilities are unavailable.
+A compliant adapter can locate the canonical runtime through a thin external surface, execute parameterless `@do:sot`, resolve effective defaults and explicit overrides including registered runtime controls, fully compose selected profiles and their referenced modules, reuse unchanged same-chat configuration when safe, selectively reload context, preserve format boundaries, resolve exact prompt actions when capabilities permit, preserve render-vs-execute-vs-delete semantics, select bounded recap history without inventing unavailable exchanges, keep context authority independent, and fail clearly when source/module/write/tool/history capabilities are unavailable.

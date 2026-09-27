@@ -152,12 +152,12 @@ Primary resolves; one supplemental is unresolved; later Personal resolves.
 
 Expected: primary remains, failed supplemental excluded with warning, Personal retained.
 
-## case_16_architecture_review_profile
+## case_16_g_architecture_review_profile
 
 Prompt:
 
 ```text
-@profile:architecture_review
+@profile:g.architecture.review
 ```
 
 Expected profile configuration:
@@ -173,7 +173,7 @@ No factual context is selected by the profile.
 
 ## case_17_prompt_depth_over_profile
 
-`architecture_review` + `@depth:short`.
+`g.architecture.review` + `@depth:short`.
 
 Expected: short depth; profile remains otherwise active.
 
@@ -182,8 +182,8 @@ Expected: short depth; profile remains otherwise active.
 Explicit profiles in order:
 
 ```text
-technical_learning
-research
+g.technical.learning
+g.research
 ```
 
 Expected:
@@ -197,13 +197,13 @@ depth = deep
 
 ## case_19_explicit_profiles_replace_default_profile
 
-Adapter default profile = coding; prompt explicitly selects research.
+Adapter default profile = g.coding; prompt explicitly selects g.research.
 
-Expected: research only as selected profile set; coding is not hidden-composed.
+Expected: g.research only as selected profile set; g.coding is not hidden-composed.
 
 ## case_20_german_learning_language
 
-`german_learning` with no prompt language override.
+`g.german.learning` with no prompt language override.
 
 Expected:
 
@@ -217,13 +217,13 @@ depth = medium
 
 ## case_21_prompt_language_override
 
-`german_learning`, prompt explicitly requests Persian for this answer.
+`g.german.learning`, prompt explicitly requests Persian for this answer.
 
 Expected: Persian primary for this prompt; no persistent change to profile.
 
 ## case_22_format_disable_after_profile
 
-`german_learning` provides `eli5 + vocab`; prompt includes `@no:fmt:vocab`.
+`g.german.learning` provides `eli5 + vocab`; prompt includes `@no:fmt:vocab`.
 
 Expected effective formats: `eli5` only.
 
@@ -310,7 +310,7 @@ Given:
 ```text
 @ctx:org/acme/projects/payment_service/reconciliation
 @ctx:personal
-@profile:architecture_review
+@profile:g.architecture.review
 @depth:short
 
 Compare the current messaging choice with its relevant constraints.

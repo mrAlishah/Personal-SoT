@@ -39,7 +39,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         )
 
         self.assertEqual("compose", result.action)
-        self.assertEqual(("technical_learning",), result.profiles)
+        self.assertEqual(("g.technical.learning",), result.profiles)
         self.assertEqual(("teaching",), result.behaviors)
         self.assertEqual(
             (("learning", "on"), ("step_execution", "on")),
@@ -57,7 +57,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         )
 
         self.assertEqual("reuse_profile", result.action)
-        self.assertEqual(("research",), result.profiles)
+        self.assertEqual(("g.research",), result.profiles)
         self.assertFalse(result.profile_creation_eligible)
 
     def test_existing_behavior_profile_composes_requested_overrides_before_creation(self):
@@ -72,7 +72,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         )
 
         self.assertEqual("compose", result.action)
-        self.assertEqual(("research",), result.profiles)
+        self.assertEqual(("g.research",), result.profiles)
         self.assertFalse(result.profile_creation_eligible)
 
     def test_exact_profile_reuse_is_not_lost_after_ten_unrelated_profiles(self):

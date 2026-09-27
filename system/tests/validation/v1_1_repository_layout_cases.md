@@ -45,7 +45,7 @@ workspace/prompts/ai/recap.md
 ### Case 4 - presentation mapping
 
 ```text
-@profile:technical_learning → workspace/profiles/technical_learning.md
+@profile:g.technical.learning → workspace/profiles/g.technical.learning.md
 @fmt:yaml                  → workspace/presentation/formats/yaml.md
 @tone:human                → workspace/presentation/tones/human.md
 @depth:short               → workspace/presentation/depth/short.md

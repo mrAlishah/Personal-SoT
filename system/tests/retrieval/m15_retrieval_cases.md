@@ -196,7 +196,7 @@ Expected: plan targeted retrieval of the relevant specialized domain owner, not 
 
 ## case_33_pre_reanchor_not_found_is_not_cache
 
-A fact lookup previously returned `not found`, then `@do:initialSoT` is invoked after the canonical source may have changed.
+A fact lookup previously returned `not found`, then `@do:sot` is invoked after the canonical source may have changed.
 
 Expected: the previous negative result does not suppress a new lookup. Plan targeted retrieval against the current canonical source when the fact is asked for again.
 
