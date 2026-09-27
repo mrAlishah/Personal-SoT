@@ -38,7 +38,7 @@ A re-anchor is also a freshness boundary for factual conclusions derived from th
 
 On `@do:sot`:
 
-1. locate the authorized canonical SoT and active deployment/bootstrap configuration;
+1. re-resolve one authorized canonical SoT source binding according to `system/adapters/source_access_contract.md`, including current host capability and revision/version evidence when available;
 2. read the minimum current shared runtime/routing contracts required to resolve the invocation;
 3. resolve effective context/default scope;
 4. resolve effective profile selection;
@@ -80,6 +80,9 @@ The result should expose the effective basis without dumping canonical file cont
 
 ```text
 source
+source_ref
+source_revision
+source_capabilities
 ctx
 profile
 behaviors
@@ -96,7 +99,8 @@ warnings
 
 Rules:
 
-- report only values/modules/files actually resolved or loaded;
+- report only values/modules/files/capabilities actually resolved or loaded;
+- report source revision/version only when the host actually exposes it;
 - omit empty optional sections when that improves clarity;
 - identify actual canonical context files/atoms loaded when available;
 - never fabricate provenance merely because a profile or scope would normally imply it;
@@ -111,6 +115,8 @@ Do not reload unchanged profile/presentation/control modules on every turn merel
 Reuse of resolved configuration must not be confused with reuse of stale factual conclusions. After `@do:sot`, a prior factual value or prior `not found` result may be reused only when its freshness against the current canonical source is actually established. Otherwise perform a targeted current lookup when the fact is needed.
 
 Re-resolve/reload when:
+
+- the resolved source mapping/ref/revision changes or cannot be proven current for a freshness-sensitive fact;
 
 - an explicit runtime directive changes the effective configuration;
 - project/profile/session control configuration changes;
