@@ -138,7 +138,7 @@ There is no implicit factual `global` root above personal and organizations.
 
 ## provenance
 
-A resolver preserves enough metadata to explain selection source, role, owner, selected scope, chain and warnings. Physical repository paths may be included for provenance but do not replace logical scope identity.
+A resolver preserves enough metadata to explain selection source, role, owner, selected scope, chain and warnings. The current source binding/provenance envelope is owned by `system/adapters/source_access_contract.md`; scope resolution adds logical scope/module provenance within that binding. Physical repository paths may be included for provenance but do not replace logical scope identity.
 
 ## resolution_pipeline
 
