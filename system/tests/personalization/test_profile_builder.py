@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+import system.personalization.profile_builder as profile_builder
 from system.personalization.profile_builder import (
     ProfileAssessment,
     apply_change,
@@ -364,6 +365,43 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertFalse((external / "formal_short.md").exists())
 
+    def test_workspace_ancestor_swap_cannot_redirect_write(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            external_workspace = Path(outside) / "workspace"
+            self.repository(root)
+            self.add_dependencies(root)
+            (external_workspace / "profiles").mkdir(parents=True)
+            for relative in (
+                "presentation/tones/formal.md",
+                "presentation/depth/short.md",
+            ):
+                target = external_workspace / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((root / "workspace" / relative).read_bytes())
+            proposal = preview_change(
+                root,
+                "create",
+                "formal_short",
+                "---\n---\n",
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            original_target = profile_builder._target
+
+            def swap_workspace(*args):
+                resolved = original_target(*args)
+                (root / "workspace").rename(root / "workspace_original")
+                (root / "workspace").symlink_to(external_workspace, target_is_directory=True)
+                return resolved
+
+            with patch("system.personalization.profile_builder._target", side_effect=swap_workspace):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.success)
+            self.assertFalse((external_workspace / "profiles/formal_short.md").exists())
+
     def test_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -443,6 +481,35 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertFalse(result.write_applied)
             self.assertFalse(result.validation_ran)
             self.assertTrue(any("write failed" in error for error in result.validation_errors))
+
+    def test_create_cleanup_failure_reports_applied_without_validation(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "formal_short",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            real_unlink = os.unlink
+
+            def fail_temporary_cleanup(path, *args, **kwargs):
+                if str(path).endswith(".tmp"):
+                    raise PermissionError("cleanup denied")
+                return real_unlink(path, *args, **kwargs)
+
+            with patch("system.personalization.profile_builder.os.unlink", side_effect=fail_temporary_cleanup):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.write_applied)
+            self.assertFalse(result.validation_ran)
+            self.assertIsNone(result.validation_passed)
+            self.assertTrue((root / proposal.target).is_file())
 
     def test_successful_create_and_edit_run_all_relevant_validators(self):
         with TemporaryDirectory() as directory:

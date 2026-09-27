@@ -170,12 +170,41 @@ def _read_at(directory_fd: int, name: str) -> str | None:
         return source.read()
 
 
-def _same_directory(path: Path, directory_fd: int) -> bool:
-    current = os.stat(path, follow_symlinks=False)
-    opened = os.fstat(directory_fd)
+def _open_profile_directory(root: Path) -> tuple[int, int, int]:
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        workspace_fd = os.open(
+            "workspace",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=root_fd,
+        )
+        try:
+            profiles_fd = os.open(
+                "profiles",
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=workspace_fd,
+            )
+        except Exception:
+            os.close(workspace_fd)
+            raise
+    except Exception:
+        os.close(root_fd)
+        raise
+    return root_fd, workspace_fd, profiles_fd
+
+
+def _same_directory_entry(parent_fd: int, name: str, child_fd: int) -> bool:
+    current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    opened = os.fstat(child_fd)
     return stat.S_ISDIR(current.st_mode) and (current.st_dev, current.st_ino) == (
         opened.st_dev,
         opened.st_ino,
+    )
+
+
+def _directory_chain_unchanged(root_fd: int, workspace_fd: int, profiles_fd: int) -> bool:
+    return _same_directory_entry(root_fd, "workspace", workspace_fd) and _same_directory_entry(
+        workspace_fd, "profiles", profiles_fd
     )
 
 
@@ -200,18 +229,18 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
     if confirmation_digest != proposal.confirmation_digest or expected != proposal.confirmation_digest:
         return _not_applied(proposal, "confirmation does not match the current proposal")
 
+    root_fd: int | None = None
+    workspace_fd: int | None = None
     directory_fd: int | None = None
     lock_name: str | None = None
     temporary_name: str | None = None
     write_applied = False
+    validation_ran = False
     try:
         relative, target = _target(root, proposal.identity)
         if relative != proposal.target:
             return _not_applied(proposal, "proposal target changed; create a new preview")
-        directory_fd = os.open(
-            target.parent,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-        )
+        root_fd, workspace_fd, directory_fd = _open_profile_directory(root)
         candidate_lock = f".{proposal.identity}.lock"
         lock_fd = os.open(
             candidate_lock,
@@ -246,7 +275,7 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
             return _not_applied(proposal, "Profile changed during write; create a new preview")
         if validate_v1.profile_validation_state_digest(root, proposal.content) != proposal.validation_state_digest:
             return _not_applied(proposal, "Profile dependencies changed during write; create a new preview")
-        if not _same_directory(target.parent, directory_fd):
+        if not _directory_chain_unchanged(root_fd, workspace_fd, directory_fd):
             return _not_applied(proposal, "Profile root changed during write; create a new preview")
         if proposal.operation == "create":
             os.link(
@@ -256,6 +285,7 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
                 dst_dir_fd=directory_fd,
                 follow_symlinks=False,
             )
+            write_applied = True
             os.unlink(temporary_name, dir_fd=directory_fd)
         else:
             os.replace(
@@ -264,13 +294,14 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
                 src_dir_fd=directory_fd,
                 dst_dir_fd=directory_fd,
             )
+            write_applied = True
         temporary_name = None
-        write_applied = True
-        if not _same_directory(target.parent, directory_fd):
+        if not _directory_chain_unchanged(root_fd, workspace_fd, directory_fd):
             return ApplyResult(relative, proposal.diff, True, False, None, ("Profile root changed after write",), False)
         os.unlink(lock_name, dir_fd=directory_fd)
         lock_name = None
 
+        validation_ran = True
         validation_errors = tuple(
             f"{owner}: {error}"
             for owner, errors in (
@@ -286,20 +317,40 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         return _not_applied(proposal, "Profile changed during write; create a new preview")
     except (OSError, UnicodeError, ValueError) as error:
         if write_applied:
-            return ApplyResult(proposal.target, proposal.diff, True, True, False, (f"validation failed: {error}",), False)
+            return ApplyResult(
+                proposal.target,
+                proposal.diff,
+                True,
+                validation_ran,
+                False if validation_ran else None,
+                (f"{'validation' if validation_ran else 'write cleanup'} failed: {error}",),
+                False,
+            )
         return _not_applied(proposal, f"write failed: {error}")
     except Exception as error:  # validators are the authority; preserve an applied write on failure
-        return ApplyResult(proposal.target, proposal.diff, write_applied, write_applied, False, (f"validation failed: {error}",), False)
+        return ApplyResult(
+            proposal.target,
+            proposal.diff,
+            write_applied,
+            validation_ran,
+            False if validation_ran else None,
+            (f"validation failed: {error}",),
+            False,
+        )
     finally:
         if directory_fd is not None:
             if temporary_name is not None:
                 try:
                     os.unlink(temporary_name, dir_fd=directory_fd)
-                except FileNotFoundError:
+                except OSError:
                     pass
             if lock_name is not None:
                 try:
                     os.unlink(lock_name, dir_fd=directory_fd)
-                except FileNotFoundError:
+                except OSError:
                     pass
             os.close(directory_fd)
+        if workspace_fd is not None:
+            os.close(workspace_fd)
+        if root_fd is not None:
+            os.close(root_fd)

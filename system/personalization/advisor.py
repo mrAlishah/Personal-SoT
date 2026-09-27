@@ -79,15 +79,18 @@ def recommend(root: Path, intent: PersonalizationIntent) -> CompositionRecommend
 
     profiles: tuple[str, ...] = ()
     full_coverage = False
+    discovery_incomplete = False
     if required:
-        candidates = search(
+        report = search(
             root,
             CapabilityQuery(
                 lanes=("profile",),
                 required_components=tuple(sorted(required)),
                 limit=10,
             ),
-        ).matches
+        )
+        discovery_incomplete = report.incomplete
+        candidates = report.matches
         if candidates:
             selected = candidates[0]
             if intent.behaviors or _profile_terms(selected) == required:
@@ -95,15 +98,22 @@ def recommend(root: Path, intent: PersonalizationIntent) -> CompositionRecommend
                 full_coverage = True
     if not profiles and intent.behaviors:
         behavior_terms = tuple(sorted(f"behavior:{value}" for value in intent.behaviors))
-        candidates = search(
+        report = search(
             root,
             CapabilityQuery(lanes=("profile",), required_components=behavior_terms, limit=10),
-        ).matches
+        )
+        discovery_incomplete = discovery_incomplete or report.incomplete
+        candidates = report.matches
         if candidates:
             profiles = (candidates[0].identity,)
 
     direct_count = len(intent.formats) + bool(intent.tone) + bool(intent.depth) + len(intent.controls)
-    creation_eligible = intent.reusable and not profiles and direct_count + len(intent.behaviors) >= 2
+    creation_eligible = (
+        intent.reusable
+        and not profiles
+        and not discovery_incomplete
+        and direct_count + len(intent.behaviors) >= 2
+    )
     action = "reuse_profile" if profiles and full_coverage else "compose"
     return CompositionRecommendation(
         action,

@@ -110,6 +110,36 @@ class PersonalizationAdvisorTests(unittest.TestCase):
             self.assertEqual(("z_exact",), result.profiles)
             self.assertFalse(result.profile_creation_eligible)
 
+    def test_incomplete_profile_discovery_never_authorizes_creation(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("workspace/profiles", "workspace/presentation/tones", "workspace/presentation/depth", "system/routing", "system/behavior", "guides"):
+                (root / name).mkdir(parents=True)
+            (root / "system/routing/switch_registry.md").write_text(
+                "# registry\n\n## tones\n\n```text\n"
+                "formal → workspace/presentation/tones/formal.md\n```\n\n"
+                "## depths\n\n```text\n"
+                "short → workspace/presentation/depth/short.md\n```\n",
+                encoding="utf-8",
+            )
+            (root / "workspace/presentation/tones/formal.md").write_text("# formal\n", encoding="utf-8")
+            (root / "workspace/presentation/depth/short.md").write_text("# short\n", encoding="utf-8")
+            for index in range(20):
+                (root / f"workspace/profiles/a_{index:02}.md").write_text(
+                    "---\ntone: formal\ndepth: short\n---\ninvalid body\n", encoding="utf-8"
+                )
+            (root / "workspace/profiles/z_exact.md").write_text(
+                "---\ntone: formal\ndepth: short\n---\n", encoding="utf-8"
+            )
+
+            result = recommend(
+                root,
+                PersonalizationIntent(tone="formal", depth="short", reusable=True),
+            )
+
+            self.assertEqual((), result.profiles)
+            self.assertFalse(result.profile_creation_eligible)
+
     def test_unknown_identity_is_unavailable_not_guessed(self):
         result = recommend(ROOT, PersonalizationIntent(tone="friendliest"))
 
