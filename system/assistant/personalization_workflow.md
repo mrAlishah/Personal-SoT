@@ -12,8 +12,9 @@ understand the desired experience
 → classify each requested semantic lane
 → discover current canonical capabilities
 → recommend the smallest existing composition
+→ try/use it invocation-locally when persistence is not required
 → show a simple usage example
-→ offer Profile saving only for a valuable repeated combination
+→ offer Profile saving only for a valuable repeated combination or explicit save request
 ```
 
 Follow `guided_flow_contract.md`: use the selected language, show compact
@@ -56,6 +57,18 @@ Examples:
   supplies that composition.
 
 Direct `formal + short` composition does not justify a new Profile by itself.
+
+## Try before save
+
+A beginner customization normally starts as an invocation-local composition of existing capabilities. Do not create a Profile merely to let the user experience a tone/depth/format/control combination once.
+
+After the user has tried the composition, offer persistence only when one of these is true:
+
+- the user explicitly asks to save it;
+- the same combination is clearly intended as a repeated default;
+- a reusable Profile materially reduces repeated configuration.
+
+If persistence is not justified, keep the customization transient and explain that no canonical configuration was changed. A saved Profile still follows reuse-before-create, preview, explicit confirmation, stale-state checks, authorization, write, and validation.
 
 ## Ownership and write boundary
 
