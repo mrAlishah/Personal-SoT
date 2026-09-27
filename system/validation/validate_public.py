@@ -7,6 +7,11 @@ import re
 import sys
 from pathlib import Path
 
+if __package__:
+    from .validate_v1 import RAW_SECRET_KEYS
+else:
+    from validate_v1 import RAW_SECRET_KEYS
+
 
 TEXT_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 SKIP_PARTS = {".git", ".superpowers", "__pycache__"}
@@ -18,18 +23,11 @@ PRIVATE_IDENTIFIERS = {
     "mrAlishah/obsidian-ai-context-source-of-truth",
     "v1.2_ai_personal_source_of_truth",
 }
-SECRET_KEYS = {
+SECRET_KEYS = RAW_SECRET_KEYS | {
     "access_token",
     "api_key",
-    "api_token",
     "aws_secret_access_key",
-    "bank_login_credentials",
-    "card_cvv",
     "client_secret",
-    "password",
-    "private_key",
-    "recovery_code",
-    "session_cookie",
     "token",
 }
 SAFE_SECRET_VALUES = {

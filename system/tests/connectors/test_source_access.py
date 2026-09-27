@@ -1,6 +1,8 @@
 import unittest
 
-from system.connectors.source import SourceSession, Snapshot, SourceUnavailable
+from system.connectors.source import SourceSession, Snapshot, SourceUnavailable, safe_path
+from system.validation.validate_v1 import RAW_SECRET_KEYS
+from system.validation.validate_public import SECRET_KEYS
 
 
 ENTRY = 'workspace/adapters/runtime_entrypoint.md'
@@ -117,11 +119,50 @@ class SourceTests(unittest.TestCase):
         self.assertEqual('', result.content)
         self.assertNotIn('fake_canary', repr(result))
 
+    def test_every_validator_owned_secret_key_is_blocked(self):
+        for key in RAW_SECRET_KEYS | SECRET_KEYS:
+            with self.subTest(key=key):
+                self.transport.files[ATOM] = '---\nai_access: allow\n---\n' + key + ': SECRET_CANARY'
+                result = self.lookup()
+                self.assertFalse(result.success)
+                self.assertEqual('', result.content)
+                self.assertIsNone(result.provenance)
+
     def test_invalid_path_and_scope_do_not_fetch_atom(self):
         for atom in ('../goals.md', '/goals.md', 'nested/../../goals.md'):
             self.assertFalse(self.session.lookup('personal', atom).success)
         self.assertFalse(self.session.lookup('unknown', 'goals.md').success)
         self.assertNotIn((ATOM, False), self.transport.reads)
+
+    def test_duplicate_or_cross_owner_registry_is_unavailable(self):
+        registry = 'system/routing/context_registry.md'
+        self.transport.files[registry] *= 2
+        self.assertFalse(self.lookup().success)
+        self.transport.files[registry] = '```\npersonal\n→ workspace/context/organizations/acme/\n```'
+        self.assertFalse(self.lookup().success)
+        self.assertNotIn((ATOM, True), self.transport.reads)
+
+    def test_returned_body_cannot_override_denied_access(self):
+        original_read = self.transport.read
+        def read(snapshot, path, *, metadata_only=False):
+            if path == ATOM and not metadata_only:
+                return '---\nai_access: deny\n---\nBODY_CANARY'
+            return original_read(snapshot, path, metadata_only=metadata_only)
+        self.transport.read = read
+        result = self.lookup()
+        self.assertFalse(result.success)
+        self.assertEqual('', result.content)
+
+    def test_host_permission_revocation_stops_reads(self):
+        self.session.host_read = False
+        self.assertFalse(self.lookup().success)
+        self.assertEqual([], self.transport.reads)
+
+    def test_transport_paths_preserve_existing_profile_grammar(self):
+        self.assertTrue(safe_path('workspace/profiles/g.architecture.review.md'))
+        self.assertTrue(safe_path('workspace/profiles/custom_notes.md'))
+        self.assertFalse(safe_path('workspace/profiles/g.architecture_review.md'))
+        self.assertFalse(safe_path('workspace/context/personal/g.architecture.review.md'))
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 
 from system.context.access import permitted
-from system.routing.runtime_naming import classify_bootstrap_invocation
+from system.routing.runtime_naming import classify_bootstrap_invocation, is_profile_identity
 from system.routing.source_scope import resolve_scope
 from system.validation.validate_public import contains_raw_secret
 
@@ -33,6 +33,9 @@ class Result:
 
 
 def safe_path(path: str) -> bool:
+    parts = path.split('/')
+    if parts[:2] == ['workspace', 'profiles'] and len(parts) == 3:
+        return parts[2].endswith('.md') and is_profile_identity(parts[2][:-3])
     return bool(re.fullmatch(r'[a-z0-9_]+(?:/[a-z0-9_]+)*\.md', path))
 
 
@@ -66,7 +69,7 @@ class SourceSession:
         self.snapshot = None
         try:
             invocation = classify_bootstrap_invocation(command)
-            if invocation is None or not self.host_read:
+            if invocation is None or self.host_read is not True:
                 raise SourceUnavailable()
             snapshot = self.transport.resolve()
             entrypoint = self._read(snapshot, self.entrypoint)
@@ -88,7 +91,7 @@ class SourceSession:
         """
         try:
             snapshot = self.snapshot
-            if snapshot is None or not self.host_read or not required or not safe_path(atom):
+            if snapshot is None or self.host_read is not True or required is not True or not safe_path(atom):
                 raise SourceUnavailable()
             registry = self._read(snapshot, 'system/routing/context_registry.md')
             scope_path = resolve_scope(registry, scope)

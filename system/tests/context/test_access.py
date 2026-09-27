@@ -1,4 +1,3 @@
-from pathlib import PurePosixPath
 import unittest
 
 from system.context.access import permitted
@@ -35,6 +34,20 @@ class AccessTests(unittest.TestCase):
         self.assertFalse(self.allowed(header, personal_owner=True, private_instance=True,
                                       path='workspace/context/organizations/acme/goals.md',
                                       scope_path='workspace/context/organizations/acme'))
+
+    def test_ambiguous_access_declarations_fail_closed(self):
+        for second in (' ai_access: deny', '"ai_access": deny', "'ai_access': deny"):
+            with self.subTest(second=second):
+                self.assertFalse(self.allowed('---\nai_access: allow\n' + second + '\n---'))
+
+    def test_authorization_requires_explicit_boolean_evidence(self):
+        header = '---\nai_access: restricted\n---'
+        for field in ('host_read', 'required', 'personal_owner', 'private_instance'):
+            for value in ('false', 1, None):
+                arguments = dict(personal_owner=True, private_instance=True)
+                arguments[field] = value
+                with self.subTest(field=field, value=value):
+                    self.assertFalse(self.allowed(header, **arguments))
 
     def test_validator_owned_secret_check(self):
         self.assertTrue(contains_raw_secret('api_' + 'token: example_value'))

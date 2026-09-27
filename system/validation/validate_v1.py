@@ -626,22 +626,22 @@ def validate_context_registry(root: Path, errors: List[str]) -> None:
     seen_scopes: Dict[str, str] = {}
     if path.exists():
         for pending_scope, target_text in context_registry_entries(read_text(path)):
-                if not SCOPE_RE.fullmatch(pending_scope):
-                    errors.append(f"{path.relative_to(root)}: invalid runtime scope identifier {pending_scope!r}")
-                previous_target = seen_scopes.get(pending_scope)
-                if previous_target is not None:
-                    errors.append(
-                        f"{path.relative_to(root)}: duplicate runtime scope {pending_scope!r} "
-                        f"maps to both {previous_target!r} and {target_text!r}"
-                    )
-                else:
-                    seen_scopes[pending_scope] = target_text
-                if not target_text.startswith("workspace/context/"):
-                    continue
-                if "guides/developer/examples/" in target_text:
-                    errors.append(f"{path.relative_to(root)}: example path registered as runtime scope")
-                if not (root / target_text.rstrip("/")).is_dir():
-                    errors.append(f"{path.relative_to(root)}: missing scope target {target_text!r}")
+            if not SCOPE_RE.fullmatch(pending_scope):
+                errors.append(f"{path.relative_to(root)}: invalid runtime scope identifier {pending_scope!r}")
+            previous_target = seen_scopes.get(pending_scope)
+            if previous_target is not None:
+                errors.append(
+                    f"{path.relative_to(root)}: duplicate runtime scope {pending_scope!r} "
+                    f"maps to both {previous_target!r} and {target_text!r}"
+                )
+            else:
+                seen_scopes[pending_scope] = target_text
+            if not target_text.startswith("workspace/context/"):
+                continue
+            if "guides/developer/examples/" in target_text:
+                errors.append(f"{path.relative_to(root)}: example path registered as runtime scope")
+            if not (root / target_text.rstrip("/")).is_dir():
+                errors.append(f"{path.relative_to(root)}: missing scope target {target_text!r}")
 
     expected_scopes: Dict[str, str] = {}
     personal = root / "workspace" / "context" / "personal"
