@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from system.routing.runtime_naming import is_profile_identity
 from system.validation import validate_v1
 
 
@@ -66,7 +67,7 @@ def _profile_candidates(root: Path) -> list[_Candidate]:
         return []
     candidates = []
     for path in sorted(base.glob("*.md")):
-        if path.name == "readme.md" or path.is_symlink():
+        if path.name == "readme.md" or path.is_symlink() or not is_profile_identity(path.stem):
             continue
         try:
             source = path.read_text(encoding="utf-8")
@@ -124,9 +125,12 @@ def _behavior_candidates(root: Path) -> list[_Candidate]:
 def _score(candidate: _Candidate, query: CapabilityQuery) -> tuple[int, int, int]:
     terms = set(_tokens(candidate.identity + " " + " ".join(candidate.components)))
     requested = _tokens(query.text)
+    identity_tokens = _tokens(candidate.identity)
+    if candidate.lane == "profile" and identity_tokens[:1] == ("g",):
+        identity_tokens = identity_tokens[1:]
     return (
         int(query.identity == candidate.identity),
-        int(candidate.identity in requested),
+        int(bool(identity_tokens) and set(identity_tokens).issubset(requested)),
         sum(token in terms for token in requested),
     )
 

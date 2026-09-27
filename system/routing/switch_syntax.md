@@ -58,7 +58,7 @@ Bare `@prompt:<path>` is unsupported because action intent must be explicit.
 
 ## lexical_rules
 
-Repository-owned identifiers use lowercase snake_case; hierarchical context/prompt identities use `/`. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
+Repository-owned identifiers generally use lowercase snake_case; shipped Profile identities use the reserved hierarchical `g.*` grammar defined by `system/profiles/profile_contract.md`; hierarchical context/prompt identities use `/`. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
 
 `@fmt`, `@tone`, and `@depth` accept exact identifiers registered in the corresponding `system/routing/switch_registry.md` sections. This syntax contract does not maintain duplicate current-identity lists.
 

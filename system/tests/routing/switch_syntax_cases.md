@@ -80,14 +80,14 @@ supplemental = personal
 Given:
 
 ```text
-default_profile = coding
+default_profile = g.coding
 ```
 
 Input:
 
 ```text
-@profile:research
-@profile:technical_learning
+@profile:g.research
+@profile:g.technical.learning
 
 Explain event sourcing.
 ```
@@ -95,23 +95,23 @@ Explain event sourcing.
 Expected selected profiles:
 
 ```text
-research
-technical_learning
+g.research
+g.technical.learning
 ```
 
-`coding` is not silently composed.
+`g.coding` is not silently composed.
 
 ## case_07_default_profile_fallback
 
 Given:
 
 ```text
-default_profile = coding
+default_profile = g.coding
 ```
 
 Input has no explicit `@profile`.
 
-Expected selected profile: `coding`.
+Expected selected profile: `g.coding`.
 
 ## case_08_invalid_switch
 
@@ -170,7 +170,7 @@ Input:
 
 ```text
 @do:sot
-@profile:research
+@profile:g.research
 ```
 
 Expected: invalid control block; bootstrap action resolves effective deployment defaults itself and does not compose companion runtime switches.

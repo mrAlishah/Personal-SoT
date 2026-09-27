@@ -11,6 +11,8 @@ if __package__:
 else:
     from validate_v1 import switch_registry_entries
 
+from system.routing.runtime_naming import is_profile_identity
+
 VALID_STATUS = {"active", "draft", "deprecated"}
 NAME_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 VAR_RE = re.compile(r"\{\{([a-z0-9]+(?:_[a-z0-9]+)*)\}\}")
@@ -215,7 +217,7 @@ def _validate_source(
             errors.append(f"{rel}: unresolved registered depth reference {depth!r}")
     refs = [("profile", value, root / "workspace" / "profiles" / f"{value}.md") for value in lists["prompt_profiles"]]
     for kind, value, target in refs:
-        if not NAME_RE.fullmatch(value):
+        if not is_profile_identity(value):
             errors.append(f"{rel}: invalid {kind} identifier {value!r}")
         elif not target.is_file():
             errors.append(f"{rel}: unresolved {kind} reference {value!r}")

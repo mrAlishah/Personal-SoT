@@ -180,27 +180,27 @@ Deep adds mechanisms, trade-offs, evidence, and boundaries; it must not pad with
 
 ## case_35_german_learning_vocab
 
-`german_learning` profile includes `vocab`.
+`g.german.learning` profile includes `vocab`.
 
 Expected: vocabulary appendix appears at the end under the suffix semantics owned by the format target metadata.
 
 ## case_36_technical_learning_concept
 
-`technical_learning` profile includes `concept`.
+`g.technical.learning` profile includes `concept`.
 
 Expected: concept appendix summarizes learned technical concepts at the end.
 
 ## case_37_technical_learning_remove_concept
 
-`@profile:technical_learning` + `@no:fmt:concept` → concept appendix disabled for that prompt while other profile defaults remain.
+`@profile:g.technical.learning` + `@no:fmt:concept` → concept appendix disabled for that prompt while other profile defaults remain.
 
-## case_38_obsidian_note_profile
+## case_38_g_obsidian_note_profile
 
-`@profile:obsidian_note` → `yaml + md` formats enabled without changing behavior, tone, depth, language, or context.
+`@profile:g.obsidian.note` → `yaml + md` formats enabled without changing behavior, tone, depth, language, or context.
 
 ## case_39_obsidian_plus_german
 
-`@profile:obsidian_note` + `@profile:german_learning` → formats compose to include YAML frontmatter, Markdown-capable body, ELI5 rendering, and vocabulary suffix; language/tone/depth come from german_learning.
+`@profile:g.obsidian.note` + `@profile:g.german.learning` → formats compose to include YAML frontmatter, Markdown-capable body, ELI5 rendering, and vocabulary suffix; language/tone/depth come from `g.german.learning`.
 
 ## case_40_invalid_format_name
 

@@ -23,7 +23,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
-            "profile": "research",
+            "profile": "g.research",
             "format": "comparison_table",
             "tone": "formal",
             "depth": "short",
@@ -46,12 +46,12 @@ class PersonalizationExplorerTests(unittest.TestCase):
             ),
             (
                 CapabilityQuery(
-                    text="technical_learning learning step_execution teaching",
+                    text="technical learning step_execution teaching",
                     lanes=("profile", "control", "behavior"),
                     limit=4,
                 ),
                 [
-                    ("profile", "technical_learning"),
+                    ("profile", "g.technical.learning"),
                     ("behavior", "teaching"),
                     ("control", "learning"),
                     ("control", "step_execution"),
@@ -59,7 +59,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
             ),
             (
                 CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
-                [("profile", "research")],
+                [("profile", "g.research")],
             ),
         )
 
@@ -73,7 +73,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
         first = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
         second = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
 
-        expected = ["architecture_review", "coding", "research"]
+        expected = ["g.architecture.review", "g.coding", "g.research"]
         self.assertEqual(expected, [match.identity for match in first.matches])
         self.assertEqual(expected, [match.identity for match in second.matches])
 
@@ -114,6 +114,19 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
             self.assertEqual((), report.matches)
             self.assertEqual(1, report.unavailable_count)
+
+    def test_invalid_built_in_profile_identity_is_not_discovered(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.write_profile(root, "g.problem_solving", "---\n---\n")
+
+            report = search(
+                root,
+                CapabilityQuery(identity="g.problem_solving", lanes=("profile",)),
+            )
+
+            self.assertEqual((), report.matches)
 
     def test_missing_registry_target_is_unavailable(self):
         with TemporaryDirectory() as directory:

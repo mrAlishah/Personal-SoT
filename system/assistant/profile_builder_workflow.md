@@ -19,6 +19,10 @@ exact existing Profile
 Similarity never authorizes overwrite. An edit requires the exact Profile
 identity and clear intent to modify that same semantic owner.
 
+Shipped `g.*` Profiles are product-owned. The Assistant may discover, select,
+and compose them, but user-guided create/edit targets a separate custom
+`lowercase_snake_case` Profile.
+
 ## Representation
 
 A Profile is a frontmatter-only composition manifest. It references existing
@@ -46,7 +50,8 @@ anchored to the verified Profile directory. Direct filesystem edits do not
 participate in that lock; make them before preview or wait for the Builder to
 finish so its stale-state reread can detect them.
 
-Only `workspace/profiles/<name>.md` may be created or edited. This workflow
+Only custom `workspace/profiles/<lowercase_snake_case>.md` files may be created
+or edited. This workflow
 never writes format, tone, depth, control, behavior, registry, or precedence
 owners.
 

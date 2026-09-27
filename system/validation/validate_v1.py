@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from system.routing.runtime_naming import is_profile_identity
+
 VALID_ACCESS = {"allow", "restricted", "deny"}
 VALID_DECISION_STATUS = {"proposed", "accepted", "superseded", "deprecated"}
 VALID_FORMAT_PLACEMENT = {"prefix", "body", "suffix"}
@@ -254,8 +259,11 @@ def validate_names(root: Path, errors: List[str]) -> None:
                 if not NAME_RE.fullmatch(part):
                     errors.append(f"{rel}: directory segment {part!r} is not lowercase_snake_case")
                     break
-            if path.is_file() and path.name not in EXTERNAL_FILENAMES and not NAME_RE.fullmatch(path.stem):
-                errors.append(f"{rel}: filename stem {path.stem!r} is not lowercase_snake_case")
+            if path.is_file() and path.name not in EXTERNAL_FILENAMES:
+                is_profile = rel.parts[:2] == ("workspace", "profiles") and path.suffix == ".md"
+                valid_name = is_profile_identity(path.stem) if is_profile else NAME_RE.fullmatch(path.stem)
+                if not valid_name:
+                    errors.append(f"{rel}: filename stem {path.stem!r} is not a valid repository identity")
 
 
 def validate_access(root: Path, errors: List[str]) -> None:

@@ -12,6 +12,18 @@ workspace/profiles/<profile_name>.md
 
 The filename is the runtime profile identity; users invoke `@profile:<profile_name>` without a physical path prefix.
 
+Two identity grammars are valid:
+
+```text
+custom Profile:  <lowercase_snake_case>
+shipped Profile: g.<segment>[.<segment>...]
+```
+
+Shipped-profile segments are non-empty lowercase ASCII letters or digits.
+Underscores are not valid inside `g.*` identities. The `g.*` namespace is
+reserved for product-owned Profiles; user-created Profiles use
+`lowercase_snake_case`.
+
 ## runtime_resolution
 
 Profile lookup is exact and path-derived:
@@ -22,6 +34,10 @@ Profile lookup is exact and path-derived:
 ```
 
 Profiles are not duplicated in a flat switch registry. A missing file is an unresolved profile configuration error. Case, spelling, aliases, and nearest-match normalization are not applied.
+
+Personalization may discover, select, and compose shipped `g.*` Profiles.
+User-guided create/edit operations do not mutate that reserved namespace; a
+customized reusable composition receives a separate custom Profile identity.
 
 ## representation
 

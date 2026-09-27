@@ -9,6 +9,7 @@ from pathlib import Path
 from secrets import token_hex
 import stat
 
+from system.routing.runtime_naming import profile_identity_kind
 from system.validation import validate_prompts, validate_public, validate_v1
 
 
@@ -52,7 +53,11 @@ def choose_profile_action(assessment: ProfileAssessment) -> tuple[str, str | Non
         return "reuse_profile", assessment.exact_identity
     if assessment.direct_composition_sufficient:
         return "compose", None
-    if assessment.edit_identity and assessment.same_semantic_owner:
+    if (
+        assessment.edit_identity
+        and assessment.same_semantic_owner
+        and profile_identity_kind(assessment.edit_identity) != "built_in"
+    ):
         return "edit", assessment.edit_identity
     if assessment.reusable:
         return "create", None
@@ -64,7 +69,10 @@ def _digest(value: str) -> str:
 
 
 def _target(root: Path, identity: str) -> tuple[str, Path]:
-    if not validate_v1.NAME_RE.fullmatch(identity):
+    kind = profile_identity_kind(identity)
+    if kind == "built_in":
+        raise ValueError("The g.* Profile namespace is reserved for shipped built-ins")
+    if kind != "custom":
         raise ValueError("Profile identity must use one lowercase_snake_case name")
     relative = f"workspace/profiles/{identity}.md"
     profile_root = root / "workspace" / "profiles"
