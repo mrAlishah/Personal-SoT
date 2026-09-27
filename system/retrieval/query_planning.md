@@ -187,7 +187,7 @@ A match still does not establish current authority.
 
 ## freshness_after_reanchor
 
-After `@do:initialSoT`, prior conversation-local factual conclusions whose freshness is not established must not suppress current retrieval.
+After `@do:sot`, prior conversation-local factual conclusions whose freshness is not established must not suppress current retrieval.
 
 In particular, a pre-reanchor `not found` result is not a durable retrieval cache entry. When the user asks for that fact again, plan a targeted lookup against the current canonical source using the current scope/access state.
 

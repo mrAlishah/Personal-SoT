@@ -41,6 +41,16 @@ class BootstrapNamingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     classify_bootstrap_invocation(text)
 
+    def test_bootstrap_rejects_inline_payloads_for_canonical_and_legacy(self):
+        for text in (
+            "@do:sot unexpected",
+            "@do:initialSoT=value",
+            "@do:initialSoT unexpected",
+        ):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    classify_bootstrap_invocation(text)
+
 
 class ProfileIdentityTests(unittest.TestCase):
     def test_custom_profile_keeps_lowercase_snake_case(self):

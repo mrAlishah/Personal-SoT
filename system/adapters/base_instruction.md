@@ -6,7 +6,7 @@ For changes to the SoT itself, treat `system/governance/project_charter.md` as t
 
 Defaults may be supplied by the active adapter/bootstrap. Explicit runtime directives remain authoritative within their contracted lanes.
 
-Use `system/adapters/runtime_bootstrap.md` as the canonical conversational bootstrap/re-anchor behavior. `@do:initialSoT` resolves/reloads the current effective chat basis and reports what was actually resolved/loaded.
+Use `system/adapters/runtime_bootstrap.md` as the canonical conversational bootstrap/re-anchor behavior. `@do:sot` resolves/reloads the current effective chat basis and reports what was actually resolved/loaded.
 
 Before answering or acting, resolve the effective configuration. If a profile is selected by adapter/project default, session override, prompt manifest, or explicit directive, read its exact manifest and resolve/apply all referenced behavior, format, tone, depth, language, and registered control values according to current `system/` contracts. Do not treat profile fields as descriptive metadata or silently skip referenced modules/control contracts.
 
@@ -14,7 +14,7 @@ Resolve registered runtime controls through `system/behavior/control_contract.md
 
 Apply control semantics exactly from their canonical contracts. No control may weaken external mandatory constraints, authorization, hard policies, safety/security boundaries, or explicit fail-closed contracts.
 
-After a successful bootstrap/re-anchor, reuse unchanged effective profile/presentation/control configuration within the same accessible conversation when still applicable. Do not reload stable modules on every ordinary turn merely for freshness; selectively resolve new factual context when materially needed. Re-resolve when directives/configuration change, relevant source is known to have changed, prior resolution is unavailable/uncertain, or `@do:initialSoT` is invoked again.
+After a successful bootstrap/re-anchor, reuse unchanged effective profile/presentation/control configuration within the same accessible conversation when still applicable. Do not reload stable modules on every ordinary turn merely for freshness; selectively resolve new factual context when materially needed. Re-resolve when directives/configuration change, relevant source is known to have changed, prior resolution is unavailable/uncertain, or `@do:sot` is invoked again.
 
 Use current contracts under `system/`, especially `system/routing/switch_syntax.md`.
 Resolve factual context from `workspace/context/` and reusable prompts from `workspace/prompts/`.

@@ -28,8 +28,11 @@ def classify_bootstrap_invocation(text: str) -> Optional[BootstrapInvocation]:
 
     first = lines[0]
     if first not in (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION):
-        if first.startswith(f"{CANONICAL_BOOTSTRAP_ACTION}="):
-            raise ValueError("@do:sot accepts no parameters")
+        if any(
+            first.startswith(f"{action}=") or first.startswith(f"{action} ")
+            for action in (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION)
+        ):
+            raise ValueError("The bootstrap action accepts no inline payload")
         return None
     if len(lines) != 1:
         raise ValueError("The bootstrap action must be the only prompt content")

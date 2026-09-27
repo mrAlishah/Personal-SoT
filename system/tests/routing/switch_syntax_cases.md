@@ -148,7 +148,7 @@ Expected: invalid directive; hard policies are not removed.
 Input:
 
 ```text
-@do:initialSoT
+@do:sot
 ```
 
 Expected: exact reserved runtime action; execute canonical runtime bootstrap/re-anchor semantics.
@@ -158,18 +158,18 @@ Expected: exact reserved runtime action; execute canonical runtime bootstrap/re-
 Input:
 
 ```text
-@do:initialSoT
+@do:sot
 @param:x=[1]
 ```
 
-Expected: invalid control block; `@do:initialSoT` accepts no parameters.
+Expected: invalid control block; `@do:sot` accepts no parameters.
 
 ## case_12_initial_sot_is_exclusive
 
 Input:
 
 ```text
-@do:initialSoT
+@do:sot
 @profile:research
 ```
 
@@ -183,7 +183,7 @@ Input:
 @do:initialsot
 ```
 
-Expected: invalid/unresolved action; do not case-correct to `@do:initialSoT`.
+Expected: invalid/unresolved action; do not case-correct to `@do:sot`.
 
 ## case_14_start_language_prompt_override
 
@@ -251,8 +251,8 @@ Expected: invalid/unresolved start-language directive; do not guess or map it to
 Input:
 
 ```text
-@do:initialSoT
+@do:sot
 @start:fa
 ```
 
-Expected: invalid control block; `@do:initialSoT` remains exclusive and resolves deployment defaults itself.
+Expected: invalid control block; `@do:sot` remains exclusive and resolves deployment defaults itself.

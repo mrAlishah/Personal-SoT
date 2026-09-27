@@ -14,12 +14,12 @@ external wrapper
 
 Reusable execution semantics belong here or in referenced `system/` contracts, not copied into ChatGPT Project instructions, global instructions, `AGENTS.md`, `CLAUDE.md`, or similar client surfaces.
 
-## initial_sot_action
+## sot_action
 
 The reserved runtime action is:
 
 ```text
-@do:initialSoT
+@do:sot
 ```
 
 It accepts no parameters and needs no ordinary prompt body.
@@ -36,7 +36,7 @@ A re-anchor is also a freshness boundary for factual conclusions derived from th
 
 ## execution
 
-On `@do:initialSoT`:
+On `@do:sot`:
 
 1. locate the authorized canonical SoT and active deployment/bootstrap configuration;
 2. read the minimum current shared runtime/routing contracts required to resolve the invocation;
@@ -108,7 +108,7 @@ After successful bootstrap/re-anchor, subsequent ordinary requests in the same a
 
 Do not reload unchanged profile/presentation/control modules on every turn merely for freshness. Selectively resolve additional factual context when the new request materially requires it.
 
-Reuse of resolved configuration must not be confused with reuse of stale factual conclusions. After `@do:initialSoT`, a prior factual value or prior `not found` result may be reused only when its freshness against the current canonical source is actually established. Otherwise perform a targeted current lookup when the fact is needed.
+Reuse of resolved configuration must not be confused with reuse of stale factual conclusions. After `@do:sot`, a prior factual value or prior `not found` result may be reused only when its freshness against the current canonical source is actually established. Otherwise perform a targeted current lookup when the fact is needed.
 
 Re-resolve/reload when:
 
@@ -117,7 +117,7 @@ Re-resolve/reload when:
 - the request materially requires different canonical context;
 - there is evidence that relevant canonical source changed;
 - previously resolved configuration/context is unavailable or uncertain;
-- the user invokes `@do:initialSoT` again.
+- the user invokes `@do:sot` again.
 
 Canonical SoT still outranks stale conversation memory. Reuse is a latency/token optimization, not permission to preserve known-stale canonical facts or stale absence conclusions.
 
@@ -129,4 +129,4 @@ Do not copy this execution sequence into every external instruction surface.
 
 ## acceptance
 
-A compliant runtime can bootstrap or re-anchor with one parameterless `@do:initialSoT`, fully resolve effective profile composition, registered runtime controls, control-driven behavior activation/suppression/adaptive gating, and applicable response-start configuration, invalidate stale factual conclusions including prior negative lookups, load minimum relevant authorized context, resolve subsequently needed facts from the current canonical source through targeted retrieval, expose truthful compact diagnostics, reuse unchanged configuration within the same chat, selectively reload when needed, preserve host-native normal-chat presentation, default to the normal chat delivery surface unless the user explicitly requests a document-style artifact, apply canonical formats only within their owned boundaries, and keep client wrappers thin.
+A compliant runtime can bootstrap or re-anchor with one parameterless `@do:sot`, fully resolve effective profile composition, registered runtime controls, control-driven behavior activation/suppression/adaptive gating, and applicable response-start configuration, invalidate stale factual conclusions including prior negative lookups, load minimum relevant authorized context, resolve subsequently needed facts from the current canonical source through targeted retrieval, expose truthful compact diagnostics, reuse unchanged configuration within the same chat, selectively reload when needed, preserve host-native normal-chat presentation, default to the normal chat delivery surface unless the user explicitly requests a document-style artifact, apply canonical formats only within their owned boundaries, and keep client wrappers thin.
