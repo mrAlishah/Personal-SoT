@@ -42,14 +42,17 @@ ZIP/no-Git → conservative side-by-side migration
 ```
 
 The Git core consumes an explicitly resolved immutable target commit. A thin
-source step may fetch that target only from the exact public product repository;
-the core never discovers repositories or trusts chat memory. No package manager,
-installer framework, release catalog, cache, file inventory, or migration engine
-is introduced.
+source step resolves the current accepted state from exactly
+`mrAlishah/Personal-SoT:main`, then pins that state to commit `T`. A local
+default or arbitrary remote, PR branch, fork, chat-supplied commit, or cached
+conclusion is not update authority. The core never discovers repositories or
+trusts chat memory. No package manager, installer framework, release catalog,
+cache, file inventory, or migration engine is introduced.
 
 The side-by-side path never mutates the original installation. Its new
-distribution tree supplies product files; current-only user files may be copied;
-different overlapping workspace files are conflicts. This conservatism is the
+distribution tree supplies product files; only regular files under the canonical
+user-owned `workspace/` surface may be preserved from the current installation.
+Different overlapping workspace files are conflicts. This conservatism is the
 safe consequence of having no baseline, not a reason to add a parallel inventory.
 
 ## Ownership
@@ -83,6 +86,13 @@ is classified from Git tree identity:
 | clean, identical change on both sides | already aligned | no change |
 | dirty index/worktree or untracked path | unstable input | block before preview/apply |
 
+The exact canonical public repository and its `main` ref must resolve to `T`
+before planning. A missing or invalid merge base, unrelated product lineage, or
+installation state that cannot be reconciled with accepted public history fails
+closed. V1 does not automatically downgrade or rewrite history when an installed
+copy is ahead of or divergent from `T`. If `C == T` or the candidate tree has no
+effective change, the plan reports an explicit already-current/no-op result.
+
 V1 intentionally treats every different both-changed path as a conflict even if
 Git could text-merge it. Silent semantic merging is outside the safety boundary.
 
@@ -95,17 +105,30 @@ Apply requires real local Git/write/command capability, a clean checkout, no
 classified conflict, and explicit confirmation of the preview digest.
 
 ```text
-git merge --no-commit --no-ff <immutable target>
-→ validate_v1 --mode core
+build candidate from C + immutable T without user hooks
+→ validate_v1 --mode personal
 → validate_prompts
-→ validate_public
-→ commit only if every validator passes
+→ advance the installed state only if every validator passes
 ```
 
-If merge preparation, validation, or commit fails, the updater aborts the merge
-and restores the exact clean pre-update state. It reports whether mutation began,
-validation ran, validation passed, rollback ran, and which non-sensitive failure
-class occurred. A failed update is never reported as ready.
+`validate_public` is not run on an installed Personal tree. It remains the owner
+of pristine public-distribution checks and must never cause Personal files to be
+removed, redacted, or changed.
+
+The updater-controlled merge and commit path must not execute user Git hooks or
+arbitrary external merge commands. It uses non-hooking Git primitives, verifies
+the clean tracked/index state again immediately before mutation, and advances the
+current ref with an expected-old-state check. The verified pre-update commit,
+index, worktree hashes, and candidate state define the recovery boundary.
+
+If an updater-controlled step fails and no external change is detected, recovery
+restores that exact verified pre-update state. Before recovery changes a path or
+ref, it verifies that the value still matches the updater-written state. A
+concurrent or external mutation stops automatic recovery for that affected state;
+the updater does not reset over it and reports recovery as incomplete with
+actionable guidance. Results distinguish mutation started, validation ran,
+validation passed, rollback attempted, rollback completed, concurrent change,
+and a non-sensitive failure class. A failed update is never reported as ready.
 
 The resulting merge commit records the installed baseline and target provenance;
 no separate installed-version metadata is required for Git clones.
@@ -116,11 +139,23 @@ For ZIP/no-Git installations:
 
 - the original tree is read-only input and remains the recovery copy;
 - the destination must be new and empty;
-- product files come from the new public distribution;
-- current-only files are preserved in the new tree;
-- identical overlaps need no action;
-- different overlaps are reported as conflicts and are not silently chosen;
-- validation runs only when the destination is complete enough to be usable.
+- the new pristine public distribution is checked with `validate_public` before
+  any Personal files enter it;
+- product files under `system/`, `guides/`, and the repository root come only
+  from that validated distribution;
+- current-only regular files under `workspace/` may be preserved in the new tree;
+- identical `workspace/` overlaps need no action;
+- different `workspace/` overlaps are conflicts and are not silently chosen;
+- current-only files under `system/`, `guides/`, or the repository root are
+  product-area customizations and require manual resolution rather than copying;
+- symlinks, special files, path traversal, and any path escaping a selected root
+  are rejected;
+- after migration, `validate_v1 --mode personal` and `validate_prompts` validate
+  the candidate Personal installation.
+
+Comparison and copying of Personal files are host-side opaque operations. Update
+does not require restricted or denied content to enter AI context, and preserving
+a file does not grant the AI authorization to read its contents.
 
 If real usage later shows excessive false conflicts, a release-owned hash
 manifest may be proposed with evidence. It is not part of V1.
@@ -149,8 +184,11 @@ must not expose denied content, Personal facts, or secret values.
 
 ## Acceptance
 
-Executable evidence must cover upstream-only changes, user-only files, unchanged
-and modified shipped workspace files, both-changed conflicts, upstream
-delete/rename conflicts, dirty state, stale preview, confirmation mismatch,
-successful validated apply, validation rollback, honest no-write behavior, and
-side-by-side preservation with the original untouched.
+Executable evidence must cover canonical-main target pinning, invalid lineage,
+already-current and ahead/divergent states, upstream-only changes, user-only
+files, unchanged and modified shipped workspace files, both-changed conflicts,
+upstream delete/rename conflicts, dirty state, stale preview, confirmation
+mismatch, non-hooking apply, Personal validation, complete and incomplete
+recovery under concurrent change, honest no-write behavior, opaque workspace-only
+side-by-side preservation, unsafe-file rejection, pristine distribution
+validation, and the original installation remaining untouched.
