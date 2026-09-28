@@ -7,6 +7,11 @@ import re
 import sys
 from pathlib import Path
 
+if __package__:
+    from .validate_v1 import RAW_SECRET_KEYS
+else:
+    from validate_v1 import RAW_SECRET_KEYS
+
 
 TEXT_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 SKIP_PARTS = {".git", ".superpowers", "__pycache__"}
@@ -18,18 +23,11 @@ PRIVATE_IDENTIFIERS = {
     "mrAlishah/obsidian-ai-context-source-of-truth",
     "v1.2_ai_personal_source_of_truth",
 }
-SECRET_KEYS = {
+SECRET_KEYS = RAW_SECRET_KEYS | {
     "access_token",
     "api_key",
-    "api_token",
     "aws_secret_access_key",
-    "bank_login_credentials",
-    "card_cvv",
     "client_secret",
-    "password",
-    "private_key",
-    "recovery_code",
-    "session_cookie",
     "token",
 }
 SAFE_SECRET_VALUES = {
@@ -48,6 +46,26 @@ PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 ASSIGNMENT_RE = re.compile(r"^\s*[-*]?\s*([a-z0-9_]+)\s*[:=]\s*(.+?)\s*$", re.I)
 
 
+def secret_issues(source: str) -> list[tuple[int, str]]:
+    """Value-free findings reusable by host-side content gates."""
+    issues = []
+    for number, line in enumerate(source.splitlines(), 1):
+        if PRIVATE_KEY_RE.search(line):
+            issues.append((number, "private key material is forbidden"))
+        match = ASSIGNMENT_RE.match(line)
+        if not match or match.group(1).lower() not in SECRET_KEYS:
+            continue
+        value = match.group(2).strip().strip("`\"'").lower()
+        if value in SAFE_SECRET_VALUES or value.startswith("<") or value.startswith("{{"):
+            continue
+        issues.append((number, f"possible raw secret assigned to {match.group(1).lower()!r}"))
+    return issues
+
+
+def contains_raw_secret(source: str) -> bool:
+    return bool(secret_issues(source))
+
+
 def candidate_files(root: Path):
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
@@ -61,7 +79,10 @@ def candidate_files(root: Path):
 def run(root: Path) -> list[str]:
     errors: list[str] = []
     for path, relative in candidate_files(root):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        source = path.read_text(encoding="utf-8")
+        for number, message in secret_issues(source):
+            errors.append(f"{relative}:{number}: {message}")
+        for number, line in enumerate(source.splitlines(), 1):
             for identifier in PRIVATE_IDENTIFIERS:
                 if identifier in line:
                     errors.append(
@@ -69,15 +90,6 @@ def run(root: Path) -> list[str]:
                     )
             if HOME_PATH_RE.search(line):
                 errors.append(f"{relative}:{number}: user-specific home path is forbidden")
-            if PRIVATE_KEY_RE.search(line):
-                errors.append(f"{relative}:{number}: private key material is forbidden")
-            match = ASSIGNMENT_RE.match(line)
-            if not match or match.group(1).lower() not in SECRET_KEYS:
-                continue
-            value = match.group(2).strip().strip("`\"'").lower()
-            if value in SAFE_SECRET_VALUES or value.startswith("<") or value.startswith("{{"):
-                continue
-            errors.append(f"{relative}:{number}: possible raw secret assigned to {match.group(1).lower()!r}")
     return errors
 
 

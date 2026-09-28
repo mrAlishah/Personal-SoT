@@ -50,4 +50,8 @@ Repository-relative end-user content lives under `workspace/`; system contracts 
 
 ## capability_boundary
 
+Connector-backed access uses the real host executor and trusted source binding
+described in `system/connectors/readme.md`. Tool responses must pass the shared
+host gate before factual content is exposed to the model.
+
 Sandbox, network, filesystem, Git, and approval capabilities are host constraints. Fail/report when required capability is unavailable.

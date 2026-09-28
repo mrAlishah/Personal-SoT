@@ -1,0 +1,71 @@
+import unittest
+
+from system.context.access import permitted
+from system.validation.validate_public import contains_raw_secret
+
+
+class AccessTests(unittest.TestCase):
+    def allowed(self, header, **overrides):
+        args = dict(path='workspace/context/personal/goals.md',
+                    scope_path='workspace/context/personal', host_read=True,
+                    required=True, personal_owner=False, private_instance=False)
+        args.update(overrides)
+        return permitted(header, **args)
+
+    def test_allow_requires_host_scope_and_need(self):
+        header = '---\nai_access: allow\n---\n'
+        self.assertTrue(self.allowed(header))
+        for change in ({'host_read': False}, {'required': False},
+                       {'path': 'workspace/context/organizations/other/goals.md'},
+                       {'path': 'workspace/context/personal/../other/goals.md'}):
+            self.assertFalse(self.allowed(header, **change))
+
+    def test_denied_invalid_and_duplicate_fail_closed(self):
+        for header in ('---\nai_access: deny\n---', '',
+                       '---\nai_access: unknown\n---',
+                       '---\nai_access: deny\nai_access: allow\n---'):
+            self.assertFalse(self.allowed(header, personal_owner=True, private_instance=True))
+
+    def test_restricted_requires_trusted_private_personal_owner(self):
+        header = '---\nai_access: restricted\n---'
+        self.assertFalse(self.allowed(header))
+        self.assertFalse(self.allowed(header, personal_owner=True))
+        self.assertTrue(self.allowed(header, personal_owner=True, private_instance=True))
+        self.assertFalse(self.allowed(header, personal_owner=True, private_instance=True,
+                                      path='workspace/context/organizations/acme/goals.md',
+                                      scope_path='workspace/context/organizations/acme'))
+
+    def test_ambiguous_access_declarations_fail_closed(self):
+        for second in (' ai_access: deny', '"ai_access": deny', "'ai_access': deny"):
+            with self.subTest(second=second):
+                self.assertFalse(self.allowed('---\nai_access: allow\n' + second + '\n---'))
+
+    def test_authorization_requires_explicit_boolean_evidence(self):
+        header = '---\nai_access: restricted\n---'
+        for field in ('host_read', 'required', 'personal_owner', 'private_instance'):
+            for value in ('false', 1, None):
+                arguments = dict(personal_owner=True, private_instance=True)
+                arguments[field] = value
+                with self.subTest(field=field, value=value):
+                    self.assertFalse(self.allowed(header, **arguments))
+
+    def test_malformed_access_quotes_fail_closed(self):
+        for value in ("'allow", '"allow', "'allow\"", "''allow''"):
+            with self.subTest(value=value):
+                self.assertFalse(self.allowed('---\nai_access: ' + value + '\n---'))
+        for value in ('allow', "'allow'", '"allow"'):
+            self.assertTrue(self.allowed('---\nai_access: ' + value + '\n---'))
+
+    def test_unsupported_yaml_key_forms_do_not_hide_access_duplicates(self):
+        for extra in ('? ai_access\n: deny', '!!str ai_access: deny',
+                      '"ai_\\u0061ccess": deny', '<<: *defaults'):
+            with self.subTest(extra=extra):
+                self.assertFalse(self.allowed('---\nai_access: allow\n' + extra + '\n---'))
+
+    def test_validator_owned_secret_check(self):
+        self.assertTrue(contains_raw_secret('api_' + 'token: example_value'))
+        self.assertFalse(contains_raw_secret('api_' + 'token: external_reference'))
+
+
+if __name__ == '__main__':
+    unittest.main()

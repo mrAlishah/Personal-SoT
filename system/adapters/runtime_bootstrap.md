@@ -36,6 +36,10 @@ A re-anchor is also a freshness boundary for factual conclusions derived from th
 
 ## execution
 
+For connector-backed sources, resolve the source stage through
+`system/adapters/source_access_contract.md` before this sequence. Source resolution
+success alone does not mean effective runtime/profile composition succeeded.
+
 On `@do:sot`:
 
 1. re-resolve one authorized canonical SoT source binding according to `system/adapters/source_access_contract.md`, including current host capability and revision/version evidence when available;

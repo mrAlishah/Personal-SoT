@@ -20,6 +20,8 @@ adapter
 
 Reusable conversational bootstrap/re-anchor behavior is canonical in `system/adapters/runtime_bootstrap.md`. Provider-neutral local/connector source binding, capability, freshness, provenance, and failure semantics are canonical in `system/adapters/source_access_contract.md`.
 
+Use `system/connectors/readme.md` for the host-side gate integration.
+
 ## canonical_adapter_fields
 
 An adapter may configure values such as:
