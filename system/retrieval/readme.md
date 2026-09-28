@@ -13,6 +13,12 @@ authority_resolution → decides effective context
 
 A search hit/filename/recent edit/similarity score never establishes authority.
 
+## source_boundary
+
+Internal retrieval begins only after one canonical source binding has been resolved according to `system/adapters/source_access_contract.md`. Local filesystem and connector-backed access use the same scope/module/authority semantics.
+
+A connector search hit is still only discovery evidence. It must not become authority, and connector convenience must not cause broad source dumps or protected snippet exposure. If the transport cannot safely preserve access-before-content, use safer path/metadata discovery or treat the candidate content as unavailable.
+
 ## physical_roots
 
 Runtime factual retrieval resolves canonical modules below `workspace/context/`. Prompt/profile/presentation lookup uses their corresponding `workspace/` roots from `system/layout_contract.md`. System contracts/tests/guides are not candidate factual context merely because search can see them.
@@ -70,4 +76,4 @@ External web/docs/APIs belong to research behavior/tooling. External evidence do
 
 ## acceptance
 
-A compliant client discovers a small deterministic set of Markdown atoms under `workspace/`, protects inaccessible content, and keeps retrieval ranking separate from authority.
+A compliant client operates inside one resolved canonical source, discovers a small deterministic set of Markdown atoms under `workspace/`, protects inaccessible content including connector snippets, preserves source/module provenance, and keeps retrieval ranking/transport results separate from authority.

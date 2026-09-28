@@ -2,7 +2,7 @@
 
 ## integration_surface
 
-Use ChatGPT project instructions and authorized project sources/apps as the client-specific bootstrap surface when available.
+Use ChatGPT project instructions and authorized project sources/apps as the client-specific bootstrap surface when available. Repository/project-source/app access is a transport implementation of `system/adapters/source_access_contract.md`; it does not define a separate authority model.
 
 ## adapter_role
 
@@ -10,7 +10,7 @@ Project/global instructions should identify the canonical repository/root/branch
 
 Source mapping such as `repo`, `branch`, and `entrypoint` is discovery/configuration metadata, not proof that the canonical runtime was loaded. When the named repository/branch is actually accessible, the ChatGPT wrapper should explicitly instruct the client to resolve, read, and follow the named entrypoint before SoT-dependent work, then resolve referenced SoT files from that canonical source.
 
-If the repository/branch/entrypoint cannot actually be accessed in the active environment, surface that limitation rather than treating mapping metadata or conversation memory as loaded canonical behavior.
+If the repository/branch/entrypoint cannot actually be accessed in the active environment, surface the source-access limitation rather than treating mapping metadata or conversation memory as loaded canonical behavior. When a connector/search surface can expose snippets before access is evaluated, use only operations that preserve the canonical access-before-content boundary.
 
 ## prompt_library
 
