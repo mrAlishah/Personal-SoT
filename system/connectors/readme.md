@@ -56,6 +56,12 @@ validator-owned secret screening before model exposure; they are not persisted
 or logged. Screening is defense in depth and cannot certify arbitrary content
 as secret-free. The existing sensitive-data contract remains required.
 
+The bounded access reader supports flat, untagged scalar frontmatter with
+plain field names. Unsupported YAML key forms, tags, aliases or nested metadata
+cannot establish access and are treated as unavailable; they are not normalized
+into authorization. This is an implementation capability limit, not a new
+canonical metadata schema.
+
 Lookup is an exact-owner primitive. The Assistant uses canonical query planning
 to choose the smallest owner and expands only if needed; a failed single-owner
 lookup does not prove the fact is absent everywhere. This primitive does not

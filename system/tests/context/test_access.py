@@ -49,6 +49,19 @@ class AccessTests(unittest.TestCase):
                 with self.subTest(field=field, value=value):
                     self.assertFalse(self.allowed(header, **arguments))
 
+    def test_malformed_access_quotes_fail_closed(self):
+        for value in ("'allow", '"allow', "'allow\"", "''allow''"):
+            with self.subTest(value=value):
+                self.assertFalse(self.allowed('---\nai_access: ' + value + '\n---'))
+        for value in ('allow', "'allow'", '"allow"'):
+            self.assertTrue(self.allowed('---\nai_access: ' + value + '\n---'))
+
+    def test_unsupported_yaml_key_forms_do_not_hide_access_duplicates(self):
+        for extra in ('? ai_access\n: deny', '!!str ai_access: deny',
+                      '"ai_\\u0061ccess": deny', '<<: *defaults'):
+            with self.subTest(extra=extra):
+                self.assertFalse(self.allowed('---\nai_access: allow\n' + extra + '\n---'))
+
     def test_validator_owned_secret_check(self):
         self.assertTrue(contains_raw_secret('api_' + 'token: example_value'))
         self.assertFalse(contains_raw_secret('api_' + 'token: external_reference'))
