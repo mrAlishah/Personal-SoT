@@ -14,3 +14,9 @@ personalization_workflow.md  discover and compose response customization
 ```
 
 Adapters point to these contracts and declare host capabilities. They do not copy the workflows.
+
+`workspace/prompts/sot/assistant.md` is the natural-language entry point.
+`guidance.py` implements read-only guidance over existing Prompt Explorer and
+Personalization Advisor evidence. It does not parse a new directive language,
+own a capability registry, or perform writes. Actual Preview/Apply remain with
+the selected canonical workflow and its existing Builder.

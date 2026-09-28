@@ -20,6 +20,7 @@ understand your goal
 → find existing capabilities
 → recommend a composition
 → reuse an existing Profile when useful
+→ try it for the current task
 → offer a new Profile only for a repeated combination
 ```
 
