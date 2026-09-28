@@ -54,6 +54,26 @@ class BeginnerGuidanceTests(unittest.TestCase):
         self.assertEqual(('g.research',), result.composition.profiles)
         self.assertNotEqual('Preview', result.level)
 
+    def test_save_does_not_offer_creation_when_advisor_rejects_eligibility(self):
+        result = guide(ROOT, personalization=PersonalizationIntent(depth='short'), save_requested=True)
+        self.assertFalse(result.composition.profile_creation_eligible)
+        self.assertNotIn('Builder', result.next_action)
+        self.assertIn('current task', result.next_action)
+
+    def test_empty_save_intent_asks_for_outcome_not_creation(self):
+        result = guide(ROOT, personalization=PersonalizationIntent(), save_requested=True)
+        self.assertIsNotNone(result.question)
+        self.assertNotIn('Builder', result.next_action or '')
+
+    def test_behavior_without_usable_profile_is_not_presented_as_trial_ready(self):
+        for behavior in ('planning', 'decision_support'):
+            with self.subTest(behavior=behavior):
+                result = guide(ROOT, personalization=PersonalizationIntent(behaviors=(behavior,)))
+                self.assertEqual((), result.composition.profiles)
+                self.assertIsNotNone(result.question)
+                self.assertNotIn('Try this combination', result.next_action or '')
+                self.assertNotIn('can provide', result.message)
+
     def test_missing_capability_does_not_invent_identity_or_workflow(self):
         result = guide(ROOT, personalization=PersonalizationIntent(tone='imaginary'))
         self.assertEqual('unavailable', result.composition.action)
@@ -94,9 +114,12 @@ class BeginnerGuidanceTests(unittest.TestCase):
             intent = PersonalizationIntent(tone='formal', depth='short', behaviors=('reasoning',))
             trial = guide(root, personalization=intent)
             self.assertFalse(trial.composition.profile_creation_eligible)
+            self.assertIsNotNone(trial.question)
+            self.assertNotIn('Try this combination', trial.next_action or '')
             self.assertEqual([], list((root / 'workspace/profiles').glob('*.md')))
             saved = guide(root, personalization=intent, save_requested=True)
             self.assertTrue(saved.composition.profile_creation_eligible)
+            self.assertIn('Builder', saved.next_action)
             web = preview_change(root, 'create', 'practice_style', fixture.source(),
                                  same_semantic_owner=False, fact_safe=True, write_capable=False)
             self.assertIn('+tone: formal', web.diff)

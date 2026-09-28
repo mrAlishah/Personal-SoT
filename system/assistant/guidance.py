@@ -47,12 +47,25 @@ def guide(root: Path, *, prompt_query: PromptQuery | None = None,
         if composition.unavailable:
             return Guidance('Recommend', 'Customize', 'That capability could not be verified.',
                             question='What outcome should the answer help you achieve?', composition=composition)
-        if save_requested is True:
-            next_action = ('Use the existing saved combination.' if composition.action == 'reuse_profile'
-                           else 'Review the smallest reusable change through Profile Builder before saving.')
+        if not any((composition.formats, composition.tone, composition.depth,
+                    composition.controls, composition.behaviors)):
+            return Guidance('Recommend', 'Customize', 'No response-style goal has been selected yet.',
+                            question='What would you like to change about the answers?', composition=composition)
+        may_propose_save = save_requested is True and composition.profile_creation_eligible
+        if composition.behaviors and not composition.profiles and not may_propose_save:
+            return Guidance('Recommend', 'Customize',
+                            'No usable saved combination was verified for this behavior, so it is not ready to try.',
+                            question='What outcome matters most? I can help find an existing usable style.',
+                            composition=composition)
+        if may_propose_save:
+            message = 'A reusable combination can be proposed; nothing is saved yet.'
+            next_action = 'Review the smallest reusable change through Profile Builder before saving.'
         else:
-            next_action = 'Try this combination for the current task; nothing is saved.'
-        return Guidance('Recommend', 'Customize', 'Existing capabilities can provide this response style.',
+            message = 'Existing capabilities can provide this response style.'
+            next_action = ('Use the existing saved combination.'
+                           if save_requested is True and composition.action == 'reuse_profile'
+                           else 'Try this combination for the current task; nothing is saved.')
+        return Guidance('Recommend', 'Customize', message,
                         composition=composition, evidence=composition.profiles, next_action=next_action)
     if prompt_query is not None:
         # Executable recommendations always use the owner's active-status gate.
