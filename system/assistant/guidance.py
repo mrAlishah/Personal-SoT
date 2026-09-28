@@ -27,12 +27,21 @@ class Guidance:
 
 def guide(root: Path, *, prompt_query: PromptQuery | None = None,
           personalization: PersonalizationIntent | None = None,
-          save_requested=False, explain_profile=False) -> Guidance:
+          save_requested=False, explain_profile=False, uncertain=False) -> Guidance:
     if sum((prompt_query is not None, personalization is not None, bool(explain_profile))) > 1:
         raise ValueError('Classify one material outcome at a time')
     if explain_profile:
         return Guidance('Explain', 'Explain',
                         'A Profile saves a reusable combination of response style and guidance. Nothing is changed.')
+    if uncertain is True and prompt_query is None and personalization is None:
+        starter = search(root, PromptQuery(prompt_tags=('assistant', 'beginner', 'project', 'creation'), limit=1))
+        if starter.matches:
+            identity = starter.matches[0].identity
+            return Guidance('Recommend', 'Create',
+                            'I recommend trying a small practice project. You can review it before saving.',
+                            question='What is one thing you would like to learn or plan?',
+                            workflow=identity, evidence=(identity,),
+                            next_action='Use the guided project workflow to preview one useful goal.')
     if personalization is not None:
         composition = recommend(root, replace(personalization, reusable=save_requested is True))
         if composition.unavailable:

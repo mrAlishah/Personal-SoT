@@ -6,6 +6,8 @@ from unittest.mock import patch
 from system.assistant.guidance import guide, improve
 from system.personalization.advisor import PersonalizationIntent
 from system.prompts.explorer import PromptQuery
+from system.personalization.profile_builder import preview_change, apply_change
+from system.tests.personalization import test_personalization_e2e as profile_fixture
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -76,6 +78,38 @@ class BeginnerGuidanceTests(unittest.TestCase):
             result = improve(Path(directory), ('sot/assistant',))
         self.assertEqual(('unavailable:sot/assistant',), result.evidence)
         self.assertIn('check', result.next_action.lower())
+
+    def test_explicit_uncertainty_gets_a_verified_starting_point(self):
+        result = guide(ROOT, uncertain=True)
+        self.assertEqual('sot/create_project', result.workflow)
+        self.assertEqual('Create', result.category)
+        self.assertIsNotNone(result.question)
+        self.assertNotIn('category', result.question.lower())
+
+    def test_trial_save_preview_apply_uses_real_builder_and_validators(self):
+        fixture = profile_fixture.PersonalizationEndToEndTests()
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture.repository(root)
+            intent = PersonalizationIntent(tone='formal', depth='short', behaviors=('reasoning',))
+            trial = guide(root, personalization=intent)
+            self.assertFalse(trial.composition.profile_creation_eligible)
+            self.assertEqual([], list((root / 'workspace/profiles').glob('*.md')))
+            saved = guide(root, personalization=intent, save_requested=True)
+            self.assertTrue(saved.composition.profile_creation_eligible)
+            web = preview_change(root, 'create', 'practice_style', fixture.source(),
+                                 same_semantic_owner=False, fact_safe=True, write_capable=False)
+            self.assertIn('+tone: formal', web.diff)
+            no_write = apply_change(root, web, web.confirmation_digest)
+            self.assertFalse(no_write.write_applied or no_write.validation_ran)
+            local = preview_change(root, 'create', 'practice_style', fixture.source(),
+                                   same_semantic_owner=False, fact_safe=True, write_capable=True)
+            self.assertFalse(apply_change(root, local, 'wrong-confirmation').write_applied)
+            applied = apply_change(root, local, local.confirmation_digest)
+            self.assertTrue(applied.write_applied and applied.validation_ran and applied.validation_passed)
+            reused = guide(root, personalization=intent, save_requested=True)
+            self.assertEqual('reuse_profile', reused.composition.action)
+            self.assertEqual(('practice_style',), reused.composition.profiles)
 
 
 if __name__ == '__main__':

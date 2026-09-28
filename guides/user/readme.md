@@ -72,7 +72,9 @@ Do not put secrets here. Keep passwords, API tokens, private keys, recovery code
 [7 First useful task]
 ```
 
-The Assistant will offer six simple categories:
+Tell the Assistant what you want, or say “I don't know — recommend a starting
+point.” It selects the appropriate workflow internally. These categories are
+optional navigation, not a choice you must make before getting help:
 
 - Discover — find the right existing capability.
 - Maintain — update your information or project state safely.
@@ -82,3 +84,6 @@ The Assistant will offer six simple categories:
 - Diagnose — check the system and get beginner-friendly repair guidance.
 
 Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, and `@do:prompt` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
+
+See [Get help from the Assistant](assistant_guidance.md) for examples, trial
+customizations, and the difference between a suggestion, preview and saved change.
