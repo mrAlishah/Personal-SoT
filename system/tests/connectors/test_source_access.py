@@ -1,6 +1,6 @@
 import unittest
 
-from system.connectors.source import SourceSession, Snapshot, SourceUnavailable, safe_path
+from system.connectors.source import SourceBinding, Provenance, SourceSession, Snapshot, SourceUnavailable, safe_path
 from system.validation.validate_v1 import RAW_SECRET_KEYS
 from system.validation.validate_public import SECRET_KEYS
 
@@ -11,6 +11,7 @@ ATOM = 'workspace/context/personal/goals.md'
 
 class Transport:
     def __init__(self):
+        self.binding = SourceBinding('example/instance', 'main')
         self.revision = 'a' * 40
         self.available = True
         self.private = True
@@ -25,7 +26,7 @@ class Transport:
     def resolve(self):
         if not self.available:
             raise SourceUnavailable('private internal failure')
-        return Snapshot('example/instance', self.revision, self.private)
+        return Snapshot('example/instance', self.revision, self.private, selector='main')
 
     def read(self, snapshot, path, *, metadata_only=False):
         self.reads.append((path, metadata_only))
@@ -51,7 +52,7 @@ class SourceTests(unittest.TestCase):
         result = self.lookup()
         self.assertTrue(result.success)
         self.assertIn('Current goal', result.content)
-        self.assertEqual(('example/instance', 'a' * 40, ATOM), result.provenance)
+        self.assertEqual(Provenance('example/instance', 'main', 'a' * 40, 'personal', ATOM), result.provenance)
 
     def test_unavailable_source_invalidates_prior_state(self):
         self.transport.available = False
@@ -92,7 +93,7 @@ class SourceTests(unittest.TestCase):
         self.assertTrue(self.session.reanchor('@do:sot').success)
         result = self.lookup()
         self.assertIn('New goal', result.content)
-        self.assertEqual('b' * 40, result.provenance[1])
+        self.assertEqual('b' * 40, result.provenance.resolved_revision)
 
     def test_memory_is_not_a_lookup_input_or_fallback(self):
         memory = 'Old goal'

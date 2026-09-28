@@ -38,7 +38,7 @@ Conversation/project memory is continuity assistance, not higher-authority canon
 
 ## capability_boundary
 
-Connector-backed access uses `system/connectors/source_contract.md`. Require
+Connector-backed access uses `system/adapters/source_access_contract.md`. Require
 a real host gate before factual tool results enter the model; otherwise report
 limited capability using `system/connectors/readme.md`. Provider identity or a
 project instruction does not prove that gate exists.

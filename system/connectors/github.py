@@ -10,7 +10,7 @@ import re
 import subprocess
 from urllib.parse import quote
 
-from system.connectors.source import Snapshot, SourceUnavailable, safe_path
+from system.connectors.source import SourceBinding, Snapshot, SourceUnavailable, safe_path
 
 
 def _sha(value):
@@ -25,19 +25,31 @@ class GitHubSource:
             raise ValueError('Use one exact owner/repository binding')
         self.repository = repository
         self.ref = ref
+        self.binding = SourceBinding(repository, ref)
         self.runner = runner
 
     def _api(self, suffix=''):
         try:
             result = self.runner(
-                ['gh', 'api', '--hostname', 'github.com',
+                ['gh', 'api', '--include', '--hostname', 'github.com',
                  '/repos/' + self.repository + suffix],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 text=True, timeout=30, check=False,
             )
-            if result.returncode != 0 or len(result.stdout) > 2_000_000:
+            response = result.stdout.replace('\r\n', '\n')
+            status = re.match(r'HTTP/\S+ (\d{3})', response)
+            if status:
+                code = int(status.group(1))
+                if code in (401, 403):
+                    raise SourceUnavailable(reason='source_unauthorized')
+                response = response.partition('\n\n')[2]
+            if result.returncode != 0:
                 raise SourceUnavailable()
-            return json.loads(result.stdout)
+            if len(response) > 2_000_000:
+                raise SourceUnavailable(reason='partial_coverage')
+            return json.loads(response)
+        except FileNotFoundError:
+            raise SourceUnavailable(reason='capability_unavailable') from None
         except (OSError, subprocess.SubprocessError, ValueError):
             raise SourceUnavailable('Source transport unavailable') from None
 
@@ -45,15 +57,15 @@ class GitHubSource:
         try:
             repository = self._api()
             if repository['full_name'].casefold() != self.repository.casefold():
-                raise SourceUnavailable()
+                raise SourceUnavailable(reason='source_unresolved')
             if not isinstance(repository['private'], bool):
                 raise SourceUnavailable()
             ref = self.ref or repository['default_branch']
             commit = self._api('/commits/' + quote(ref, safe=''))
             return Snapshot(self.repository, _sha(commit['sha']), repository['private'],
-                            _sha(commit['commit']['tree']['sha']))
+                            _sha(commit['commit']['tree']['sha']), ref)
         except (KeyError, TypeError, AttributeError):
-            raise SourceUnavailable('Source resolution unavailable') from None
+            raise SourceUnavailable(reason='source_unresolved') from None
 
     def read(self, snapshot: Snapshot, path: str, *, metadata_only=False) -> str:
         try:
@@ -65,7 +77,7 @@ class GitHubSource:
             for index, part in enumerate(parts):
                 response = self._api('/git/trees/' + tree)
                 if response.get('truncated') is not False:
-                    raise SourceUnavailable()
+                    raise SourceUnavailable(reason='partial_coverage')
                 entries = [entry for entry in response['tree'] if entry['path'] == part]
                 if len(entries) != 1:
                     raise SourceUnavailable()

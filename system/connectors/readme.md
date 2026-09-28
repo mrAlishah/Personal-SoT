@@ -1,6 +1,7 @@
 # Read-only source access
 
-`source_contract.md` owns the transport boundary. `source.py` composes existing
+`system/adapters/source_access_contract.md` is the canonical semantic owner.
+This document describes implementation/integration only. `source.py` composes existing
 access, scope and runtime naming owners. `github.py` supplies one real host-side
 transport using GitHub's immutable Git objects through an installed `gh`.
 
@@ -30,13 +31,30 @@ privacy, which is necessary but not sufficient for that authorization.
 controls or the full chat runtime were activated. The client continues the
 existing `system/adapters/runtime_bootstrap.md` sequence. Re-anchor clears the
 old source first; failure leaves no usable old source. Lookups are pinned to
-the resolved revision. When freshness is uncertain or change is known, resolve
-again before answering. No positive or negative content cache is maintained.
+the resolved revision. Each factual lookup probes the current binding; a changed
+revision re-resolves the runtime basis. A transport without revision evidence
+rereads that basis and the target, and reports the missing evidence. No positive
+or negative content cache is maintained.
 
 Only `Result.content` after success may enter factual AI context. Show the
-result's source/revision/atom provenance in Advanced or citations. Do not print
+typed `Provenance` fields (source identity, selected ref when known, actual
+revision when available, logical scope, canonical path and real warnings) in
+Advanced or citations. Do not print
 raw transport responses, internal exceptions, or the host authorization
 configuration. Failed results contain no atom content or provenance.
+
+`Result.failure` reports canonical source diagnostics. Explicit HTTP 401/403
+maps to `source_unauthorized`; a missing host executable maps to
+`capability_unavailable`; an invalid/ambiguous binding maps to
+`source_unresolved`. A truncated source response maps to `partial_coverage`.
+Unclassifiable errors remain `source_unavailable`; in particular a 404 does
+not prove absence or distinguish a hidden private repository from a missing one.
+These diagnostics do not classify or replace module-level access policy.
+
+Transport bytes are quarantined in host memory for metadata inspection and
+validator-owned secret screening before model exposure; they are not persisted
+or logged. Screening is defense in depth and cannot certify arbitrary content
+as secret-free. The existing sensitive-data contract remains required.
 
 Lookup is an exact-owner primitive. The Assistant uses canonical query planning
 to choose the smallest owner and expands only if needed; a failed single-owner

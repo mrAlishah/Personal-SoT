@@ -5,6 +5,8 @@ Goal: expose current, authorized canonical atoms through read-only transports.
 ## Architecture and gaps
 
 Existing access, scope, retrieval, and bootstrap contracts own semantics.
+The canonical source-access owner is `system/adapters/source_access_contract.md`
+from PR #9; connector files implement that contract and own no parallel semantics.
 There is no executable runtime access evaluator or connector boundary today.
 The existing validators inspect local files; their output is not authorization.
 Public upstream is the product, a user's private repository is the canonical
@@ -49,6 +51,16 @@ index, cache, registry, provider aliases, or write interface is introduced.
 - Run all executable tests plus core, prompt and public validators.
 - Independent whole-branch review; reproduce actual findings RED then GREEN.
 - Commit coherent slices; push and create a PR with validation evidence.
+
+## Contract reconciliation acceptance
+
+Execute `system/tests/connectors/test_contract_alignment.py` alongside the
+source and transport suites. It covers canonical source-access scenarios:
+mapping vs resolution, singular binding, external-source rejection, typed
+provider-neutral provenance, failure classes, revision changes, unversioned
+targeted rereads, and partial coverage. Existing source tests cover access,
+narrow retrieval, memory exclusion and read-only honesty. Markdown acceptance
+cases remain specifications; only these executable tests count as RED/GREEN.
 
 ## Review focus
 
