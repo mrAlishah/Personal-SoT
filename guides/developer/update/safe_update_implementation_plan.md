@@ -294,22 +294,35 @@ in with the exact state names from the design table.
 ### 4. Existing code/contracts reused
 - `target.resolve()` from Loop 1 for the pinned commit `T`.
 - `target.controlled_git` for every Git invocation this loop issues,
-  including the target-materialization fetch. Passing an explicit `cwd`
-  (the ephemeral inspection repository) already gets `controlled_git`'s
-  environment isolation and redirect hardening without its auto-empty-
-  directory/ceiling behavior, exactly as Loop 1 designed that mode for
-  apply-phase reuse; Loop 2 is simply its second real caller. One small,
-  additive change to `controlled_git` itself is needed: an `extra_env:
-  dict | None = None` parameter, merged into the existing isolated
-  environment it already builds, so this loop's local-only classification
-  calls can layer `GIT_ALTERNATE_OBJECT_DIRECTORIES`/
-  `GIT_NO_REPLACE_OBJECTS` on top of the same baseline rather than Loop 2
-  building a second, parallel isolated-invocation mechanism — the same
-  reuse principle Loop 1 already applied when it required Loop 3 to reuse
-  `controlled_git` instead of inventing another one. Existing callers are
-  unaffected: the default `None` changes nothing about Loop 1's behavior.
-  The materialization fetch call itself passes no `extra_env` and gets
-  exactly Loop 1's unchanged baseline.
+  including the target-materialization fetch and the dirty/untracked
+  preflight against the live checkout. Passing an explicit `cwd` (the
+  ephemeral inspection repository, or the live checkout for the preflight)
+  already gets `controlled_git`'s environment isolation and redirect
+  hardening without its auto-empty-directory/ceiling behavior, exactly as
+  Loop 1 designed that mode for apply-phase reuse; Loop 2 is simply its
+  second real caller. One small, additive, **closed** change to
+  `controlled_git` itself is needed: an `extra_env: dict | None = None`
+  parameter that may add only the two literal keys this loop's local-only
+  classification calls need — `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
+  `GIT_NO_REPLACE_OBJECTS` — checked against a fixed allowlist inside
+  `controlled_git` itself; any other key, including any of the
+  authority-bearing variables Loop 1 already controls (`HOME`,
+  `XDG_CONFIG_HOME`, `PATH`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`,
+  `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_*`, `GIT_CONFIG_VALUE_*`, `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_CEILING_DIRECTORIES`), makes `controlled_git` raise
+  before building the process environment at all — a caller cannot reopen
+  Loop 1's isolation merely by naming one of its keys in `extra_env`. This
+  is not a general environment-extension framework: the allowlist is fixed
+  to exactly today's two keys, and a later loop that needs a different key
+  extends the allowlist itself, deliberately and reviewably, rather than
+  inheriting an already-open door. Existing callers are unaffected: the
+  default `None` changes nothing about Loop 1's behavior. The
+  materialization fetch call itself passes no `extra_env` and gets exactly
+  Loop 1's unchanged baseline — it never has alternate/private-object
+  visibility. The dirty/untracked preflight needs no `extra_env` either;
+  its hardening (`--no-optional-locks`, `-c core.fsmonitor=false`) is
+  ordinary Git command-line arguments, already supported today through
+  `controlled_git`'s existing `*args`.
 - Real temporary Git repositories built with `git init`/`git commit`
   (subprocess, real Git — not a mocked runner) as fixtures, because tree
   identity, merge-base, and dirty-state detection must be verified against
@@ -382,11 +395,46 @@ standing in for current/target) and calls `git_update.classify`:
   `filter.*.clean` helper that would fail loudly or write a sentinel file if
   ever invoked; classification completes without triggering it, since it
   compares tree/blob identity only.
-- `test_current_only_path_outside_workspace_not_named_unless_shipped_by_target`
-  — a current-only file directly under the repository root that is not
-  present in `T`'s tree is reported by area/count, not by name, at the
-  default detail level; a current-only root/`system/`/`guides/` file that
-  *is* present unmodified in `T` may be named.
+- `test_current_only_path_outside_workspace_is_area_count_not_named` — a
+  current-only file directly under the repository root (never present in
+  `T`'s tree at any baseline, so classified `user_only` by the state table)
+  is reported by area/count, not by name, at the default detail level, the
+  same as a current-only `workspace/` path — the naming boundary is
+  classification state, not location.
+- `test_upstream_only_shipped_path_may_be_named` — a `system/`/`guides/`/
+  root path classified `upstream_only` (present in `T`, not user-created) is
+  named at the default detail level, since that classification itself
+  establishes it as accepted product history, never a user-chosen path.
+- `test_controlled_git_rejects_protected_key_in_extra_env` — calling
+  `controlled_git(..., extra_env={'HOME': '/tmp/attacker'})` (or any other
+  key `target.py` already treats as authority-bearing) raises before any
+  process environment is built; the same call with only
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES`/`GIT_NO_REPLACE_OBJECTS` still
+  succeeds.
+- `test_materialization_fetch_never_receives_extra_env` — a spy on the
+  fetch-phase `controlled_git` call proves it is made with no `extra_env`
+  argument at all, so the fetch never has alternate/private-object
+  visibility regardless of what classification later attaches.
+- `test_dirty_preflight_blocks_when_filter_or_textconv_is_configured` — a
+  fixture repo with a `.gitattributes` `filter=`/`diff=` attribute (or the
+  matching `filter.*.clean`/`diff.*.textconv` config) declared for a tracked
+  path; the preflight reports unsafe-repository-state and blocks rather
+  than risking that helper's invocation to determine dirtiness.
+- `test_dirty_preflight_runs_with_no_optional_locks_and_fsmonitor_disabled`
+  — a spy on the preflight's Git invocation proves it always includes
+  `--no-optional-locks` and `-c core.fsmonitor=false`, regardless of ambient
+  repository configuration.
+- `test_dirty_preflight_never_invokes_configured_helper` — same
+  `.gitattributes`/filter fixture as above, but with the helper itself
+  writing a sentinel file if ever executed; after a blocked preflight, the
+  sentinel is absent.
+- `test_index_bytes_unchanged_by_clean_preflight` and
+  `test_index_bytes_unchanged_by_blocked_preflight` — byte-identical
+  `.git/index` before/after, for both a clean checkout and a
+  dirty/unsafe-state checkout.
+- `test_preflight_worktree_ref_and_object_store_unchanged` — extends the
+  existing live-mutation snapshot test to cover the preflight step
+  specifically, not only the target-materialization fetch.
 
 ### 6. What each RED test proves
 Every state-table row and lineage rule from the design is exercised against
@@ -394,27 +442,61 @@ real Git tree identity, the dirty-state guidance never leaks paths, the
 preview cannot be replayed against changed state, target materialization
 actually fetches what classification needs without ever mutating the
 installed clone, local/private object ids never reach the canonical fetch's
-negotiation, and history cannot be reinterpreted through replace refs or an
-arbitrarily chosen merge base.
+negotiation, history cannot be reinterpreted through replace refs or an
+arbitrarily chosen merge base, `extra_env` cannot reopen an authority-bearing
+variable Loop 1 already controls, and the dirty/untracked preflight itself
+never mutates the live checkout or risks executing a configured helper to
+determine dirtiness.
 
 ### 7. Minimal GREEN implementation
 
-**Target materialization**, run before any classification and strictly in
+**Dirty/untracked preflight**, run first, directly against the live
+checkout (`cwd=root`, no `extra_env`):
+
+1. Check whether anything could require executing user-defined code to
+   determine accurate dirtiness: read `.gitattributes` (plain text, not
+   through any filter machinery — reading raw bytes invokes nothing) for a
+   `filter=`/`diff=` attribute on any tracked path, and read the resolved
+   config for a matching `filter.<driver>.clean`/`filter.<driver>.process`/
+   `diff.<driver>.textconv` value (`man gitattributes`: "$ git status # Show
+   files that will be normalized" — status/diff apply the effective
+   clean-equivalent transformation to decide dirtiness, not only at
+   `add`/`commit`; `--no-textconv`/`--no-ext-diff` only affect *displayed*
+   patch text, not this underlying comparison, so they are not a fix here).
+   If any such filter/textconv is configured for a tracked path, stop and
+   report unsafe-repository-state — a non-sensitive capability result, not
+   a content leak — rather than risk invoking it.
+2. Otherwise, `controlled_git('--no-optional-locks', '-c',
+   'core.fsmonitor=false', 'status', '--porcelain=v2',
+   '--untracked-files=all', cwd=root)`. `--no-optional-locks`
+   (`GIT_OPTIONAL_LOCKS=0`) is documented (`man git`) specifically to
+   "prevent git status from refreshing the index as a side effect" — the
+   control this loop's index-unchanged invariant depends on.
+   `-c core.fsmonitor=false` disables any configured fsmonitor hook/daemon
+   query for this one invocation regardless of ambient repository
+   configuration. With no filter/textconv configured (step 1 already ruled
+   that out), the ordinary stat-based fast path this command uses cannot
+   fall through to an external helper. A dirty index/worktree or untracked
+   path blocks before target materialization or classification proceed, per
+   the existing state table.
+
+**Target materialization**, run only once the preflight passes, strictly in
 this order:
 
 1. `git init --bare <ephemeral>` — a fresh, empty, updater-owned temporary
    directory; not the live checkout, not a tracked file, not persisted past
    this call. Bare because only objects are needed, never a working tree.
 2. `controlled_git('fetch', target.CANONICAL_URL,
-   target.CANONICAL_REF + ':refs/heads/_target', cwd=ephemeral)` — the
-   literal canonical URL, never a configured remote name (no `git remote
-   add` is ever run; `origin` is never created as authority in the
-   ephemeral repository). At this point the ephemeral repository's object
-   database contains only what this one fetch brought in: it has no
-   alternate object directory yet, so it has nothing of the installed
-   clone's to advertise, and Git's fetch negotiation cannot include any
-   installed-clone object id in what it tells the canonical remote it
-   already "has".
+   target.CANONICAL_REF + ':refs/heads/_target', cwd=ephemeral)`, fetching
+   the exact and unambiguous `refs/heads/main` — the literal canonical URL,
+   never a configured remote name (no `git remote add` is ever run;
+   `origin` is never created as authority in the ephemeral repository). At
+   this point the ephemeral repository's object database contains only what
+   this one fetch brought in: it has no alternate object directory yet, so
+   it has nothing of the installed clone's to advertise, and Git's fetch
+   negotiation cannot include any installed-clone object id in what it
+   tells the canonical remote it already "has". This call passes no
+   `extra_env`; it never has alternate/private-object visibility.
 3. `git rev-parse refs/heads/_target` in the ephemeral repository; if this
    does not equal the `T` Loop 1 already resolved, canonical `main` moved
    between resolution and fetch — stop and report stale target, the same
@@ -424,13 +506,14 @@ this order:
    target than the one about to be bound into the preview digest.
 4. Only now, with target-fetch network activity finished, attach the
    installed clone's object database to the ephemeral repository read-only,
-   via `controlled_git`'s new `extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES':
-   ...}` on the classification-phase Git calls that follow. No further
-   network operation happens after this point in the same materialization;
-   if a later network call were ever needed, it would first have to detach
-   the alternate again. Alternates share objects without touching the live
-   repository's refs, index, worktree, or its own object database — nothing
-   is written into `<root>/.git`.
+   via `controlled_git`'s new, allowlist-checked
+   `extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES': ...}` on the
+   classification-phase Git calls that follow. No further network operation
+   happens after this point in the same materialization; if a later network
+   call were ever needed, it would first have to detach the alternate
+   again. Alternates share objects without touching the live repository's
+   refs, index, worktree, or its own object database — nothing is written
+   into `<root>/.git`.
 
 **Classification**, run in the ephemeral repository via
 `controlled_git(..., cwd=ephemeral, extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES':
@@ -461,13 +544,14 @@ computation regardless.
 `B`, and a canonical serialization of the plan) and a beginner-safe summary:
 counts per state and per area for anything under `workspace/`, since any
 `workspace/` path may contain a user-chosen name (a project, a custom
-prompt, a custom profile), not only paths under `workspace/context/`. A
-current-only path outside `workspace/` is named at the default detail level
-only when its identity as a shipped product path is established from `T`'s
-own tree (it exists, unmodified, in accepted target history); a current-only
-path that is not present in `T` is reported by area/count like a
-`workspace/` path, since it may still carry a user-chosen name even outside
-`workspace/`.
+prompt, a custom profile), not only paths under `workspace/context/`. The
+naming boundary is classification state, not location: a path classified
+`upstream_only` or already-aligned is present in `T`'s tree, which itself
+establishes it as accepted product history, so it may be named at the
+default detail level regardless of where it sits. A `user_only`
+(current-only) path is, by that same classification, never present in `T` —
+it may still carry a user-chosen name, so it is reported by area/count only,
+whether it sits under `workspace/` or anywhere else.
 
 ### 8. Regression tests/checks
 ```text
@@ -480,15 +564,16 @@ python3 system/validation/validate_v1.py --mode core
 Beginner-facing preview summary never lists a `workspace/` path by name —
 the boundary is "user-owned surface" (all of `workspace/`), not
 `workspace/context/` alone, since prompts, profiles, and presentation
-overlays under `workspace/` can also carry user-chosen names. A current-only
-path outside `workspace/` is named only when `T`'s own tree establishes it
-as a shipped product path (present there, unmodified); otherwise it is
-area/count too, since a rogue root/`system/`/`guides/`-area file can still
-carry a user-chosen name and nothing about its location alone proves it is
-product-owned. Whether and when a path may appear in Advanced detail is not
-decided in this loop; see Loop 5, which defines the actual authorization for
-that (Doctor's `advanced` flag is presentation-only and is not treated as an
-access decision — see Loop 5 section 4).
+overlays under `workspace/` can also carry user-chosen names. The naming
+boundary is classification state, not location: a `user_only` (current-only)
+path is never present in `T`, so it is area/count only wherever it sits,
+including outside `workspace/`; a path present in `T` (upstream-only or
+already aligned) is established as accepted product history by that
+classification itself and may be named. Whether and when a path may appear
+in Advanced detail is not decided in this loop; see Loop 5, which defines
+the actual authorization for that (Doctor's `advanced` flag is
+presentation-only and is not treated as an access decision — see Loop 5
+section 4).
 
 Target materialization is a second, independent privacy boundary: no
 installed-clone object id may reach the canonical fetch's negotiation. This
@@ -496,20 +581,26 @@ is enforced by ordering, not by filtering — the ephemeral repository has no
 alternate object access at all until after the fetch-and-verify steps
 finish, so it has nothing of the installed clone's to advertise while
 talking to the canonical remote, and no further network call happens once
-the alternate is attached.
+the alternate is attached. `extra_env`'s fixed allowlist is a third boundary:
+a caller cannot reopen any of Loop 1's authority-bearing environment
+variables merely by naming them in a Loop-2-issued call.
 
 ### 10. Failure cases
 No merge base; multiple merge bases (ambiguous lineage); dirty index; dirty
-worktree; untracked Personal file; stale digest reuse; canonical `main`
-moving between target resolution and materialization fetch; `T` resolution
-failure propagated from Loop 1.
+worktree; untracked Personal file; a configured filter/textconv that makes
+accurate dirty-state inspection unsafe (reported as unsafe-repository-state,
+not a content leak); stale digest reuse; canonical `main` moving between
+target resolution and materialization fetch; `T` resolution failure
+propagated from Loop 1.
 
 ### 11. Explicit out-of-scope items
 No apply, no mutation, no recovery, no ZIP path, no confirmation storage
 beyond returning the digest for the caller to hold. The ephemeral inspection
 repository is not an installed-version inventory, not an updater cache, and
 is not retained after the call; no persisted mapping of past resolutions is
-introduced.
+introduced. `extra_env` is not a general subprocess-environment extension
+framework: its allowlist covers exactly today's two keys, and no other key
+is pre-authorized for a later loop.
 
 ### 12. Review questions
 - Does classification ever perform a text/semantic merge for a both-changed
@@ -529,6 +620,13 @@ introduced.
 - Does classification run with `GIT_NO_REPLACE_OBJECTS=1`, and does it use
   tree/blob identity plumbing exclusively, never a command that would invoke
   a configured external diff/textconv/clean/smudge/fsmonitor helper?
+- Does `controlled_git`'s `extra_env` allowlist reject every authority-
+  bearing key Loop 1 already controls, not only the two it currently adds?
+- Does the dirty/untracked preflight actually check for a configured
+  filter/textconv before proceeding, rather than only passing
+  `--no-optional-locks`/`-c core.fsmonitor=false` and hoping nothing fires?
+- Is the fetch-phase `controlled_git` call ever made with an `extra_env`
+  argument? (Must not be.)
 
 ### 13. Completion gate
 All Loop 1 + Loop 2 tests pass; no mutation function exists yet in
