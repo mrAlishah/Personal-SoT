@@ -75,15 +75,36 @@ rules for both paths, per the design's Ownership section.
   `controlled_git` helper this loop introduces (see below), not a plain
   `subprocess.run`.
 - Controlled Git configuration is established here, at the first Git call
-  this design makes, not deferred to apply. `controlled_git` runs every
-  updater-issued Git invocation with an isolated configuration: no system or
-  global config is inherited (`GIT_CONFIG_NOSYSTEM=1` plus explicit
-  `GIT_CONFIG_GLOBAL=/dev/null`/an empty override on older Git), so no
-  `url.*.insteadOf`, `insteadOf`/`pushInsteadOf`, proxy, or credential-helper
-  rewrite from user/global/system config can redirect where `T` is resolved
-  from or fetched. The canonical URL is passed literally, never through a
-  configured remote name. Loop 3's apply step reuses this exact helper for
-  its own Git invocations rather than defining a second one.
+  this design makes, not deferred to apply. System/global config alone is
+  not the whole boundary: Git also discovers a *repository-local*
+  `.git/config` by walking up from the current working directory, which is
+  a separate scope `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL` do not touch —
+  if the resolver ever ran with `cwd` inside some repository (the installed
+  Personal-SoT checkout, or any other repo on the machine), that repo's
+  `url.*.insteadOf` could still redirect the canonical URL. `controlled_git`
+  closes this with two controls, not one:
+  1. **execution directory** — every resolution-phase Git call runs with
+     `cwd` set to a freshly created, empty, non-repository directory (never
+     the caller's checkout), so Git's upward repository discovery finds no
+     `.git` at all and there is no repository-local config to read;
+  2. **explicit environment** — `controlled_git` builds the child
+     environment itself (an explicit small allowlist: `PATH`, and `HOME`/
+     `XDG_CONFIG_HOME` pointed at that same empty controlled directory) and
+     does not pass the parent process's environment through unfiltered. It
+     sets `GIT_CONFIG_NOSYSTEM=1`, an empty `GIT_CONFIG_GLOBAL` override,
+     and explicitly unsets/overrides any inherited `GIT_DIR`,
+     `GIT_WORK_TREE`, `GIT_CONFIG_COUNT`, and `GIT_CONFIG_KEY_*`/
+     `GIT_CONFIG_VALUE_*` variables, since an inherited process environment
+     can itself inject config or redirect repository discovery without
+     touching any file.
+
+  The canonical URL is passed literally on the command line, never through
+  a configured remote name. This is a fixed execution boundary (controlled
+  directory + explicit environment), not a general Git sandbox framework.
+  Loop 3's apply step, which necessarily runs inside the real checkout,
+  reuses this same helper and adds only what it additionally needs there
+  (hook-disabling; apply cannot use the empty-directory control since it
+  must operate on the real worktree).
 - `system/connectors/source.py` exports `Failure =
   Literal['source_unavailable', 'source_unauthorized', 'source_unresolved',
   'capability_unavailable', 'partial_coverage']`. Target resolution is the
@@ -125,14 +146,26 @@ network/`gh`), matching the `runner=` injection style of
 - `test_no_fabricated_target_on_partial_response` — resolver returns a
   malformed/partial snapshot (missing sha); `target.resolve()` fails closed
   rather than accepting a partial commit id.
-- `test_local_git_fallback_ignores_url_rewrite_configuration` — a fake
-  `controlled_git` environment carries a `url.*.insteadOf` rule that would
-  redirect `https://github.com/mrAlishah/Personal-SoT` to a different
-  fixture repository; `target.resolve()`'s direct-git path still resolves
-  the real canonical repository's commit, proving the rewrite had no effect.
-- `test_local_git_fallback_ignores_repo_local_config` — same, but the
-  rewrite is set in a repository-local `.git/config` reachable from `cwd`
-  rather than global/system config.
+- `test_local_git_fallback_ignores_global_url_rewrite` — a real, isolated
+  fake `$HOME`/`GIT_CONFIG_GLOBAL` carries a `url.*.insteadOf` rule that
+  would redirect `https://github.com/mrAlishah/Personal-SoT` to a different
+  fixture repository; `target.resolve()`'s direct-git path, invoked from
+  the test process's real environment (not through `controlled_git`'s own
+  isolation, which is exactly what's under test), still resolves the real
+  canonical repository, proving `controlled_git` neutralizes it.
+- `test_local_git_fallback_ignores_repository_local_url_rewrite` — the test
+  runner's own `cwd` is a real Git repository whose `.git/config` carries a
+  `url.*.insteadOf` rewrite; `target.resolve()` still resolves the real
+  canonical repository, proving `controlled_git`'s empty-directory control
+  prevents that repository-local config from ever being discovered (this is
+  the scope `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL` alone do not cover).
+- `test_local_git_fallback_ignores_injected_git_env_vars` — the calling
+  process's environment carries `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/
+  `GIT_CONFIG_VALUE_0` set to inject the same rewrite, and `GIT_DIR`/
+  `GIT_WORK_TREE` pointed at a different repository; `target.resolve()`
+  still resolves the real canonical repository, proving `controlled_git`
+  builds its child environment explicitly rather than passing the parent
+  environment through.
 
 ### 6. What each RED test proves
 That target authority is fixed to `mrAlishah/Personal-SoT:main` in code (not
@@ -146,13 +179,18 @@ plus a frozen `TargetSnapshot(commit, ref, resolved_via)` dataclass, using
 new literal type. No caller-supplied repository or ref parameter exists in
 the public function signature — this is what makes rejection of alternates
 structural rather than a runtime check. Also `controlled_git(*args, cwd=None,
-runner=subprocess.run)`, a thin wrapper that sets `GIT_CONFIG_NOSYSTEM=1` and
-an empty global config override on the environment passed to `runner` before
-every updater-issued Git call; the direct-git fallback in `resolve()` is its
-first caller. `update_contract.md`: prose stating the shared target-
-resolution rule, failure classes, the controlled-Git requirement for every
-updater-issued Git call starting at resolution, and that both paths call the
-same `target.resolve()`.
+runner=subprocess.run)`: when `cwd` is omitted, it creates a fresh empty
+temporary directory and runs there instead of the caller's directory; it
+always builds the child environment explicitly (`PATH`, `HOME`/
+`XDG_CONFIG_HOME` pointed at that same controlled directory,
+`GIT_CONFIG_NOSYSTEM=1`, empty `GIT_CONFIG_GLOBAL`, `GIT_DIR`/`GIT_WORK_TREE`/
+`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*` explicitly absent)
+rather than passing `os.environ` through. The direct-git fallback in
+`resolve()` is its first caller, using the auto-created empty directory.
+`update_contract.md`: prose stating the shared target-resolution rule,
+failure classes, the controlled-Git requirement (execution directory +
+explicit environment) for every updater-issued Git call starting at
+resolution, and that both paths call the same `target.resolve()`.
 
 ### 8. Regression tests/checks
 ```text
@@ -185,6 +223,9 @@ Assistant wiring. No caching of a previously resolved `T` across processes.
 - Does every Git invocation in `target.py`, including the direct-git
   fallback, go through `controlled_git`, with no direct `subprocess.run`
   call to `git` anywhere else in the module?
+- Does `controlled_git` build its child environment explicitly rather than
+  passing `os.environ` through, and does the resolution path run from a
+  fresh empty directory rather than the caller's `cwd`?
 
 ### 13. Completion gate
 All Loop 1 tests pass; `validate_public.py` and `validate_v1.py --mode core`
@@ -618,16 +659,29 @@ routes and translates.
   was inspected directly: `advanced` is a presentation flag only — when
   true it prints `finding.advanced` (raw validator error strings) with no
   reference to `ai_access` or any access contract. It is not an
-  authorization mechanism, and this plan does not claim it is. What Safe
-  Update actually reuses is the real access vocabulary: `ai_access`
-  (`allow`/`restricted`/`deny`) frontmatter, the same three-state
-  classification `system/context/access.py` reads for content access. A
-  `workspace/context/` path may be named in Advanced output only when its
-  module's `ai_access` is `allow`; `restricted`, `deny`, or a path where no
-  `ai_access` can be established (a directory, a non-context `workspace/`
-  path) stays area/count-only regardless of Advanced mode. This is the
-  existing vocabulary applied to a new question ("may this path string
-  appear in a message"), not a second access policy.
+  authorization mechanism, and this plan does not claim it is.
+- `system/context/access_contract.md` defines effective access as
+  `host_or_tool_permission + canonical_ai_access +
+  trusted_adapter_authorization_when_restricted`, not the raw `ai_access`
+  scalar alone — its own text states "`allow` does not mean the module
+  should always be loaded." `system/context/access.py`'s `permitted(header,
+  *, path, scope_path, host_read, required, personal_owner,
+  private_instance)` is the existing executable form of exactly that
+  formula. Safe Update reuses this function directly for the "may this
+  `workspace/context/` path be named in Advanced output" decision, rather
+  than re-deriving or approximating its logic from the frontmatter alone.
+  It supplies honestly-sourced inputs, not assumed-true ones: `host_read`
+  from the host's actual current read capability, `required=True` (the
+  diagnostic is specifically asking about this path), and
+  `personal_owner`/`private_instance` only from the same trusted deployment
+  binding other privileged callers already use — Safe Update does not
+  invent its own proof of a private single-user instance. When that binding
+  is unavailable, `permitted()` returns `False` by construction for
+  `restricted` content, and `allow` content is still gated on proven
+  `host_read`. A path outside `permitted()`'s domain entirely — a
+  directory, or a non-`workspace/context/` `workspace/` path — has no
+  applicable owner to ask, so it fails closed to area/count without a
+  second policy being invented for it.
 - `guides/user/setup.md` / `guides/user/create_and_use_project.md` tone and
   structure for `guides/user/update.md`.
 
@@ -646,17 +700,33 @@ routes and translates.
   conflict-containing run lists counts per area, not paths, at the default
   detail level.
 - `test_advanced_alone_never_exposes_a_path` — calling the report renderer
-  with `advanced=True` against a run touching only `restricted`/`deny`
-  modules and non-context `workspace/` paths still yields area/count only;
-  proves the Advanced flag by itself grants nothing.
-- `test_allow_classified_path_named_in_advanced` — a `workspace/context/`
-  module whose frontmatter is `ai_access: allow` is named in Advanced
-  output, using the same `ai_access` read `system/context/access.py` uses.
-- `test_restricted_or_deny_path_withheld_in_advanced` — `restricted`/`deny`
-  modules stay area/count-only in Advanced output too.
-- `test_unclassifiable_path_fails_closed_in_advanced` — a path with no
-  establishable `ai_access` (a project directory, a non-context `workspace/`
-  path) defaults to area/count-only rather than being named.
+  with `advanced=True` but no proven `host_read`/deployment-binding inputs,
+  against a run touching `allow`, `restricted`, and `deny` modules and
+  non-context `workspace/` paths, still yields area/count only for every
+  one of them; proves the Advanced flag by itself grants nothing regardless
+  of `ai_access`.
+- `test_permitted_allow_path_named_in_advanced_with_proven_host_read` — an
+  `ai_access: allow` `workspace/context/` module is named in Advanced
+  output only once real `permitted(...)` inputs (`host_read=True`,
+  `required=True`, and the trusted deployment binding's actual
+  `personal_owner`/`private_instance` values) are supplied, calling
+  `system.context.access.permitted` itself rather than a re-derived check.
+- `test_permitted_allow_path_withheld_without_proven_host_read` — the same
+  `allow` module stays area/count-only when `host_read` cannot be proven,
+  showing `allow` alone is not sufficient, matching
+  `access_contract.md` ("`allow` does not mean the module should always be
+  loaded").
+- `test_permitted_restricted_path_withheld_without_deployment_binding` — an
+  `ai_access: restricted` module under `workspace/context/personal/` stays
+  area/count-only when Safe Update has no trusted `personal_owner`/
+  `private_instance` binding to supply, even with `advanced=True` and
+  `host_read=True`.
+- `test_permitted_deny_path_always_withheld` — an `ai_access: deny` module
+  stays area/count-only regardless of every other input.
+- `test_unclassifiable_path_fails_closed_in_advanced` — a path outside
+  `permitted()`'s domain (a directory, a non-`workspace/context/`
+  `workspace/` path) has no applicable authorization owner to call and
+  defaults to area/count-only rather than being named.
 - `test_git_e2e_full_update_success` — two temp repos (current, target)
   through classify → preview → confirm → apply → validate → report,
   asserting the final tree matches the target plus preserved user files.
@@ -695,10 +765,13 @@ git diff --check origin/main...HEAD
 
 ### 9. Privacy/access invariants
 No Personal path, filename, or content appears in a beginner-level report.
-In Advanced output, a `workspace/context/` path is named only when its
-`ai_access` frontmatter is `allow`; `restricted`, `deny`, and anything
-without an establishable `ai_access` value fail closed to area/count. The
-`advanced` flag itself carries no authorization — see Loop 5 section 4.
+In Advanced output, a `workspace/context/` path is named only when
+`system.context.access.permitted(...)` actually returns `True` for it, fed
+with honestly-sourced inputs (real `host_read`, `required=True`, the actual
+trusted `personal_owner`/`private_instance` binding). Anything `permitted()`
+would refuse, and anything outside its domain (a directory, a non-context
+`workspace/` path), fails closed to area/count. The `advanced` flag itself
+carries no authorization — see Loop 5 section 4.
 
 ### 10. Failure cases
 No-write host; dirty clone; both-changed conflict; upstream delete/rename
