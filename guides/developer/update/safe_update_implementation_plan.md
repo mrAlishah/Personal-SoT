@@ -56,7 +56,10 @@ rules for both paths, per the design's Ownership section.
 ### 3. Exact files expected to be created or modified
 - `system/update/update_contract.md` (new) — the contract prose.
 - `system/update/target.py` (new) — target resolution and immutable-`T`
-  pinning, shared by both paths. No `__init__.py`: confirmed no sibling
+  pinning, shared by both paths. Also defines the one controlled-Git-
+  invocation helper (`controlled_git(*args, cwd=None)`), because target
+  resolution is itself security-critical and needs it from its first Git
+  call, not only at apply time. No `__init__.py`: confirmed no sibling
   package (`system/connectors/`, `system/personalization/`,
   `system/tests/connectors/`) uses one; this repo relies on namespace
   packages.
@@ -68,7 +71,19 @@ rules for both paths, per the design's Ownership section.
   reimplement HTTP/`gh` calls; it either calls an injected resolver with the
   same `resolve() -> Snapshot`-shaped contract, or, when only local `git` is
   available, reads `git ls-remote https://github.com/mrAlishah/Personal-SoT
-  main` for the same exact repository and ref.
+  main` for the same exact repository and ref — through the same
+  `controlled_git` helper this loop introduces (see below), not a plain
+  `subprocess.run`.
+- Controlled Git configuration is established here, at the first Git call
+  this design makes, not deferred to apply. `controlled_git` runs every
+  updater-issued Git invocation with an isolated configuration: no system or
+  global config is inherited (`GIT_CONFIG_NOSYSTEM=1` plus explicit
+  `GIT_CONFIG_GLOBAL=/dev/null`/an empty override on older Git), so no
+  `url.*.insteadOf`, `insteadOf`/`pushInsteadOf`, proxy, or credential-helper
+  rewrite from user/global/system config can redirect where `T` is resolved
+  from or fetched. The canonical URL is passed literally, never through a
+  configured remote name. Loop 3's apply step reuses this exact helper for
+  its own Git invocations rather than defining a second one.
 - `system/connectors/source.py` exports `Failure =
   Literal['source_unavailable', 'source_unauthorized', 'source_unresolved',
   'capability_unavailable', 'partial_coverage']`. Target resolution is the
@@ -92,18 +107,32 @@ network/`gh`), matching the `runner=` injection style of
 - `test_resolves_canonical_repo_and_ref_to_commit` — resolver returns a
   commit for `mrAlishah/Personal-SoT` at `main`; `target.resolve()` returns
   that pinned commit.
-- `test_rejects_non_canonical_repository` — resolver is asked to resolve a
-  different `owner/repo` string; `target.resolve()` raises/returns a
-  rejection before any resolver call, proving the repository identity is
-  fixed in code, not caller-supplied.
-- `test_rejects_ref_override` — a caller-supplied ref/branch/PR/commit
-  argument is refused; only `main` is accepted.
+- `test_public_api_accepts_no_repository_or_ref_argument` — structural:
+  `inspect.signature(target.resolve)` has no repository/ref/commit
+  parameter, proving no caller can override authority through the public
+  API at all (there is no argument to describe, so this replaces describing
+  an impossible call).
+- `test_rejects_resolver_snapshot_for_wrong_repository` — the injected
+  resolver itself returns a snapshot claiming a different repository (a
+  misbehaving/misconfigured resolver implementation); `target.resolve()`
+  independently checks the returned identity against its own fixed constant
+  and rejects it, rather than trusting the resolver blindly.
+- `test_rejects_resolver_snapshot_for_wrong_ref` — the resolver returns a
+  snapshot for a non-`main` ref; rejected for the same reason.
 - `test_capability_unavailable_fails_closed` — resolver raises "no
   capability"; `target.resolve()` returns a `capability_unavailable`-classed
   failure, not a silent fallback to a different source.
 - `test_no_fabricated_target_on_partial_response` — resolver returns a
   malformed/partial snapshot (missing sha); `target.resolve()` fails closed
   rather than accepting a partial commit id.
+- `test_local_git_fallback_ignores_url_rewrite_configuration` — a fake
+  `controlled_git` environment carries a `url.*.insteadOf` rule that would
+  redirect `https://github.com/mrAlishah/Personal-SoT` to a different
+  fixture repository; `target.resolve()`'s direct-git path still resolves
+  the real canonical repository's commit, proving the rewrite had no effect.
+- `test_local_git_fallback_ignores_repo_local_config` — same, but the
+  rewrite is set in a repository-local `.git/config` reachable from `cwd`
+  rather than global/system config.
 
 ### 6. What each RED test proves
 That target authority is fixed to `mrAlishah/Personal-SoT:main` in code (not
@@ -114,11 +143,16 @@ become authority, and that resolution failure is fail-closed and classified.
 `target.py`: one function, `resolve(runner=None) -> TargetSnapshot | Failure`,
 plus a frozen `TargetSnapshot(commit, ref, resolved_via)` dataclass, using
 `system.connectors.source.Failure` for its rejection reasons rather than a
-new literal type. No caller-supplied repository or
-ref parameter exists in the public function signature — this is what makes
-rejection of alternates structural rather than a runtime check.
-`update_contract.md`: prose stating the shared target-resolution rule,
-failure classes, and that both paths call the same `target.resolve()`.
+new literal type. No caller-supplied repository or ref parameter exists in
+the public function signature — this is what makes rejection of alternates
+structural rather than a runtime check. Also `controlled_git(*args, cwd=None,
+runner=subprocess.run)`, a thin wrapper that sets `GIT_CONFIG_NOSYSTEM=1` and
+an empty global config override on the environment passed to `runner` before
+every updater-issued Git call; the direct-git fallback in `resolve()` is its
+first caller. `update_contract.md`: prose stating the shared target-
+resolution rule, failure classes, the controlled-Git requirement for every
+updater-issued Git call starting at resolution, and that both paths call the
+same `target.resolve()`.
 
 ### 8. Regression tests/checks
 ```text
@@ -148,6 +182,9 @@ Assistant wiring. No caching of a previously resolved `T` across processes.
   `target.py`'s fixed constants?
 - Does `GitHubSource` reuse avoid reimplementing HTTP/`gh` transport?
 - Is the failure vocabulary closed (not a free-text string)?
+- Does every Git invocation in `target.py`, including the direct-git
+  fallback, go through `controlled_git`, with no direct `subprocess.run`
+  call to `git` anywhere else in the module?
 
 ### 13. Completion gate
 All Loop 1 tests pass; `validate_public.py` and `validate_v1.py --mode core`
@@ -201,8 +238,10 @@ standing in for current/target) and calls `git_update.classify`:
 - `test_dirty_worktree_blocks_before_classification`.
 - `test_untracked_path_blocks_before_classification`.
 - `test_dirty_result_reports_area_and_count_not_paths` — asserts the blocked
-  result's message contains no repository-relative Personal path, only a
-  count/area, matching the design's non-leaking requirement.
+  result's message contains no repository-relative path under `workspace/`
+  (not only `workspace/context/`), only a count/area, matching the design's
+  non-leaking requirement. `workspace/` broadly can hold user-chosen names —
+  projects, custom prompts, custom profiles — not only `workspace/context/`.
 - `test_already_current_when_c_equals_t`.
 - `test_no_op_when_t_is_ancestor_of_c`.
 - `test_normal_update_when_diverged_with_valid_merge_base`.
@@ -221,9 +260,13 @@ preview cannot be replayed against changed state.
 `classify(root, target_commit)` returns a `Plan` (frozen dataclass: tuples of
 classified paths per state + a `blocked` reason or `None`). `preview(plan)`
 returns a `Preview` with a `digest` (sha256 over `C`, `T`, `B`, and a
-canonical serialization of the plan) and a beginner-safe summary (counts per
-state, not full path lists, for anything under `workspace/context/`; shipped
-non-context paths may be listed since they carry no personal-fact risk).
+canonical serialization of the plan) and a beginner-safe summary: counts per
+state and per area for anything under `workspace/`, since any `workspace/`
+path may contain a user-chosen name (a project, a custom prompt, a custom
+profile), not only paths under `workspace/context/`. Only shipped
+`system/`/`guides/`/root paths, which are always fixed distribution
+filenames and never user-derived, may be listed by name at the default
+detail level.
 
 ### 8. Regression tests/checks
 ```text
@@ -233,9 +276,14 @@ python3 system/validation/validate_v1.py --mode core
 ```
 
 ### 9. Privacy/access invariants
-Beginner-facing preview summary never lists a `workspace/context/` path by
-name; Advanced detail may, matching the Doctor precedent ("raw validator
-diagnostics only in an optional Advanced section").
+Beginner-facing preview summary never lists a `workspace/` path by name —
+the boundary is "user-owned surface" (all of `workspace/`), not
+`workspace/context/` alone, since prompts, profiles, and presentation
+overlays under `workspace/` can also carry user-chosen names. Whether and
+when a path may appear in Advanced detail is not decided in this loop; see
+Loop 5, which defines the actual authorization for that (Doctor's
+`advanced` flag is presentation-only and is not treated as an access
+decision — see Loop 5 section 4).
 
 ### 10. Failure cases
 No merge base; dirty index; dirty worktree; untracked Personal file; stale
@@ -248,8 +296,8 @@ beyond returning the digest for the caller to hold.
 ### 12. Review questions
 - Does classification ever perform a text/semantic merge for a both-changed
   path? (Must not.)
-- Does the blocked-dirty message leak any path under
-  `workspace/context/personal` or `workspace/context/organizations`?
+- Does the blocked-dirty message leak any path under `workspace/` at all
+  (not only `workspace/context/personal` or `workspace/context/organizations`)?
 - Is the "ahead/divergent" lineage split from the design (no-op /
   normal-update / fail-closed) implemented as three distinct outcomes?
 
@@ -280,10 +328,13 @@ only if every validator passes, with bounded recovery.
 - `validate_v1.run(candidate_root, "personal")` and `validate_prompts.run`,
   called against the candidate path, not the live root — reusing the exact
   functions already used by `doctor.py` and `project_workflow.md`.
-- Real temporary Git repositories, as in Loop 2, plus a real disabled-hook
-  Git invocation (`git -c core.hooksPath=/dev/null` or equivalent verified
-  empirically) to prove hooks do not fire — a mocked subprocess cannot prove
-  this.
+- Real temporary Git repositories, as in Loop 2. All apply-side Git
+  invocations reuse Loop 1's `controlled_git` helper (the same isolated-
+  configuration boundary used for target resolution) rather than a second,
+  apply-specific controlled-invocation mechanism; this loop adds hook-
+  disabling (`core.hooksPath` pointed at an empty directory, verified
+  empirically that a real hook does not fire) as an additional argument
+  `controlled_git` passes, not a new wrapper.
 
 ### 5. RED tests first
 - `test_candidate_built_outside_live_checkout` — live worktree files are
@@ -296,10 +347,12 @@ only if every validator passes, with bounded recovery.
 - `test_hooks_do_not_fire` — a repo with an `update`/`post-checkout`/
   `reference-transaction` hook that writes a sentinel file; after apply, the
   sentinel is absent.
-- `test_url_rewriting_ignored` — a repo/global config with
-  `url.<other>.insteadOf` pointing at the canonical URL; apply still reads
-  from the direct canonical address, proven by the fetched commit matching
-  the resolver's target regardless of the rewrite.
+- `test_apply_uses_controlled_git_for_every_invocation` — every Git call
+  `apply()` issues goes through Loop 1's `controlled_git`, not a bare
+  `subprocess.run`; re-verifies (does not re-derive) that a
+  `url.<other>.insteadOf` rewrite pointing at the canonical URL has no
+  effect during apply, the same property Loop 1 already proved for
+  resolution.
 - `test_clean_state_rechecked_immediately_before_mutation` — a simulated
   external write between preview and apply aborts before mutation.
 - `test_ref_advances_last_with_expected_old_value` — the ref update uses a
@@ -328,10 +381,10 @@ design's "recovery guarantee" requirement.
 `validate_candidate(candidate_root) -> ValidationOutcome` (calls the two
 Personal validators, never `validate_public`). `apply(root, plan, digest) ->
 ApplyResult` — re-resolves and re-classifies, aborts on mismatch, applies
-with a disabled-hook/disabled-filter Git invocation, checks clean state
-immediately before mutation, advances the ref last with an old-value check,
-and on any failure attempts recovery only for paths it verifies are still in
-the updater-written state.
+using `target.controlled_git` (Loop 1) for every Git call, with hooks
+disabled, checks clean state immediately before mutation, advances the ref
+last with an old-value check, and on any failure attempts recovery only for
+paths it verifies are still in the updater-written state.
 
 ### 8. Regression tests/checks
 ```text
@@ -343,8 +396,12 @@ python3 system/validation/validate_prompts.py
 
 ### 9. Privacy/access invariants
 Apply never reads restricted/denied content to decide classification (Loop 2
-already establishes this at the tree-identity level, not content level).
-Failure reports contain no file content, only paths/state.
+already establishes this at the tree-identity level, not content level). A
+path itself can carry Personal meaning (a project name, a custom prompt or
+profile name), so failure reports do not surface a `workspace/` path by
+name; they report state and, for the affected area, the same area/count
+shape Loop 2 defines. Only a shipped `system/`/`guides/`/root path, which is
+never user-chosen, may be named in a failure report.
 
 ### 10. Failure cases
 Candidate validation failure (both validators), concurrent external mutation
@@ -402,6 +459,14 @@ the original installation untouched.
   (`scope\n→ target\n`) so the existing parser round-trips them. No new
   parser, no writer framework — this is string templating of an already-
   understood two-line shape, not a schema.
+- The design explicitly permits host-side opaque comparison/copying of
+  Personal files ("Comparison and copying of Personal files are host-side
+  opaque operations"). This loop distinguishes that permitted host-side
+  byte read/hash from a different, forbidden thing: file content reaching
+  AI/model context, previews, diagnostics, or logs. Trusted host code may
+  read and hash full file bytes to classify overlaps correctly; only the
+  resulting classification (identical/different/kept/conflict) and paths
+  cross into `Plan`/`Preview`/`Result`.
 
 ### 5. RED tests first
 - `test_pristine_distribution_built_only_from_t` — no path derived from an
@@ -445,9 +510,23 @@ the original installation untouched.
 - `test_final_validate_prompts_runs_on_candidate`.
 - `test_preview_bound_to_t_and_plan`.
 - `test_stale_zip_preview_rejected_on_target_or_state_change`.
-- `test_comparison_does_not_read_restricted_content` — spy proves file
-  bytes of a `deny`/`restricted` module are never opened for comparison
-  beyond identity (hash/mtime/existence), only copied opaquely.
+- `test_overlap_equality_uses_content_hash` — two files with identical
+  content but different mtimes classify as identical; two files with the
+  same size/mtime but different content classify as different. Proves
+  equality is decided by content hash, not by mtime or size, which the
+  design's "identical overlaps need no action" / "different overlaps are
+  conflicts" rule depends on for correctness.
+- `test_host_side_hashing_of_restricted_content_is_allowed` — the host
+  reads and hashes the full bytes of a `deny`/`restricted` module to decide
+  identity/copy; this is the approved opaque host-side operation and is not
+  itself a violation.
+- `test_restricted_content_never_enters_plan_or_preview_or_result` — the
+  `Plan`/`Preview`/migration `Result` objects for a run touching a
+  `deny`/`restricted` module contain no file content anywhere in their
+  fields, only paths/classification/hashes.
+- `test_restricted_content_never_enters_diagnostics_or_logs` — nothing
+  written to the returned report, a raised exception message, or any
+  log-like output contains file content, for the same run.
 
 ### 6. What each RED test proves
 Every side-by-side bullet in the design, the registry carry-over/conflict
@@ -458,8 +537,10 @@ can check the result unchanged.
 ### 7. Minimal GREEN implementation
 `build_pristine(destination, target_commit)`, `validate_pristine(destination)`
 (calls `validate_public.run`), `classify_workspace(current_root,
-pristine_root)` (reuses the same per-file identity comparison shape as
-Loop 2's classification, applied to two trees instead of Git history),
+pristine_root)` (compares files by content hash — reads and hashes full
+bytes host-side, never by mtime/size heuristics — applied to two trees
+instead of Git history; hashing is the permitted opaque host operation, the
+hash and path are all that leave the function),
 `migrate(current_root, destination, plan)` (copies, rejects unsafe paths,
 carries scope entries using `context_registry_entries` for reading and a
 two-line template for writing), `validate_candidate(destination)` (same call
@@ -475,11 +556,15 @@ python3 system/validation/validate_prompts.py
 ```
 
 ### 9. Privacy/access invariants
-Comparison and copy are byte/hash-identity operations, never content
-interpretation; `test_comparison_does_not_read_restricted_content` enforces
-this directly. Migrated registry contains only scope/target pairs, never
-file contents or facts (matches `registry_contract.md`: "does not duplicate
-facts... into registries").
+Host-side byte reads for hashing/copying are permitted and expected — that
+is how correct identity comparison and preservation work at all. What must
+never happen is file content reaching a `Plan`/`Preview`/`Result` field, a
+diagnostic message, or a log; `test_restricted_content_never_enters_plan_or_preview_or_result`
+and `test_restricted_content_never_enters_diagnostics_or_logs` enforce this
+directly, while `test_host_side_hashing_of_restricted_content_is_allowed`
+confirms the permitted operation is not itself broken. Migrated registry
+contains only scope/target pairs, never file contents or facts (matches
+`registry_contract.md`: "does not duplicate facts... into registries").
 
 ### 10. Failure cases
 Pristine fails `validate_public`; non-empty destination; unsafe path
@@ -529,9 +614,20 @@ routes and translates.
 ### 4. Existing code/contracts reused
 - `system/assistant/guided_flow_contract.md` for question/progress style.
 - `system/assistant/safe_write_contract.md` for confirm/re-check/report.
-- `system/diagnostics/doctor_contract.md`'s existing Advanced-section pattern
-  ("raw validator diagnostics only in an optional Advanced section") reused
-  verbatim for update diagnostics, not reinvented.
+- `system/diagnostics/doctor.py`'s `render(report, advanced: bool = False)`
+  was inspected directly: `advanced` is a presentation flag only — when
+  true it prints `finding.advanced` (raw validator error strings) with no
+  reference to `ai_access` or any access contract. It is not an
+  authorization mechanism, and this plan does not claim it is. What Safe
+  Update actually reuses is the real access vocabulary: `ai_access`
+  (`allow`/`restricted`/`deny`) frontmatter, the same three-state
+  classification `system/context/access.py` reads for content access. A
+  `workspace/context/` path may be named in Advanced output only when its
+  module's `ai_access` is `allow`; `restricted`, `deny`, or a path where no
+  `ai_access` can be established (a directory, a non-context `workspace/`
+  path) stays area/count-only regardless of Advanced mode. This is the
+  existing vocabulary applied to a new question ("may this path string
+  appear in a message"), not a second access policy.
 - `guides/user/setup.md` / `guides/user/create_and_use_project.md` tone and
   structure for `guides/user/update.md`.
 
@@ -549,10 +645,18 @@ routes and translates.
 - `test_beginner_report_uses_area_and_count` — end-to-end report for a
   conflict-containing run lists counts per area, not paths, at the default
   detail level.
-- `test_advanced_detail_gated_by_access` — a Personal path appears in
-  Advanced output only when the existing access contract would allow
-  showing that path; a `restricted`/`deny` module's path is withheld even in
-  Advanced.
+- `test_advanced_alone_never_exposes_a_path` — calling the report renderer
+  with `advanced=True` against a run touching only `restricted`/`deny`
+  modules and non-context `workspace/` paths still yields area/count only;
+  proves the Advanced flag by itself grants nothing.
+- `test_allow_classified_path_named_in_advanced` — a `workspace/context/`
+  module whose frontmatter is `ai_access: allow` is named in Advanced
+  output, using the same `ai_access` read `system/context/access.py` uses.
+- `test_restricted_or_deny_path_withheld_in_advanced` — `restricted`/`deny`
+  modules stay area/count-only in Advanced output too.
+- `test_unclassifiable_path_fails_closed_in_advanced` — a path with no
+  establishable `ai_access` (a project directory, a non-context `workspace/`
+  path) defaults to area/count-only rather than being named.
 - `test_git_e2e_full_update_success` — two temp repos (current, target)
   through classify → preview → confirm → apply → validate → report,
   asserting the final tree matches the target plus preserved user files.
@@ -590,9 +694,11 @@ git diff --check origin/main...HEAD
 ```
 
 ### 9. Privacy/access invariants
-No Personal path, filename, or content appears in a beginner-level report;
-Advanced detail is gated by the existing access contract, matching Doctor's
-established rule exactly.
+No Personal path, filename, or content appears in a beginner-level report.
+In Advanced output, a `workspace/context/` path is named only when its
+`ai_access` frontmatter is `allow`; `restricted`, `deny`, and anything
+without an establishable `ai_access` value fail closed to area/count. The
+`advanced` flag itself carries no authorization — see Loop 5 section 4.
 
 ### 10. Failure cases
 No-write host; dirty clone; both-changed conflict; upstream delete/rename
