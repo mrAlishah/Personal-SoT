@@ -264,7 +264,16 @@ One commit. `feat(update): add canonical target resolution contract`
 ### 1. Objective
 Implement the read-only Git path: resolve `C`, `T`, `B`, classify every path
 per the design's state table, and produce a preview bound to that classified
-state. No mutation.
+state. No mutation of the installed clone.
+
+Loop 1's `target.resolve()` returns a commit id for `T`, not its Git
+objects — a stale local clone will not already have `T`'s tree/history.
+This loop therefore also materializes `T` into an updater-owned ephemeral
+inspection repository (never the live checkout) before `B`/tree
+classification can run against it. That materialization step is itself
+read-only with respect to the installed clone: it never touches its ref,
+index, worktree, remote configuration, remote-tracking refs, `FETCH_HEAD`,
+or object database.
 
 ### 2. Canonical semantic owner(s)
 `system/update/git_update.py` (new), classification and preview functions
@@ -273,12 +282,34 @@ in with the exact state names from the design table.
 
 ### 3. Exact files expected to be created or modified
 - `system/update/git_update.py` (new) — `classify(root) -> Plan`,
-  `preview(plan) -> Preview` (digest-bound), plus the dirty/untracked check.
+  `preview(plan) -> Preview` (digest-bound), plus the dirty/untracked check
+  and the target-materialization step below. The ephemeral inspection
+  repository this step creates is a runtime temporary directory this
+  function manages and removes within one call, exactly like Loop 1's
+  `controlled_git` temp directories — not a new tracked file, not a second
+  module, not a persisted inventory or cache.
 - `system/tests/update/test_git_classification.py` (new).
 - `system/update/update_contract.md` (extend from Loop 1).
 
 ### 4. Existing code/contracts reused
-- `target.py` from Loop 1 for `T`.
+- `target.resolve()` from Loop 1 for the pinned commit `T`.
+- `target.controlled_git` for every Git invocation this loop issues,
+  including the target-materialization fetch. Passing an explicit `cwd`
+  (the ephemeral inspection repository) already gets `controlled_git`'s
+  environment isolation and redirect hardening without its auto-empty-
+  directory/ceiling behavior, exactly as Loop 1 designed that mode for
+  apply-phase reuse; Loop 2 is simply its second real caller. One small,
+  additive change to `controlled_git` itself is needed: an `extra_env:
+  dict | None = None` parameter, merged into the existing isolated
+  environment it already builds, so this loop's local-only classification
+  calls can layer `GIT_ALTERNATE_OBJECT_DIRECTORIES`/
+  `GIT_NO_REPLACE_OBJECTS` on top of the same baseline rather than Loop 2
+  building a second, parallel isolated-invocation mechanism — the same
+  reuse principle Loop 1 already applied when it required Loop 3 to reuse
+  `controlled_git` instead of inventing another one. Existing callers are
+  unaffected: the default `None` changes nothing about Loop 1's behavior.
+  The materialization fetch call itself passes no `extra_env` and gets
+  exactly Loop 1's unchanged baseline.
 - Real temporary Git repositories built with `git init`/`git commit`
   (subprocess, real Git — not a mocked runner) as fixtures, because tree
   identity, merge-base, and dirty-state detection must be verified against
@@ -314,23 +345,129 @@ standing in for current/target) and calls `git_update.classify`:
 - `test_preview_digest_binds_c_t_b_and_plan`.
 - `test_stale_preview_rejected_when_c_changes` — re-resolving after a
   simulated local commit invalidates the old digest.
+- `test_target_absent_locally_is_materialized` — `T` is a commit the
+  installed clone's object database has never seen; classification still
+  succeeds, proving the fetch step actually runs rather than assuming the
+  object is already present.
+- `test_materialization_fetches_exact_canonical_main_not_a_local_remote` — a
+  spy/patched `controlled_git` call captures the fetch invocation's URL
+  argument; it is the literal canonical URL, and no `git remote add`/`origin`
+  is ever created in the ephemeral repository.
+- `test_fetched_main_must_equal_already_resolved_t` — the fetch step is made
+  to return a commit different from the `T` Loop 1 already resolved (a
+  simulated race); classification stops as stale, not silently reclassified
+  against the new commit.
+- `test_stale_target_between_resolve_and_fetch_fails_closed` — same
+  scenario end to end through `classify()`, asserting the blocked/stale
+  result rather than a `Plan`.
+- `test_materialization_does_not_modify_live_ref_index_worktree_or_objects`
+  — snapshot the installed clone's `HEAD`, every ref, index bytes, tracked
+  worktree file bytes, and the object database's file listing before
+  `classify()`; assert byte-for-byte identical after, for both a successful
+  and a stale/failed materialization.
+- `test_alternate_object_access_attached_only_after_fetch_completes` — a
+  spy on the Git-invocation environment proves no call made before the
+  fetch-and-verify steps carries `GIT_ALTERNATE_OBJECT_DIRECTORIES`, and no
+  further Git call carrying a remote URL argument happens after it is
+  attached.
+- `test_replace_refs_do_not_alter_merge_base` — a replace ref (`git replace`)
+  on a fixture commit that would change its apparent parent; classification
+  computes the same `B`/state as without the replace ref, proving
+  `GIT_NO_REPLACE_OBJECTS=1` is honored.
+- `test_multiple_merge_bases_fail_closed` — a criss-cross fixture history
+  where `git merge-base --all C T` returns more than one commit; fails
+  closed as ambiguous lineage rather than picking either arbitrarily.
+- `test_classification_does_not_invoke_external_diff_or_filter_helpers` — a
+  fixture repo configures a `.gitattributes`/`diff.*.textconv`/
+  `filter.*.clean` helper that would fail loudly or write a sentinel file if
+  ever invoked; classification completes without triggering it, since it
+  compares tree/blob identity only.
+- `test_current_only_path_outside_workspace_not_named_unless_shipped_by_target`
+  — a current-only file directly under the repository root that is not
+  present in `T`'s tree is reported by area/count, not by name, at the
+  default detail level; a current-only root/`system/`/`guides/` file that
+  *is* present unmodified in `T` may be named.
 
 ### 6. What each RED test proves
 Every state-table row and lineage rule from the design is exercised against
-real Git tree identity, the dirty-state guidance never leaks paths, and the
-preview cannot be replayed against changed state.
+real Git tree identity, the dirty-state guidance never leaks paths, the
+preview cannot be replayed against changed state, target materialization
+actually fetches what classification needs without ever mutating the
+installed clone, local/private object ids never reach the canonical fetch's
+negotiation, and history cannot be reinterpreted through replace refs or an
+arbitrarily chosen merge base.
 
 ### 7. Minimal GREEN implementation
-`classify(root, target_commit)` returns a `Plan` (frozen dataclass: tuples of
-classified paths per state + a `blocked` reason or `None`). `preview(plan)`
-returns a `Preview` with a `digest` (sha256 over `C`, `T`, `B`, and a
-canonical serialization of the plan) and a beginner-safe summary: counts per
-state and per area for anything under `workspace/`, since any `workspace/`
-path may contain a user-chosen name (a project, a custom prompt, a custom
-profile), not only paths under `workspace/context/`. Only shipped
-`system/`/`guides/`/root paths, which are always fixed distribution
-filenames and never user-derived, may be listed by name at the default
-detail level.
+
+**Target materialization**, run before any classification and strictly in
+this order:
+
+1. `git init --bare <ephemeral>` — a fresh, empty, updater-owned temporary
+   directory; not the live checkout, not a tracked file, not persisted past
+   this call. Bare because only objects are needed, never a working tree.
+2. `controlled_git('fetch', target.CANONICAL_URL,
+   target.CANONICAL_REF + ':refs/heads/_target', cwd=ephemeral)` — the
+   literal canonical URL, never a configured remote name (no `git remote
+   add` is ever run; `origin` is never created as authority in the
+   ephemeral repository). At this point the ephemeral repository's object
+   database contains only what this one fetch brought in: it has no
+   alternate object directory yet, so it has nothing of the installed
+   clone's to advertise, and Git's fetch negotiation cannot include any
+   installed-clone object id in what it tells the canonical remote it
+   already "has".
+3. `git rev-parse refs/heads/_target` in the ephemeral repository; if this
+   does not equal the `T` Loop 1 already resolved, canonical `main` moved
+   between resolution and fetch — stop and report stale target, the same
+   stale-input semantics `test_stale_preview_rejected_when_c_changes`
+   already covers for `C`, extended to `T`. Never silently classify against
+   the newly observed commit; that would replay a different, unreviewed
+   target than the one about to be bound into the preview digest.
+4. Only now, with target-fetch network activity finished, attach the
+   installed clone's object database to the ephemeral repository read-only,
+   via `controlled_git`'s new `extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES':
+   ...}` on the classification-phase Git calls that follow. No further
+   network operation happens after this point in the same materialization;
+   if a later network call were ever needed, it would first have to detach
+   the alternate again. Alternates share objects without touching the live
+   repository's refs, index, worktree, or its own object database — nothing
+   is written into `<root>/.git`.
+
+**Classification**, run in the ephemeral repository via
+`controlled_git(..., cwd=ephemeral, extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES':
+root/'.git/objects', 'GIT_NO_REPLACE_OBJECTS': '1'})`, so a `refs/replace/`
+entry (local or, in principle, one carried in by the alternate) cannot alter
+which history classification actually sees — accepted public lineage must be
+judged from raw stored commit objects, not a locally rewritten view. The
+legacy `.git/info/grafts` mechanism needs no separate control here: it is
+read only from the repository actually being operated on, and an alternate
+shares only the object database, never `.git/info/`, so nothing the live
+repository might contain there can ever reach the ephemeral repository's
+computation regardless.
+
+- `B`: `git merge-base --all C T`. More than one line means multiple merge
+  bases (a criss-cross history); this fails closed as unrelated/ambiguous
+  lineage, the same outcome as no merge base at all — never an arbitrarily
+  chosen first line.
+- Per-path state: compare `git ls-tree -r`/blob-id lookups at `B`, `C`, and
+  `T` — tree/blob identity only, never `git diff` or any command that would
+  invoke a configured external diff/textconv/clean/smudge/fsmonitor helper.
+  This is already the design's own rule (Git tree identity, not text
+  merging); this loop's plumbing choice is what makes it structurally true
+  rather than incidentally true. `classify(root, target_commit)` returns a
+  `Plan` (frozen dataclass: tuples of classified paths per state + a
+  `blocked` reason or `None`).
+
+`preview(plan)` returns a `Preview` with a `digest` (sha256 over `C`, `T`,
+`B`, and a canonical serialization of the plan) and a beginner-safe summary:
+counts per state and per area for anything under `workspace/`, since any
+`workspace/` path may contain a user-chosen name (a project, a custom
+prompt, a custom profile), not only paths under `workspace/context/`. A
+current-only path outside `workspace/` is named at the default detail level
+only when its identity as a shipped product path is established from `T`'s
+own tree (it exists, unmodified, in accepted target history); a current-only
+path that is not present in `T` is reported by area/count like a
+`workspace/` path, since it may still carry a user-chosen name even outside
+`workspace/`.
 
 ### 8. Regression tests/checks
 ```text
@@ -343,19 +480,36 @@ python3 system/validation/validate_v1.py --mode core
 Beginner-facing preview summary never lists a `workspace/` path by name —
 the boundary is "user-owned surface" (all of `workspace/`), not
 `workspace/context/` alone, since prompts, profiles, and presentation
-overlays under `workspace/` can also carry user-chosen names. Whether and
-when a path may appear in Advanced detail is not decided in this loop; see
-Loop 5, which defines the actual authorization for that (Doctor's
-`advanced` flag is presentation-only and is not treated as an access
-decision — see Loop 5 section 4).
+overlays under `workspace/` can also carry user-chosen names. A current-only
+path outside `workspace/` is named only when `T`'s own tree establishes it
+as a shipped product path (present there, unmodified); otherwise it is
+area/count too, since a rogue root/`system/`/`guides/`-area file can still
+carry a user-chosen name and nothing about its location alone proves it is
+product-owned. Whether and when a path may appear in Advanced detail is not
+decided in this loop; see Loop 5, which defines the actual authorization for
+that (Doctor's `advanced` flag is presentation-only and is not treated as an
+access decision — see Loop 5 section 4).
+
+Target materialization is a second, independent privacy boundary: no
+installed-clone object id may reach the canonical fetch's negotiation. This
+is enforced by ordering, not by filtering — the ephemeral repository has no
+alternate object access at all until after the fetch-and-verify steps
+finish, so it has nothing of the installed clone's to advertise while
+talking to the canonical remote, and no further network call happens once
+the alternate is attached.
 
 ### 10. Failure cases
-No merge base; dirty index; dirty worktree; untracked Personal file; stale
-digest reuse; `T` resolution failure propagated from Loop 1.
+No merge base; multiple merge bases (ambiguous lineage); dirty index; dirty
+worktree; untracked Personal file; stale digest reuse; canonical `main`
+moving between target resolution and materialization fetch; `T` resolution
+failure propagated from Loop 1.
 
 ### 11. Explicit out-of-scope items
 No apply, no mutation, no recovery, no ZIP path, no confirmation storage
-beyond returning the digest for the caller to hold.
+beyond returning the digest for the caller to hold. The ephemeral inspection
+repository is not an installed-version inventory, not an updater cache, and
+is not retained after the call; no persisted mapping of past resolutions is
+introduced.
 
 ### 12. Review questions
 - Does classification ever perform a text/semantic merge for a both-changed
@@ -364,6 +518,17 @@ beyond returning the digest for the caller to hold.
   (not only `workspace/context/personal` or `workspace/context/organizations`)?
 - Is the "ahead/divergent" lineage split from the design (no-op /
   normal-update / fail-closed) implemented as three distinct outcomes?
+- Does target materialization ever touch the installed clone's ref, index,
+  worktree, remote configuration, remote-tracking refs, `FETCH_HEAD`, or
+  object database?
+- Is the installed clone's object database attached as an alternate only
+  after the canonical fetch and its `T`-equality check both complete, with
+  no Git call carrying a remote URL argument afterward?
+- Does classification use `git merge-base --all` and fail closed on more
+  than one result, rather than `git merge-base`'s arbitrary single pick?
+- Does classification run with `GIT_NO_REPLACE_OBJECTS=1`, and does it use
+  tree/blob identity plumbing exclusively, never a command that would invoke
+  a configured external diff/textconv/clean/smudge/fsmonitor helper?
 
 ### 13. Completion gate
 All Loop 1 + Loop 2 tests pass; no mutation function exists yet in
