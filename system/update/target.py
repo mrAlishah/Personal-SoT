@@ -18,6 +18,9 @@ _SHA_RE = re.compile(r'[0-9a-f]{40}')
 _LS_REMOTE_RE = re.compile(r'([0-9a-f]{40})\trefs/heads/' + re.escape(CANONICAL_REF) + r'$')
 
 
+_ALLOWED_EXTRA_ENV = frozenset({'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NO_REPLACE_OBJECTS'})
+
+
 @dataclass(frozen=True)
 class TargetSnapshot:
     commit: str
@@ -25,7 +28,7 @@ class TargetSnapshot:
     resolved_via: str
 
 
-def controlled_git(*args, cwd=None, runner=subprocess.run):
+def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run):
     """Run one Git invocation isolated from ambient Git authority.
 
     Builds the child environment explicitly rather than passing the parent
@@ -42,7 +45,18 @@ def controlled_git(*args, cwd=None, runner=subprocess.run):
     happens to be created under. Loop 3's apply step passes an explicit
     `cwd` (the real checkout) and relies only on the environment control,
     since discovering that real repository there is intended.
+
+    `extra_env` may add only `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
+    `GIT_NO_REPLACE_OBJECTS` (Loop 2's local-only classification needs);
+    any other key, including any of the authority-bearing variables this
+    function already controls, raises before any process environment is
+    built. This is a fixed, closed allowlist, not a general environment-
+    extension mechanism.
     """
+    if extra_env:
+        disallowed = set(extra_env) - _ALLOWED_EXTRA_ENV
+        if disallowed:
+            raise ValueError(f'extra_env may not set {sorted(disallowed)}')
     with tempfile.TemporaryDirectory(prefix='personal_sot_update_') as controlled_home:
         global_config = os.path.join(controlled_home, 'controlled_gitconfig')
         with open(global_config, 'w', encoding='utf-8') as handle:
@@ -57,6 +71,8 @@ def controlled_git(*args, cwd=None, runner=subprocess.run):
         if cwd is None:
             cwd = controlled_home
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
+        if extra_env:
+            env.update(extra_env)
         return runner(('git',) + args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        text=True, timeout=30, check=False)

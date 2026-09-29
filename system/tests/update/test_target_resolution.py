@@ -227,5 +227,47 @@ class HttpRedirectAuthorityTests(unittest.TestCase):
         self.assertEqual([], target_server.hits)
 
 
+class ControlledGitExtraEnvTests(unittest.TestCase):
+    """extra_env may only add the two keys Loop 2 needs; it must never be
+    able to reopen an authority-bearing variable controlled_git itself
+    controls."""
+
+    def test_rejects_protected_key_override(self):
+        with self.assertRaises(ValueError):
+            target.controlled_git('status', extra_env={'HOME': '/tmp/attacker'})
+
+    def test_rejects_any_key_outside_the_fixed_allowlist(self):
+        with self.assertRaises(ValueError):
+            target.controlled_git('status', extra_env={'GIT_DIR': '/tmp/attacker'})
+        with self.assertRaises(ValueError):
+            target.controlled_git('status', extra_env={'SOMETHING_ELSE': '1'})
+
+    def test_allowlisted_keys_are_accepted_and_applied(self):
+        captured = {}
+
+        def spy(command, **kwargs):
+            captured['env'] = kwargs['env']
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        with tempfile.TemporaryDirectory() as objects_dir:
+            target.controlled_git(
+                'status', runner=spy,
+                extra_env={'GIT_ALTERNATE_OBJECT_DIRECTORIES': objects_dir,
+                           'GIT_NO_REPLACE_OBJECTS': '1'})
+        self.assertEqual(objects_dir, captured['env']['GIT_ALTERNATE_OBJECT_DIRECTORIES'])
+        self.assertEqual('1', captured['env']['GIT_NO_REPLACE_OBJECTS'])
+
+    def test_no_extra_env_leaves_loop_1_behavior_unchanged(self):
+        captured = {}
+
+        def spy(command, **kwargs):
+            captured['env'] = kwargs['env']
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        target.controlled_git('status', runner=spy)
+        self.assertNotIn('GIT_ALTERNATE_OBJECT_DIRECTORIES', captured['env'])
+        self.assertNotIn('GIT_NO_REPLACE_OBJECTS', captured['env'])
+
+
 if __name__ == '__main__':
     unittest.main()

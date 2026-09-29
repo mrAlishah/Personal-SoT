@@ -89,11 +89,117 @@ name are resolved. `SourceUnavailable` values raised here carry only a
 closed failure reason, never raw transport output, matching the existing
 rule in `system/connectors/source.py`.
 
+## dirty/untracked preflight
+
+Before any Git-clone planning proceeds, `system/update/git_update.py`
+inspects the installed clone's index/worktree/untracked state and fails
+closed rather than risk executing user-configured code to determine it
+accurately.
+
+First it checks, using Git's own attribute-resolution plumbing
+(`git check-attr`, never a hand-written `.gitattributes` parser) together
+with the effective `filter.*`/`diff.*` configuration, whether any tracked
+path would require an external clean/smudge/process/textconv helper for an
+accurate dirty comparison. If so, the result is `unsafe_repository_state`;
+the helper is never invoked to find this out. `git status`/`git diff` apply
+this normalization to decide dirtiness, not only at `add`/`commit`, so
+`--no-textconv`/`--no-ext-diff` do not close this by themselves.
+
+Otherwise it runs `git --no-optional-locks -c core.fsmonitor=false status
+--porcelain=v2 --untracked-files=all` through `controlled_git`.
+`--no-optional-locks` is Git's own documented mechanism for preventing
+`status` from refreshing the index as a side effect; `-c
+core.fsmonitor=false` disables a configured fsmonitor hook/daemon for this
+one invocation regardless of ambient configuration. Any reported change
+blocks with `dirty_or_untracked`.
+
+Every live-repo read that resolves a commit's tree — this preflight's
+`status` call and the current-commit (`HEAD`) resolution below — also
+disables replace-object interpretation (`GIT_NO_REPLACE_OBJECTS=1`). A
+replace ref on the live repository's own `HEAD` can otherwise make `status`
+compare the worktree against a substituted tree instead of the real one,
+misreporting dirty state as clean or clean state as dirty.
+
+## target materialization
+
+`target.resolve()` returns a commit id for `T`, not its Git objects; a
+stale local clone will not already have them. `git_update.py` materializes
+`T` into a fresh, updater-owned, ephemeral **bare** repository — never the
+live checkout, never persisted past one `classify()` call — strictly in
+this order:
+
+1. `git init --bare` the ephemeral repository.
+2. `controlled_git('fetch', target.CANONICAL_URL, 'refs/heads/main:refs/heads/_target',
+   cwd=ephemeral)` — the exact ref `refs/heads/main`, the literal canonical
+   URL, never a configured remote name; no `git remote add` is ever run.
+   At this point the ephemeral repository has no alternate object
+   directory, so it has nothing of the installed clone's to advertise, and
+   Git's fetch negotiation cannot include any installed-clone object id in
+   what it tells the canonical remote it already "has".
+3. `git rev-parse refs/heads/_target` in the ephemeral repository; if this
+   does not equal the already-resolved `T`, canonical `main` moved between
+   resolution and fetch. The result is `stale_target`; classification never
+   silently proceeds against the newly observed commit.
+4. Only now, with target-fetch network activity finished, classification
+   attaches the installed clone's own object database
+   (`<git-dir>/objects`, resolved via `git rev-parse --git-dir` rather than
+   assumed to be `.git`) to the ephemeral repository read-only, through
+   `controlled_git`'s allowlist-checked `extra_env`
+   (`GIT_ALTERNATE_OBJECT_DIRECTORIES`). No further network operation
+   happens after this point. Alternates share objects without touching the
+   live repository's refs, index, worktree, or its own object database.
+
+## classification
+
+Classification runs in the ephemeral repository with the alternate
+attached and `GIT_NO_REPLACE_OBJECTS=1`, so a replace ref cannot alter
+which history is judged as accepted lineage. `.git/info/grafts` needs no
+separate control: it is read only from the repository actually being
+operated on, and an alternate shares only the object database, never
+`.git/info/`.
+
+`B = git merge-base --all C T`. Zero results is unrelated lineage; more
+than one is ambiguous lineage (a criss-cross history) — both fail closed,
+never an arbitrarily chosen candidate. `no_op` is true when `C == T` or
+`B == T` (target has nothing new to offer); V1 never downgrades.
+
+Per-path state uses raw tree/blob identity only — `git ls-tree -r` at `B`,
+`C`, and `T`, comparing `(mode, blob sha)` per path, absence represented as
+a legitimate value — never `git diff` or any command that would invoke a
+configured external diff/textconv/clean/smudge/fsmonitor helper:
+
+```text
+C == T                → already_aligned
+C == B and T != B     → upstream_only
+T == B and C != B     → user_only
+otherwise             → conflict
+```
+
+This covers creation, deletion, and modification uniformly, including
+"target deletes/renames a locally modified path" (a `conflict`, since `T`'s
+absence differs from both `B` and `C`) without a separate rule.
+
+## preview and privacy
+
+`preview(plan)` binds `C`, `T`, `B`, and the complete classified plan into
+a `sha256` digest over a canonically ordered serialization (fixed field
+order, sorted path lists), so digest equality does not depend on
+dict/set iteration order.
+
+The beginner-facing summary's naming boundary is classification state, not
+location: `already_aligned`, `upstream_only`, and `conflict` paths all have
+an established relationship to accepted target history — `T` changed,
+converged on, or (for a delete/rename conflict) explicitly removed them —
+and may be named. A `user_only` path is, by that same classification,
+never present in `T`; it is reported by area/count only, wherever it sits,
+including outside `workspace/`. Advanced authorization is not decided
+here; see Loop 5.
+
 ## scope
 
-This file currently owns only target resolution and the shared
-`controlled_git` primitive. Classification vocabulary, preview/confirmation
-binding, apply/recovery result semantics, and side-by-side scope-carry-over
-rules belong to the later loops of
-`guides/developer/update/safe_update_implementation_plan.md` and extend this
-file when implemented; they are not established here.
+This file currently owns target resolution, the shared `controlled_git`
+primitive, the dirty/untracked preflight, target materialization, Git-clone
+classification, and preview/digest binding. Apply/recovery result
+semantics and side-by-side scope-carry-over rules belong to later loops of
+`guides/developer/update/safe_update_implementation_plan.md` and extend
+this file when implemented; they are not established here.

@@ -487,8 +487,10 @@ this order:
    directory; not the live checkout, not a tracked file, not persisted past
    this call. Bare because only objects are needed, never a working tree.
 2. `controlled_git('fetch', target.CANONICAL_URL,
-   target.CANONICAL_REF + ':refs/heads/_target', cwd=ephemeral)`, fetching
-   the exact and unambiguous `refs/heads/main` — the literal canonical URL,
+   'refs/heads/' + target.CANONICAL_REF + ':refs/heads/_target', cwd=ephemeral)`,
+   fetching the exact and unambiguous `refs/heads/main` — not the shorthand
+   `main`, which Git would otherwise have to resolve itself — from the
+   literal canonical URL,
    never a configured remote name (no `git remote add` is ever run;
    `origin` is never created as authority in the ephemeral repository). At
    this point the ephemeral repository's object database contains only what
