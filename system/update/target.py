@@ -30,21 +30,34 @@ def controlled_git(*args, cwd=None, runner=subprocess.run):
 
     Builds the child environment explicitly rather than passing the parent
     process environment through, so system/global config and injected
-    GIT_CONFIG_*/GIT_DIR/GIT_WORK_TREE state cannot redirect it. When `cwd`
-    is omitted, the call also runs inside a freshly created, empty,
-    non-repository directory, so Git's upward repository discovery finds no
-    repository-local config either. Loop 3's apply step passes an explicit
-    `cwd` (the real checkout) and relies only on the environment control.
+    GIT_CONFIG_*/GIT_DIR/GIT_WORK_TREE state cannot redirect it, and writes
+    its own minimal global config (only `http.followRedirects = false`, so a
+    single HTTP redirect on the initial request cannot silently substitute a
+    different repository as the effective transport target — Git's own
+    default, `initial`, would otherwise follow it). When `cwd` is omitted,
+    the call also runs inside a freshly created, empty, non-repository
+    directory with an explicit `GIT_CEILING_DIRECTORIES` boundary, so Git's
+    upward repository discovery can neither find repository-local config
+    there nor walk into an ancestor repository the controlled directory
+    happens to be created under. Loop 3's apply step passes an explicit
+    `cwd` (the real checkout) and relies only on the environment control,
+    since discovering that real repository there is intended.
     """
     with tempfile.TemporaryDirectory(prefix='personal_sot_update_') as controlled_home:
+        global_config = os.path.join(controlled_home, 'controlled_gitconfig')
+        with open(global_config, 'w', encoding='utf-8') as handle:
+            handle.write('[http]\n\tfollowRedirects = false\n')
         env = {
             'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
             'HOME': controlled_home,
             'XDG_CONFIG_HOME': controlled_home,
             'GIT_CONFIG_NOSYSTEM': '1',
-            'GIT_CONFIG_GLOBAL': os.devnull,
+            'GIT_CONFIG_GLOBAL': global_config,
         }
-        return runner(('git',) + args, cwd=cwd or controlled_home, env=env,
+        if cwd is None:
+            cwd = controlled_home
+            env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
+        return runner(('git',) + args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        text=True, timeout=30, check=False)
 
@@ -65,7 +78,8 @@ def resolve(resolver=None) -> TargetSnapshot:
     if resolver is not None:
         return _validated(resolver(), resolved_via='resolver')
     try:
-        return _validated(GitHubSource(CANONICAL_REPOSITORY).resolve(), resolved_via='github')
+        source = GitHubSource(CANONICAL_REPOSITORY, ref=CANONICAL_REF)
+        return _validated(source.resolve(), resolved_via='github')
     except SourceUnavailable as error:
         if error.reason != 'capability_unavailable':
             raise

@@ -49,11 +49,18 @@ explicitly (`PATH`, plus `HOME`/`XDG_CONFIG_HOME`/`GIT_CONFIG_NOSYSTEM`/
 passing the parent environment through, so ambient or injected
 `GIT_CONFIG_*`/`GIT_DIR`/`GIT_WORK_TREE` state cannot redirect it. When no
 explicit working directory is given, it also runs inside a freshly created,
-empty, non-repository directory, so Git's upward repository discovery finds
-no repository-local config either — system/global isolation alone does not
-cover that scope. The canonical URL is passed literally on the command line,
-never through a configured remote name. Apply (a later loop) reuses this
-same primitive, supplying its own working directory inside the real
+empty, non-repository directory bounded by an explicit
+`GIT_CEILING_DIRECTORIES`, so Git's upward repository discovery finds no
+repository-local config there and cannot walk into an ancestor repository
+the controlled directory happens to be created under either — neither
+system/global isolation nor an empty directory alone covers that case. Its
+own isolated global config also sets `http.followRedirects = false`, so a
+single HTTP redirect on the initial request — which Git's own default,
+`initial`, would otherwise follow as the base for the rest of the exchange —
+cannot silently substitute a different repository as the effective
+resolution target. The canonical URL is passed literally on the command
+line, never through a configured remote name. Apply (a later loop) reuses
+this same primitive, supplying its own working directory inside the real
 checkout, and adds only what apply additionally needs there; it does not
 define a second controlled-execution mechanism.
 

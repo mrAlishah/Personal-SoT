@@ -146,26 +146,32 @@ network/`gh`), matching the `runner=` injection style of
 - `test_no_fabricated_target_on_partial_response` — resolver returns a
   malformed/partial snapshot (missing sha); `target.resolve()` fails closed
   rather than accepting a partial commit id.
-- `test_local_git_fallback_ignores_global_url_rewrite` — a real, isolated
-  fake `$HOME`/`GIT_CONFIG_GLOBAL` carries a `url.*.insteadOf` rule that
-  would redirect `https://github.com/mrAlishah/Personal-SoT` to a different
-  fixture repository; `target.resolve()`'s direct-git path, invoked from
-  the test process's real environment (not through `controlled_git`'s own
-  isolation, which is exactly what's under test), still resolves the real
-  canonical repository, proving `controlled_git` neutralizes it.
-- `test_local_git_fallback_ignores_repository_local_url_rewrite` — the test
-  runner's own `cwd` is a real Git repository whose `.git/config` carries a
-  `url.*.insteadOf` rewrite; `target.resolve()` still resolves the real
-  canonical repository, proving `controlled_git`'s empty-directory control
-  prevents that repository-local config from ever being discovered (this is
-  the scope `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL` alone do not cover).
-- `test_local_git_fallback_ignores_injected_git_env_vars` — the calling
-  process's environment carries `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/
-  `GIT_CONFIG_VALUE_0` set to inject the same rewrite, and `GIT_DIR`/
-  `GIT_WORK_TREE` pointed at a different repository; `target.resolve()`
-  still resolves the real canonical repository, proving `controlled_git`
-  builds its child environment explicitly rather than passing the parent
-  environment through.
+- `test_default_resolution_requests_exact_repository_and_ref` — a spy in
+  place of `GitHubSource` proves the default (no-resolver) path constructs
+  it with `ref=CANONICAL_REF` explicitly, so resolution never depends on
+  whatever the repository's `default_branch` happens to report.
+- `test_local_git_fallback_ignores_global_url_rewrite`,
+  `test_local_git_fallback_ignores_repository_local_url_rewrite`,
+  `test_local_git_fallback_ignores_injected_git_env_vars` — each seeds two
+  real local Git repos (a canonical fixture and an attacker fixture) with
+  `target.CANONICAL_URL` patched to the local canonical fixture's `file://`
+  path, so the whole test is network-free and deterministic; each then
+  applies one poisoning vector (global `$HOME`/`GIT_CONFIG_GLOBAL`, the
+  calling process's own `cwd` being a rewritten repository, and injected
+  `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_*`/`GIT_DIR`/`GIT_WORK_TREE`) and calls
+  `target._resolve_via_git()` directly, asserting the result is the
+  canonical fixture's commit, never the attacker fixture's.
+- `test_controlled_git_closes_ancestor_repository_discovery` — patches
+  `tempfile.gettempdir` to a real Git repository whose `.git/config` carries
+  a rewrite, simulating the OS temp root landing inside some ancestor
+  worktree; proves `GIT_CEILING_DIRECTORIES` stops Git's upward discovery
+  before it reaches that ancestor's config.
+- `test_controlled_git_rejects_http_redirect_to_alternate_authority` — two
+  local loopback HTTP servers (one issuing a 301, one recording whether it
+  was ever contacted); proves `controlled_git`'s own isolated global config
+  (`http.followRedirects = false`) makes the command fail closed on the
+  redirect rather than following it to the second server, which Git's
+  documented default (`initial`) would otherwise do.
 
 ### 6. What each RED test proves
 That target authority is fixed to `mrAlishah/Personal-SoT:main` in code (not
@@ -178,19 +184,29 @@ plus a frozen `TargetSnapshot(commit, ref, resolved_via)` dataclass, using
 `system.connectors.source.Failure` for its rejection reasons rather than a
 new literal type. No caller-supplied repository or ref parameter exists in
 the public function signature — this is what makes rejection of alternates
-structural rather than a runtime check. Also `controlled_git(*args, cwd=None,
-runner=subprocess.run)`: when `cwd` is omitted, it creates a fresh empty
-temporary directory and runs there instead of the caller's directory; it
-always builds the child environment explicitly (`PATH`, `HOME`/
+structural rather than a runtime check. The default (no-resolver) path
+constructs `GitHubSource(CANONICAL_REPOSITORY, ref=CANONICAL_REF)` rather
+than letting it fall back to the repository's `default_branch`. Also
+`controlled_git(*args, cwd=None, runner=subprocess.run)`: when `cwd` is
+omitted, it creates a fresh empty temporary directory and runs there
+instead of the caller's directory, with `GIT_CEILING_DIRECTORIES` set to
+that directory's own parent so upward repository discovery cannot continue
+past it even if the temp root itself sits inside some ancestor repository;
+it always builds the child environment explicitly (`PATH`, `HOME`/
 `XDG_CONFIG_HOME` pointed at that same controlled directory,
-`GIT_CONFIG_NOSYSTEM=1`, empty `GIT_CONFIG_GLOBAL`, `GIT_DIR`/`GIT_WORK_TREE`/
-`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*` explicitly absent)
-rather than passing `os.environ` through. The direct-git fallback in
+`GIT_CONFIG_NOSYSTEM=1`, `GIT_DIR`/`GIT_WORK_TREE`/`GIT_CONFIG_COUNT`/
+`GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*` explicitly absent) rather than
+passing `os.environ` through, and points `GIT_CONFIG_GLOBAL` at its own
+freshly written file containing only `http.followRedirects = false` — not
+an empty file — so a single HTTP redirect on the initial request cannot
+substitute a different repository as the effective target, which Git's own
+default (`initial`) would otherwise allow. The direct-git fallback in
 `resolve()` is its first caller, using the auto-created empty directory.
 `update_contract.md`: prose stating the shared target-resolution rule,
-failure classes, the controlled-Git requirement (execution directory +
-explicit environment) for every updater-issued Git call starting at
-resolution, and that both paths call the same `target.resolve()`.
+failure classes, the controlled-Git requirement (execution directory,
+ceiling boundary, explicit environment, and redirect policy) for every
+updater-issued Git call starting at resolution, and that both paths call
+the same `target.resolve()`.
 
 ### 8. Regression tests/checks
 ```text
@@ -226,6 +242,13 @@ Assistant wiring. No caching of a previously resolved `T` across processes.
 - Does `controlled_git` build its child environment explicitly rather than
   passing `os.environ` through, and does the resolution path run from a
   fresh empty directory rather than the caller's `cwd`?
+- Does the default (no-resolver) path pin `ref=CANONICAL_REF` explicitly,
+  rather than depending on `GitHubSource`'s `default_branch` fallback?
+- Does `GIT_CEILING_DIRECTORIES` actually stop upward repository discovery
+  when the controlled temp directory is created under an ancestor
+  repository, not only when it happens to have no ancestor repository?
+- Does `controlled_git`'s own global config set `http.followRedirects =
+  false`, closing the one-hop redirect Git's own default would follow?
 
 ### 13. Completion gate
 All Loop 1 tests pass; `validate_public.py` and `validate_v1.py --mode core`
