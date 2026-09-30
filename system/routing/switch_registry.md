@@ -82,10 +82,9 @@ Control identities are repository-owned lowercase_snake_case identifiers. Values
 Prompt templates are not listed here. Prompt identity remains relative to the prompt workspace:
 
 ```text
-@do:prompt:<path>
-@edit:prompt:<path>
-@delete:prompt:<path>
-@confirm:delete:prompt:<path>
+@run:<path>
+@edit:<path>
+@delete:<path>
 
 → workspace/prompts/<path>.md
 ```

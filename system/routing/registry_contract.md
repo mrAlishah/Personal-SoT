@@ -36,11 +36,11 @@ V1.1 prompt templates are intentionally **not** registered in a flat prompt regi
 Prompt identity is already deterministic:
 
 ```text
-@do:prompt:coding/review_pr
+@run:coding/review_pr
 → workspace/prompts/coding/review_pr.md
 ```
 
-The same exact path rule applies to `@edit`, `@delete`, and `@confirm:delete`.
+The same exact path rule applies to `@edit` and `@delete`.
 
 Tags/targeted search may help discover a prompt, but discovery results do not create aliases or authority. Once selected, the exact canonical path is the identity.
 

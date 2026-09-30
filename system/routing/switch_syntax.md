@@ -42,19 +42,20 @@ Switch-like text after the body starts, or inside bullets/quotes/code fences, is
 @no:fmt:<registered_format>
 
 @do:sot
-@do:prompt:<path>
-@edit:prompt:<path>
-@delete:prompt:<path>
-@confirm:delete:prompt:<path>
+@do:help
+@do:assist
+@run:<path>
+@edit:<path>
+@delete:<path>
 @param:<name>=[value]
 @param:<name>=[[...multiline...]]
 
 @recap:<positive_integer>
 ```
 
-`@do:sot` is a reserved literal runtime spelling. Its exact case is canonical and it is not a repository-owned identifier subject to lowercase_snake_case naming.
+`@do:sot`, `@do:help`, and `@do:assist` are reserved literal runtime spellings. Their exact case is canonical and none is a repository-owned identifier subject to lowercase_snake_case naming.
 
-Bare `@prompt:<path>` is unsupported because action intent must be explicit.
+Bare `@prompt:<path>`, bare `@help`, and bare `@assist` are unsupported because action intent must be explicit. The legacy `@do:prompt:<path>`, `@edit:prompt:<path>`, `@delete:prompt:<path>`, and `@confirm:delete:prompt:<path>` spellings from before this grammar are not canonical and do not resolve; they are not maintained as aliases.
 
 ## lexical_rules
 
@@ -163,7 +164,7 @@ No control value can disable external mandatory constraints, host/tool permissio
 
 ## high_level_action_exclusivity
 
-At most one high-level action may appear in one control block: one bootstrap action, one prompt action, or one recap action. Combining high-level actions is invalid.
+At most one high-level action may appear in one control block: one system action (`@do:sot`, `@do:help`, `@do:assist`), one prompt action (`@run`, `@edit`, `@delete`), or one recap action. Combining high-level actions is invalid.
 
 ## sot_action
 
@@ -173,11 +174,35 @@ At most one high-level action may appear in one control block: one bootstrap act
 
 Invokes `system/adapters/runtime_bootstrap.md` semantics. It accepts no `@param`, needs no body, and every invocation performs the same resolve + reload + re-anchor operation for the current accessible chat. It may be used at chat start or later after drift.
 
-Do not combine `@do:sot` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
+Do not combine `@do:sot` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, `@do:help`, `@do:assist`, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
 
 For migration compatibility only, the exact legacy literal
 `@do:initialSoT` resolves to this action and emits a deprecation diagnostic
 recommending `@do:sot`. No other bootstrap alias is recognized.
+
+## help_action
+
+```text
+@do:help
+```
+
+A read-only entry point that helps the user understand and use Personal-SoT: explaining syntax and features, discovering current accessible capabilities, recommending an existing capability, and diagnosing usage confusion. It never creates, edits, deletes, or applies a canonical change, and a recommendation is not a saved change.
+
+It accepts no `@param` and no companion selector, control, or other high-level action in the same control block; the runtime resolves current configuration itself. Ordinary text after the control block's blank-line separator is an optional user question. With no question, it starts a guided interaction — one material question at a time, not an exhaustive feature dump — to learn what the user wants to understand.
+
+If the user's help request is actually a request to create/change/customize something, `@do:help` explains and recommends `@do:assist` rather than performing the change itself.
+
+## assist_action
+
+```text
+@do:assist
+```
+
+A guided entry point that helps the user safely create, change, maintain, or customize user-owned Personal-SoT state through the existing canonical workflows (Prompt Explorer/Builder, Personalization/Profile Builder, Project workflow, current-state maintenance, and others). It does not duplicate their business logic and obeys their existing ownership boundaries; it is not blanket mutation authority.
+
+It accepts no `@param` and no companion selector, control, or other high-level action in the same control block. Ordinary text after the control block's blank-line separator is an optional description of the requested outcome. With no request, it starts a guided interaction — one material question at a time — to learn what the user wants to create/change/customize.
+
+Every resulting canonical write still follows `system/assistant/safe_write_contract.md`: preview, explicit confirmation, current-state re-check, authorized apply only when host capability exists, and truthful reporting. A no-write host completes discovery/preview and states plainly that nothing was written.
 
 ## prompt_action
 
@@ -187,11 +212,13 @@ Prompt identity resolves exactly to:
 workspace/prompts/<prompt_path>.md
 ```
 
-No prompt registry or fuzzy lookup participates. `@do` and `@edit` may coexist with context/profile/presentation directives, registered `@control` directives, and parameter bindings. `@delete`/`@confirm:delete` are maintenance actions and do not accept parameters in V1.1.
+No prompt registry or fuzzy lookup participates. `@run` and `@edit` may coexist with context/profile/presentation directives, registered `@control` directives, and parameter bindings. `@delete` is a maintenance action and does not accept parameters.
+
+`@delete:<path>` is analysis-only: it produces a deletion plan and stops. There is no separate `@confirm:delete` directive; applying the plan follows ordinary explicit confirmation bound to the exact displayed plan, per `system/assistant/safe_write_contract.md` and `system/prompts/action_contract.md`. A changed prompt or changed inbound-reference set invalidates the plan and requires a new one before anything is deleted.
 
 ## recap_action
 
-`@recap:<count>` selects immediately preceding completed exchanges according to `system/routing/recap_contract.md`. Only presentation companion directives are valid with recap; `@ctx`, `@profile`, `@control`, `@param`, and prompt actions are invalid.
+`@recap:<count>` selects immediately preceding completed exchanges according to `system/routing/recap_contract.md`. Only presentation companion directives are valid with recap; `@ctx`, `@profile`, `@control`, `@param`, system actions, and prompt actions are invalid.
 
 Ordinary body text after the recap control block is an optional focus/filter instruction.
 
