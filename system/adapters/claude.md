@@ -27,12 +27,12 @@ Do not duplicate the entrypoint's runtime semantics into `CLAUDE.md`. If the ent
 When canonical prompt files are reachable:
 
 ```text
-@edit:prompt:path
+@edit:path
 → resolve workspace/prompts/path.md
 → substitute supplied params
 → render preview only
 
-@do:prompt:path
+@run:path
 → resolve workspace/prompts/path.md
 → validate + bind
 → execute with available tools/capabilities

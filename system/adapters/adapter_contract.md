@@ -95,10 +95,9 @@ This is an optimization only: canonical current source still outranks stale conv
 Adapters may support canonical actions:
 
 ```text
-@do:prompt:<path>
-@edit:prompt:<path>
-@delete:prompt:<path>
-@confirm:delete:prompt:<path>
+@run:<path>
+@edit:<path>
+@delete:<path>
 @param:<name>=[value]
 ```
 

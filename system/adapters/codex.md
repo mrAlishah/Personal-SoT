@@ -27,12 +27,12 @@ Do not duplicate the entrypoint's runtime semantics into `AGENTS.md`. If the ent
 When the Source of Truth is available in the working environment:
 
 ```text
-@edit:prompt:path
+@edit:path
 → resolve workspace/prompts/path.md
 → bind available parameters
 → render preview only
 
-@do:prompt:path
+@run:path
 → resolve workspace/prompts/path.md
 → validate + bind
 → execute rendered task using normal capabilities

@@ -4,10 +4,10 @@
 
 Defines action semantics for rendering, executing, and deleting canonical prompt templates stored under `workspace/prompts/`.
 
-## do
+## run
 
 ```text
-@do:prompt:<path>
+@run:<path>
 ```
 
 Pipeline:
@@ -24,12 +24,12 @@ resolve workspace/prompts/<path>.md
 → execute rendered request
 ```
 
-`@do` never exposes an intermediate preview unless diagnostics are required. Failure is fail-closed for unresolved path, non-active status, missing required params/variables, unconsumed body, invalid referenced modules, or unavailable required capability.
+`@run` never exposes an intermediate preview unless diagnostics are required. Failure is fail-closed for unresolved path, non-active status, missing required params/variables, unconsumed body, invalid referenced modules, or unavailable required capability.
 
 ## edit
 
 ```text
-@edit:prompt:<path>
+@edit:<path>
 ```
 
 ```text
@@ -45,10 +45,10 @@ resolve workspace/prompts/<path>.md
 ## delete
 
 ```text
-@delete:prompt:<path>
+@delete:<path>
 ```
 
-Phase one is analysis only:
+Analysis only:
 
 ```text
 resolve exact workspace prompt file
@@ -57,18 +57,12 @@ resolve exact workspace prompt file
 → search exact inbound references
 → classify shared vs repairable references
 → produce deletion plan
-→ STOP
+→ STOP for ordinary explicit confirmation
 ```
 
 The plan lists the prompt file, owned assets, references to repair/remove, shared dependencies preserved, and blocking ambiguities.
 
-## delete_confirmation
-
-```text
-@confirm:delete:prompt:<path>
-```
-
-Before applying deletion, re-check file version and inbound-reference state. If changed, abort and require a new plan.
+There is no separate confirmation directive. Confirmation is the ordinary explicit user confirmation defined by `system/assistant/safe_write_contract.md`, bound to this exact displayed plan. Immediately before applying, re-check the target file's version and inbound-reference state; if either changed, abort and require a new plan rather than applying the stale one.
 
 After valid confirmation:
 

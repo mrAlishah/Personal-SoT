@@ -64,10 +64,10 @@ Examples:
 @fmt:yaml
 @tone:human
 @depth:short
-@do:prompt:ai/recap
+@run:ai/recap
 ```
 
-No user should need to write `@ctx:workspace/context/personal` or `@do:prompt:workspace/prompts/...`.
+No user should need to write `@ctx:workspace/context/personal` or `@run:workspace/prompts/...`.
 
 ## user_edit_boundary
 

@@ -53,7 +53,7 @@ selected body only when rendering, execution, edit preview, or real capability
 analysis needs it and access permits it.
 
 Keep the canonical identity, path, matching metadata, and
-`@do:prompt:<identity>` inside optional Advanced output.
+`@run:<identity>` inside optional Advanced output.
 
 ## Status and unavailable results
 
