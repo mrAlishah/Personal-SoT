@@ -103,15 +103,27 @@ path would require an external clean/smudge/process/textconv helper for an
 accurate dirty comparison. If so, the result is `unsafe_repository_state`;
 the helper is never invoked to find this out. `git status`/`git diff` apply
 this normalization to decide dirtiness, not only at `add`/`commit`, so
-`--no-textconv`/`--no-ext-diff` do not close this by themselves.
+`--no-textconv`/`--no-ext-diff` do not close this by themselves. A driver
+subsection name is not assumed to be dot-free (`[filter "foo.bar"]`
+flattens to the config key `filter.foo.bar.clean`); the driver identity is
+recovered as everything between the fixed `filter.`/`diff.` namespace and
+the final known suffix, matched against the config key alone, never
+against a raw "key value" line where the value could contain unrelated
+dot-suffix-like text.
 
 Otherwise it runs `git --no-optional-locks -c core.fsmonitor=false status
---porcelain=v2 --untracked-files=all` through `controlled_git`.
+--porcelain=v2 -z --untracked-files=all` through `controlled_git`.
 `--no-optional-locks` is Git's own documented mechanism for preventing
 `status` from refreshing the index as a side effect; `-c
 core.fsmonitor=false` disables a configured fsmonitor hook/daemon for this
-one invocation regardless of ambient configuration. Any reported change
-blocks with `dirty_or_untracked`.
+one invocation regardless of ambient configuration; `-z` is required so a
+path containing spaces or other characters is never quoted/escaped in a
+way a bounded record parser would need to unpick. Any reported change
+blocks with `dirty_or_untracked`, and the blocked result carries only a
+fixed, safe `(area, count)` breakdown — the same closed area vocabulary
+`workspace`/`system`/`guides`/`root`/`other` the beginner summary uses
+below — never a raw path; a rename/copy record's second (origPath) item is
+counted once, not as a separate path.
 
 Every live-repo read that resolves a commit's tree — this preflight's
 `status` call and the current-commit (`HEAD`) resolution below — also
@@ -160,8 +172,12 @@ operated on, and an alternate shares only the object database, never
 
 `B = git merge-base --all C T`. Zero results is unrelated lineage; more
 than one is ambiguous lineage (a criss-cross history) — both fail closed,
-never an arbitrarily chosen candidate. `no_op` is true when `C == T` or
-`B == T` (target has nothing new to offer); V1 never downgrades.
+never an arbitrarily chosen candidate. `no_op` is true exactly when no path
+classifies as `upstream_only` or `conflict` — not only `C == T`/`B == T`,
+but also independently diverged commits that converge on the same tree,
+and a candidate `T` with no effective tree change relative to `B` even
+though `T != B` as a commit; a real upstream-driven change or any
+unresolved conflict must still leave `no_op` false. V1 never downgrades.
 
 Per-path state uses raw tree/blob identity only — `git ls-tree -r` at `B`,
 `C`, and `T`, comparing `(mode, blob sha)` per path, absence represented as
@@ -181,10 +197,11 @@ absence differs from both `B` and `C`) without a separate rule.
 
 ## preview and privacy
 
-`preview(plan)` binds `C`, `T`, `B`, and the complete classified plan into
-a `sha256` digest over a canonically ordered serialization (fixed field
-order, sorted path lists), so digest equality does not depend on
-dict/set iteration order.
+`preview(plan)` binds `C`, `T`, `B`, the complete classified plan, and any
+`blocked_by_area` breakdown into a `sha256` digest over a canonically
+ordered serialization (fixed field order, sorted path lists, sorted
+`(area, count)` pairs), so digest equality does not depend on dict/set
+iteration order.
 
 The beginner-facing summary's naming boundary is classification state, not
 location: `already_aligned`, `upstream_only`, and `conflict` paths all have
@@ -192,8 +209,12 @@ an established relationship to accepted target history — `T` changed,
 converged on, or (for a delete/rename conflict) explicitly removed them —
 and may be named. A `user_only` path is, by that same classification,
 never present in `T`; it is reported by area/count only, wherever it sits,
-including outside `workspace/`. Advanced authorization is not decided
-here; see Loop 5.
+including outside `workspace/`. An area label — for a `user_only` path or
+for a dirty/untracked blocked result alike — is drawn only from the closed
+vocabulary `workspace`/`system`/`guides`/`root`/`other`; it is never the
+path's own filename or directory name, so a user-controlled path component
+can never reach the summary or the digest through its label. Advanced
+authorization is not decided here; see Loop 5.
 
 ## scope
 

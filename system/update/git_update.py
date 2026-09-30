@@ -26,11 +26,21 @@ _SHA_RE = re.compile(r'[0-9a-f]{40}')
 # corrupting dirty-state and current-commit reads; every live-repo read
 # that walks a commit's tree must disable replace-object interpretation.
 _NO_REPLACE = {'GIT_NO_REPLACE_OBJECTS': '1'}
-_DRIVER_KEY_RE = re.compile(r'^(?:filter|diff)\.([^.]+)\.(?:clean|smudge|process|textconv|command)\b')
+# A driver subsection name may itself contain dots (`[filter "foo.bar"]`
+# flattens to the config key `filter.foo.bar.clean`), so the driver-name
+# group must be greedy up to the final known suffix, not a single
+# dot-free segment; matched against the key alone (see `_configured_drivers`),
+# never the raw "key value" line, so a value containing a dot-suffix-like
+# substring can never be mistaken for part of the driver name.
+_DRIVER_KEY_RE = re.compile(r'^(?:filter|diff)\.(.+)\.(?:clean|smudge|process|textconv|command)$')
 _ATTRIBUTE_SCAN_KEYS = (
-    r'^filter\.[^.]+\.(clean|smudge|process)$',
-    r'^diff\.[^.]+\.(textconv|command)$',
+    r'^filter\..+\.(clean|smudge|process)$',
+    r'^diff\..+\.(textconv|command)$',
 )
+# Closed, product-owned area vocabulary: a beginner-facing area label must
+# never be derived from a user-controlled filename or directory name, so a
+# user-only path can never leak into the summary via its own area label.
+_KNOWN_AREAS = frozenset({'workspace', 'system', 'guides'})
 
 
 @dataclass(frozen=True)
@@ -44,6 +54,7 @@ class Plan:
     conflict: tuple[str, ...] = ()
     no_op: bool = False
     blocked: str | None = None
+    blocked_by_area: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,7 +106,11 @@ def classify(root) -> Plan:
         return Plan(current, resolved.commit, None, blocked=error.reason)
 
     aligned, upstream_only, user_only, conflict = _states(base_tree, current_tree, target_tree)
-    no_op = current == resolved.commit or base == resolved.commit
+    # Equivalent to (and subsumes) C == T, T ancestor of C, independently
+    # converged identical trees, and a target commit with no effective
+    # tree delta: no upstream-driven change remains to apply, and nothing
+    # is left unresolved that a downgrade/silent-merge would paper over.
+    no_op = not upstream_only and not conflict
     return Plan(current, resolved.commit, base, aligned, upstream_only, user_only, conflict, no_op)
 
 
@@ -111,24 +126,67 @@ def preview(plan: Plan) -> Preview:
     for state in ('already_aligned', 'upstream_only', 'user_only', 'conflict'):
         for path in sorted(getattr(plan, state)):
             lines.append(f'{state}:{path}')
+    for area, count in sorted(plan.blocked_by_area):
+        lines.append(f'blocked_by_area:{area}:{count}')
     digest = sha256('\n'.join(lines).encode('utf-8')).hexdigest()
     return Preview(digest, plan, _beginner_summary(plan))
 
 
 # --- dirty/untracked preflight -------------------------------------------
 
+def _porcelain_v2_paths(stdout: str) -> list[str]:
+    """The one current-path per `git status --porcelain=v2 -z` record.
+
+    A bounded parser for exactly the record types `-z` mode (no path
+    quoting, NUL-terminated) can emit without `--ignored`: ordinary
+    changed (`1`), renamed/copied (`2`, whose origPath is a separate
+    following NUL-terminated item that must be skipped rather than
+    counted as its own record), unmerged (`u`), and untracked (`?`).
+    `-z` mode is required here specifically because a path may contain
+    spaces or other characters that plain porcelain output would need to
+    quote/escape.
+    """
+    chunks = stdout.split('\0')
+    if chunks and chunks[-1] == '':
+        chunks = chunks[:-1]
+    paths = []
+    skip_next = False
+    for chunk in chunks:
+        if skip_next:
+            skip_next = False
+            continue
+        if not chunk:
+            continue
+        kind = chunk[0]
+        if kind == '1':
+            paths.append(chunk.split(' ', 8)[8])
+        elif kind == '2':
+            paths.append(chunk.split(' ', 9)[9])
+            skip_next = True
+        elif kind == 'u':
+            paths.append(chunk.split(' ', 10)[10])
+        elif kind == '?':
+            paths.append(chunk.split(' ', 1)[1])
+    return paths
+
+
 def _preflight(root) -> Plan | None:
     if _attribute_safety_blocked(root):
         return Plan('', '', None, blocked='unsafe_repository_state')
     status = controlled_git(
         '--no-optional-locks', '-c', 'core.fsmonitor=false',
-        'status', '--porcelain=v2', '--untracked-files=all', cwd=root,
+        'status', '--porcelain=v2', '-z', '--untracked-files=all', cwd=root,
         extra_env=_NO_REPLACE)
     if status.returncode != 0:
         return Plan('', '', None, blocked='status_check_failed')
-    if (status.stdout or '').strip():
-        return Plan('', '', None, blocked='dirty_or_untracked')
-    return None
+    paths = _porcelain_v2_paths(status.stdout or '')
+    if not paths:
+        return None
+    counts: dict[str, int] = {}
+    for path in paths:
+        area = _area(path)
+        counts[area] = counts.get(area, 0) + 1
+    return Plan('', '', None, blocked='dirty_or_untracked', blocked_by_area=tuple(sorted(counts.items())))
 
 
 def _attribute_safety_blocked(root) -> bool:
@@ -146,7 +204,11 @@ def _attribute_safety_blocked(root) -> bool:
         if config.returncode not in (0, 1):
             return True
         for line in (config.stdout or '').splitlines():
-            match = _DRIVER_KEY_RE.match(line)
+            # Match only the key (everything before the first space); the
+            # value may itself contain text that looks like a dot-suffix,
+            # which must never be mistaken for part of the driver name.
+            key = line.split(' ', 1)[0]
+            match = _DRIVER_KEY_RE.match(key)
             if match:
                 configured.add(match.group(1))
     if not configured:
@@ -271,11 +333,21 @@ def _beginner_summary(plan: Plan) -> dict:
     for path in plan.user_only:
         area = _area(path)
         hidden_by_area[area] = hidden_by_area.get(area, 0) + 1
-    return {'named': named, 'hidden_by_area': hidden_by_area}
+    return {
+        'named': named,
+        'hidden_by_area': hidden_by_area,
+        'blocked_by_area': dict(plan.blocked_by_area),
+    }
 
 
 def _area(path: str) -> str:
-    parts = path.split('/')
-    if parts[0] == 'workspace' and len(parts) > 1:
-        return 'workspace/' + parts[1]
-    return parts[0]
+    """A closed, product-owned area label only: `workspace`/`system`/
+    `guides` for those known roots, `root` for a top-level file, `other`
+    for anything else — never a user-controlled filename or directory
+    name, so a user-only or dirty path can never leak into the
+    beginner-facing summary via its own area label.
+    """
+    if '/' not in path:
+        return 'root'
+    top = path.split('/', 1)[0]
+    return top if top in _KNOWN_AREAS else 'other'

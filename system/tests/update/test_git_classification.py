@@ -147,6 +147,48 @@ class ClassificationTests(unittest.TestCase):
         self.assertIn('a.md', plan.upstream_only)
         self.assertIn('b.md', plan.user_only)
 
+    def test_no_op_when_diverged_commits_converge_on_same_tree(self):
+        """C and T are separate commits (different SHAs, both diverged from
+        B) that independently reach byte-identical trees; no target-driven
+        change remains, so this must be reported as no-op."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, {'a.md': 'base\n'}, {'a.md': 'converged\n'}, {'a.md': 'converged\n'})
+            plan = _classify(root, target_dir, target_sha)
+        self.assertIsNone(plan.blocked)
+        self.assertNotEqual(current_sha, target_sha)
+        self.assertTrue(plan.no_op)
+
+    def test_no_op_when_target_commit_has_no_effective_tree_change(self):
+        """T has a genuinely new commit (not == B), but that commit's tree
+        is identical to B's; C carries only a preserved user-only change.
+        The old `base == resolved.commit` ancestor check misses this."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, {'a.md': 'base\n'}, {'user_file.md': 'mine\n'}, {})
+            _run(['git', '-C', target_dir, 'checkout', '-q', 'main'])
+            new_target_sha = _commit(target_dir, 'no-op commit, same tree as base')
+            self.assertNotEqual(target_sha, new_target_sha, 'fixture must add a genuinely new commit')
+            plan = _classify(root, target_dir, new_target_sha)
+        self.assertIsNone(plan.blocked)
+        self.assertTrue(plan.no_op)
+        self.assertEqual((), plan.upstream_only)
+        self.assertIn('user_file.md', plan.user_only)
+
+    def test_no_op_false_with_only_a_conflict(self):
+        """Isolates the conflict-only branch: no upstream_only paths at
+        all, so the old ancestor-based rule would have reported this as
+        no-op too (base != resolved.commit, but nothing else checked
+        conflict); the corrected rule must not."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, {'a.md': 'base\n'}, {'a.md': 'current edit\n'}, {'a.md': 'target edit\n'})
+            plan = _classify(root, target_dir, target_sha)
+        self.assertIsNone(plan.blocked)
+        self.assertIn('a.md', plan.conflict)
+        self.assertEqual((), plan.upstream_only)
+        self.assertFalse(plan.no_op)
+
     def test_fails_closed_on_unrelated_lineage(self):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
@@ -283,6 +325,42 @@ class DirtyPreflightTests(unittest.TestCase):
             plan = git_update.classify(root)
         self.assertEqual('unsafe_repository_state', plan.blocked)
 
+    def test_dotted_filter_driver_name_is_detected(self):
+        """A driver subsection name may itself contain dots (git flattens
+        [filter "foo.bar"] to the config key filter.foo.bar.clean); the
+        detector must not assume a single dot-free segment between the
+        namespace and the known suffix."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            sentinel = str(Path(workdir, 'sentinel'))
+            _init_repo(root)
+            _write(root, '.gitattributes', '*.secret filter=foo.bar\n')
+            _write(root, 'a.secret', 'sensitive\n')
+            _commit(root, 'base')
+            hostile = str(Path(workdir, 'hostile.sh'))
+            Path(hostile).write_text(f'#!/bin/sh\ntouch {sentinel}\ncat\n')
+            os.chmod(hostile, 0o755)
+            _run(['git', '-C', root, 'config', 'filter.foo.bar.clean', hostile])
+            plan = git_update.classify(root)
+        self.assertEqual('unsafe_repository_state', plan.blocked)
+        self.assertFalse(Path(sentinel).exists())
+
+    def test_dotted_diff_driver_name_is_detected(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            sentinel = str(Path(workdir, 'sentinel'))
+            _init_repo(root)
+            _write(root, '.gitattributes', '*.secret diff=foo.bar\n')
+            _write(root, 'a.secret', 'sensitive\n')
+            _commit(root, 'base')
+            hostile = str(Path(workdir, 'hostile.sh'))
+            Path(hostile).write_text(f'#!/bin/sh\ntouch {sentinel}\ncat\n')
+            os.chmod(hostile, 0o755)
+            _run(['git', '-C', root, 'config', 'diff.foo.bar.textconv', hostile])
+            plan = git_update.classify(root)
+        self.assertEqual('unsafe_repository_state', plan.blocked)
+        self.assertFalse(Path(sentinel).exists())
+
     def test_dirty_preflight_never_invokes_configured_helper(self):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
@@ -341,6 +419,99 @@ class DirtyPreflightTests(unittest.TestCase):
             after = Path(root, '.git', 'index').read_bytes()
         self.assertEqual('dirty_or_untracked', plan.blocked)
         self.assertEqual(before, after)
+
+    def test_modified_worktree_file_reports_area_and_count(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'workspace/a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'workspace/a.md', 'dirty\n')
+            plan = git_update.classify(root)
+        self.assertEqual('dirty_or_untracked', plan.blocked)
+        self.assertEqual((('workspace', 1),), plan.blocked_by_area)
+
+    def test_staged_file_reports_area_and_count(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'workspace/a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'workspace/a.md', 'staged\n')
+            _run(['git', '-C', root, 'add', 'workspace/a.md'])
+            plan = git_update.classify(root)
+        self.assertEqual('dirty_or_untracked', plan.blocked)
+        self.assertEqual((('workspace', 1),), plan.blocked_by_area)
+
+    def test_untracked_file_reports_area_and_count(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'untracked.md', 'new\n')
+            plan = git_update.classify(root)
+        self.assertEqual('dirty_or_untracked', plan.blocked)
+        self.assertEqual((('root', 1),), plan.blocked_by_area)
+
+    def test_two_dirty_files_in_same_area_aggregate_count(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'workspace/a.md', 'x\n')
+            _write(root, 'workspace/b.md', 'y\n')
+            _commit(root, 'base')
+            _write(root, 'workspace/a.md', 'dirty a\n')
+            _write(root, 'workspace/b.md', 'dirty b\n')
+            plan = git_update.classify(root)
+        self.assertEqual('dirty_or_untracked', plan.blocked)
+        self.assertEqual((('workspace', 2),), plan.blocked_by_area)
+
+    def test_blocked_root_filename_does_not_leak(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'super_secret_root_file.md', 'personal\n')
+            plan = git_update.classify(root)
+            result = git_update.preview(plan)
+        self.assertNotIn('super_secret_root_file.md', repr(plan))
+        self.assertNotIn('super_secret_root_file.md', repr(result))
+        self.assertEqual((('root', 1),), plan.blocked_by_area)
+
+    def test_blocked_arbitrary_top_level_directory_does_not_leak(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'private_project/secret.md', 'personal\n')
+            plan = git_update.classify(root)
+        self.assertNotIn('private_project', repr(plan))
+        self.assertEqual((('other', 1),), plan.blocked_by_area)
+
+    def test_blocked_workspace_direct_child_filename_does_not_leak(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'workspace/private_notes.md', 'personal\n')
+            plan = git_update.classify(root)
+        self.assertNotIn('private_notes.md', repr(plan))
+        self.assertEqual((('workspace', 1),), plan.blocked_by_area)
+
+    def test_dirty_status_handles_paths_with_spaces(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _write(root, 'a.md', 'x\n')
+            _commit(root, 'base')
+            _write(root, 'a file with spaces.md', 'new\n')
+            plan = git_update.classify(root)
+        self.assertEqual('dirty_or_untracked', plan.blocked)
+        self.assertEqual((('root', 1),), plan.blocked_by_area)
 
 
 class TargetMaterializationTests(unittest.TestCase):
@@ -490,9 +661,31 @@ class PreviewTests(unittest.TestCase):
         plan_unsorted = git_update.Plan('c' * 40, 't' * 40, 'b' * 40, upstream_only=('z.md', 'a.md'))
         self.assertEqual(git_update.preview(plan_sorted).digest, git_update.preview(plan_unsorted).digest)
 
+    def test_blocked_area_count_changes_the_digest(self):
+        plan_a = git_update.Plan('', '', None, blocked='dirty_or_untracked',
+                                  blocked_by_area=(('root', 1),))
+        plan_b = git_update.Plan('', '', None, blocked='dirty_or_untracked',
+                                  blocked_by_area=(('root', 2),))
+        self.assertNotEqual(git_update.preview(plan_a).digest, git_update.preview(plan_b).digest)
+
+    def test_blocked_area_count_ordering_does_not_affect_digest(self):
+        plan_sorted = git_update.Plan('', '', None, blocked='dirty_or_untracked',
+                                       blocked_by_area=(('other', 1), ('workspace', 2)))
+        plan_unsorted = git_update.Plan('', '', None, blocked='dirty_or_untracked',
+                                         blocked_by_area=(('workspace', 2), ('other', 1)))
+        self.assertEqual(git_update.preview(plan_sorted).digest, git_update.preview(plan_unsorted).digest)
+
+    def test_no_raw_dirty_path_is_serialized_into_blocked_result(self):
+        plan = git_update.Plan('', '', None, blocked='dirty_or_untracked',
+                                blocked_by_area=(('workspace', 1),))
+        result = git_update.preview(plan)
+        self.assertNotIn('.md', result.digest)
+        self.assertIsInstance(result.summary['blocked_by_area'], dict)
+        self.assertEqual({'workspace': 1}, result.summary['blocked_by_area'])
+
 
 class PrivacyTests(unittest.TestCase):
-    def test_user_only_path_outside_workspace_is_area_count_not_named(self):
+    def test_root_user_only_filename_never_appears_as_or_inside_an_area_label(self):
         with tempfile.TemporaryDirectory() as workdir:
             root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
                 workdir, {}, {'secret_root_file.md': 'personal\n'}, {})
@@ -500,17 +693,44 @@ class PrivacyTests(unittest.TestCase):
         result = git_update.preview(plan)
         self.assertNotIn('secret_root_file.md', result.summary['named'])
         self.assertIn('secret_root_file.md', plan.user_only)
-        self.assertGreaterEqual(result.summary['hidden_by_area'].get('secret_root_file.md'.split('.')[0], 0)
-                                 + sum(result.summary['hidden_by_area'].values()), 1)
+        self.assertNotIn('secret_root_file.md', repr(result.summary))
+        self.assertEqual({'root': 1}, result.summary['hidden_by_area'])
 
-    def test_workspace_user_only_path_hidden_regardless_of_location(self):
+    def test_workspace_nested_user_only_path_hidden_regardless_of_location(self):
         with tempfile.TemporaryDirectory() as workdir:
             root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
                 workdir, {}, {'workspace/context/personal/secret.md': 'personal\n'}, {})
             plan = _classify(root, target_dir, target_sha)
         result = git_update.preview(plan)
         self.assertNotIn('workspace/context/personal/secret.md', result.summary['named'])
-        self.assertIn('workspace/context', result.summary['hidden_by_area'])
+        self.assertNotIn('secret.md', repr(result.summary))
+        self.assertNotIn('context', repr(result.summary))
+        self.assertEqual({'workspace': 1}, result.summary['hidden_by_area'])
+
+    def test_workspace_direct_child_filename_never_appears_as_or_inside_an_area_label(self):
+        """A direct child of workspace/ (e.g. workspace/<filename>.md, no
+        further nesting) must not have its own filename embedded in the
+        area label; the closed vocabulary collapses it to 'workspace'."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, {}, {'workspace/private_notes.md': 'personal\n'}, {})
+            plan = _classify(root, target_dir, target_sha)
+        result = git_update.preview(plan)
+        self.assertNotIn('private_notes.md', repr(result.summary))
+        self.assertEqual({'workspace': 1}, result.summary['hidden_by_area'])
+
+    def test_arbitrary_top_level_user_directory_does_not_become_an_area_label(self):
+        """A user-created top-level directory name (not workspace/system/
+        guides) must not itself become the area label; it collapses to the
+        fixed 'other' bucket instead."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, {}, {'private_project/secret.md': 'personal\n'}, {})
+            plan = _classify(root, target_dir, target_sha)
+        result = git_update.preview(plan)
+        self.assertNotIn('private_project', repr(result.summary))
+        self.assertNotIn('secret.md', repr(result.summary))
+        self.assertEqual({'other': 1}, result.summary['hidden_by_area'])
 
     def test_upstream_established_path_may_be_named(self):
         with tempfile.TemporaryDirectory() as workdir:
