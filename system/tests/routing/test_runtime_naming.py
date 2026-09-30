@@ -253,6 +253,81 @@ class PromptActionTests(unittest.TestCase):
                     classify_prompt_action(text)
 
 
+class ControlBlockBoundaryTests(unittest.TestCase):
+    """Defect 1: a real control block exists only when the first non-blank
+    line is itself directive-shaped; ordinary text starts the body, and a
+    later switch-looking line in that body is not executable."""
+
+    def test_ordinary_text_before_system_action_leaves_it_unresolved(self):
+        for action in ("@do:sot", "@do:help", "@do:assist"):
+            with self.subTest(action=action):
+                self.assertIsNone(classify_system_action(f"ordinary request\n{action}"))
+
+    def test_ordinary_text_before_prompt_action_leaves_it_unresolved(self):
+        for line in ("@run:ai/context_snapshot", "@edit:ai/context_snapshot",
+                     "@delete:ai/context_snapshot"):
+            with self.subTest(line=line):
+                self.assertIsNone(classify_prompt_action(f"ordinary text\n{line}"))
+
+    def test_ordinary_text_before_recap_is_not_promoted_by_either_classifier(self):
+        text = "ordinary text\n@recap:2"
+        self.assertIsNone(classify_system_action(text))
+        self.assertIsNone(classify_prompt_action(text))
+
+    def test_system_action_body_may_contain_switch_looking_text(self):
+        result = classify_system_action("@do:help\n\nordinary body\n@run:not_an_action_here")
+        self.assertEqual(HELP_ACTION, result.action)
+        self.assertIn("@run:not_an_action_here", result.body)
+
+    def test_prompt_action_body_may_contain_switch_looking_text(self):
+        result = classify_prompt_action(
+            "@run:ai/context_snapshot\n\nordinary body\n@do:help")
+        self.assertEqual(RUN_ACTION, result.keyword)
+        self.assertEqual("ai/context_snapshot", result.prompt_id)
+
+
+class MultilineParameterOpacityTests(unittest.TestCase):
+    """Defect 2: content inside an opened @param:<name>=[[ ... ]] region is
+    opaque to high-level-action discovery, including switch-looking text
+    and blank lines, regardless of whether they precede or follow it."""
+
+    def test_dangerous_content_inside_multiline_param_is_not_a_second_action(self):
+        text = "@run:ai/context_snapshot\n@param:focus=[[\n@do:sot\n@recap:2\n]]"
+        result = classify_prompt_action(text)
+        self.assertEqual(RUN_ACTION, result.keyword)
+        self.assertEqual("ai/context_snapshot", result.prompt_id)
+
+    def test_edit_with_dangerous_multiline_content_is_not_a_second_action(self):
+        text = ("@edit:ai/context_snapshot\n@param:fake=[[\n@delete:other/path\n"
+                "@do:sot\n@fmt:yaml\n@param:fake=[value]\n]]")
+        result = classify_prompt_action(text)
+        self.assertEqual(EDIT_ACTION, result.keyword)
+        self.assertEqual("ai/context_snapshot", result.prompt_id)
+
+    def test_blank_line_inside_multiline_param_does_not_end_control_block(self):
+        text = "@param:focus=[[\nline one\n\nline two\n]]\n@run:ai/context_snapshot"
+        result = classify_prompt_action(text)
+        self.assertEqual(RUN_ACTION, result.keyword)
+        self.assertEqual("ai/context_snapshot", result.prompt_id)
+
+    def test_full_multiline_example_resolves_to_exactly_one_action(self):
+        text = (
+            "@run:ai/context_snapshot\n"
+            "@param:focus=[[\n"
+            "line one\n"
+            "\n"
+            "@run:this/is_literal_data\n"
+            "@do:help\n"
+            "@recap:2\n"
+            "\n"
+            "line two\n"
+            "]]"
+        )
+        result = classify_prompt_action(text)
+        self.assertEqual(RUN_ACTION, result.keyword)
+        self.assertEqual("ai/context_snapshot", result.prompt_id)
+
+
 class ProfileIdentityTests(unittest.TestCase):
     def test_custom_profile_keeps_lowercase_snake_case(self):
         for identity in ("coding", "my_profile", "profile2"):

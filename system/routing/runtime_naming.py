@@ -48,16 +48,39 @@ class PromptActionInvocation:
     prompt_id: str
 
 
+_MULTILINE_PARAM_OPEN_RE = re.compile(r"^@param:[a-z0-9_]+=\[\[$")
+
+
 def _leading_control_block(text: str) -> tuple[list[str], str]:
-    """Non-blank leading lines (the control block) and the raw body after
-    the first blank line, per switch_syntax.md's control-block/body split.
+    """Directive-level control-block lines and the raw body after them, per
+    switch_syntax.md's control-block/body split.
+
+    A real control block exists only when the first non-blank line is
+    itself directive-shaped (starts with `@`); otherwise ordinary body has
+    already started and no line in it is executable, however
+    switch-looking it looks. Once inside a real control block, an opened
+    multiline `@param:<name>=[[` makes every following line opaque
+    literal parameter content — including blank lines and switch-looking
+    text — until a line whose trimmed content is exactly `]]`; that
+    content is never split into separate control-block entries.
     """
     lines = text.splitlines()
+    start = 0
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    if start >= len(lines) or not lines[start].strip().startswith("@"):
+        return [], "\n".join(lines[start:]).strip()
+
     control: list[str] = []
-    index = 0
+    index = start
     while index < len(lines) and lines[index].strip():
-        control.append(lines[index].strip())
+        stripped = lines[index].strip()
+        control.append(stripped)
         index += 1
+        if _MULTILINE_PARAM_OPEN_RE.match(stripped):
+            while index < len(lines) and lines[index].strip() != "]]":
+                index += 1
+            index += 1
     if index < len(lines) and not lines[index].strip():
         index += 1
     body = "\n".join(lines[index:]).strip()
