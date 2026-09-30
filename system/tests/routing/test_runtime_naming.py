@@ -135,6 +135,20 @@ class SystemActionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     classify_system_action(text)
 
+    def test_high_level_action_exclusivity_is_order_independent(self):
+        """A system action must not become invisible merely because another
+        directive precedes it in the control block."""
+        for text in (
+            "@profile:g.coding\n@do:help",
+            "@ctx:personal\n@do:assist",
+            "@run:ai/recap\n@do:help",
+            "@recap:2\n@do:assist",
+            "@profile:g.coding\n@do:sot",
+        ):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    classify_system_action(text)
+
     def test_unknown_do_action_does_not_normalize(self):
         for text in ("@do:guide", "@do:support", "@do:create", "@do:customize"):
             with self.subTest(text=text):
@@ -218,6 +232,25 @@ class PromptActionTests(unittest.TestCase):
 
     def test_bare_prompt_remains_unsupported(self):
         self.assertIsNone(classify_prompt_action("@prompt:ai/recap"))
+
+    def test_prompt_action_rejects_a_coexisting_system_action_either_order(self):
+        for text in (
+            "@run:ai/recap\n@do:help",
+            "@do:help\n@run:ai/recap",
+            "@run:ai/recap\n@do:assist",
+            "@do:assist\n@run:ai/recap",
+            "@run:ai/recap\n@do:sot",
+            "@do:sot\n@run:ai/recap",
+        ):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    classify_prompt_action(text)
+
+    def test_prompt_action_rejects_a_coexisting_recap_either_order(self):
+        for text in ("@run:ai/recap\n@recap:2", "@recap:2\n@run:ai/recap"):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    classify_prompt_action(text)
 
 
 class ProfileIdentityTests(unittest.TestCase):

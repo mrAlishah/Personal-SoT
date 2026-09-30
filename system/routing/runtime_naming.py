@@ -67,22 +67,29 @@ def _leading_control_block(text: str) -> tuple[list[str], str]:
 def classify_system_action(text: str) -> Optional[SystemActionInvocation]:
     """Resolve an exclusive canonical or legacy system action.
 
-    `@do:sot` (and its legacy `@do:initialSoT` alias) is bodiless and
-    exclusive: no body, no `@param`, no companion directive of any kind.
-    `@do:help` and `@do:assist` may carry an ordinary body after the
-    control block but still reject every companion directive and a second
-    high-level action, since the control block they occupy must contain
-    only the one action line.
+    The control block is searched as a whole, not only its first line, so
+    a preceding selector/control/prompt-action/recap directive cannot make
+    a real system action invisible. `@do:sot` (and its legacy
+    `@do:initialSoT` alias) is bodiless and exclusive: no body, no
+    `@param`, no companion directive of any kind. `@do:help` and
+    `@do:assist` may carry an ordinary body after the control block but
+    still reject every companion directive and a second high-level
+    action, since the control block they occupy must contain only the one
+    action line — this is enforced by a control-block line count, so it
+    holds regardless of where the action line sits within it.
     """
     control, body = _leading_control_block(text)
     if not control:
         return None
-    first = control[0]
-    if first not in _SYSTEM_ACTIONS:
-        if any(first.startswith(f"{action}=") or first.startswith(f"{action} ")
-               for action in _SYSTEM_ACTIONS):
+    exact_matches = [line for line in control if line in _SYSTEM_ACTIONS]
+    if not exact_matches:
+        if any(line.startswith(f"{action}=") or line.startswith(f"{action} ")
+               for line in control for action in _SYSTEM_ACTIONS):
             raise ValueError("A system action accepts no inline payload")
         return None
+    if len(exact_matches) > 1:
+        raise ValueError("At most one system action may appear in one control block")
+    first = exact_matches[0]
     legacy = first == LEGACY_BOOTSTRAP_ACTION
     canonical = CANONICAL_BOOTSTRAP_ACTION if legacy else first
     if canonical in _BODILESS_SYSTEM_ACTIONS:
@@ -120,7 +127,9 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     any recognized keyword here and resolve to `None` (unresolved), never
     normalized. A recognized keyword with a malformed path (including a
     `workspace/prompts/` physical prefix or a traversal segment) raises
-    rather than silently guessing.
+    rather than silently guessing. A system action or `@recap` elsewhere
+    in the same control block is a second high-level action and is
+    rejected regardless of which one comes first.
     """
     control, _body = _leading_control_block(text)
     matches: list[tuple[str, str]] = []
@@ -134,6 +143,8 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
         return None
     if len(matches) > 1:
         raise ValueError("At most one prompt action may appear in one control block")
+    if any(line in _SYSTEM_ACTIONS or line.startswith("@recap:") for line in control):
+        raise ValueError("A prompt action cannot coexist with a system action or recap")
     keyword, candidate = matches[0]
     if candidate.startswith(_PHYSICAL_PROMPT_PREFIX) or candidate == "workspace":
         raise ValueError(f"{keyword} takes a prompt identity, not the physical prefix")
