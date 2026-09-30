@@ -28,7 +28,7 @@ class TargetSnapshot:
     resolved_via: str
 
 
-def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run):
+def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input=None, text=True):
     """Run one Git invocation isolated from ambient Git authority.
 
     Builds the child environment explicitly rather than passing the parent
@@ -46,12 +46,27 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run):
     `cwd` (the real checkout) and relies only on the environment control,
     since discovering that real repository there is intended.
 
+    Every invocation also runs with `-c core.hooksPath=<empty-dir>` pointed
+    at a directory this call creates and never populates, so no repository,
+    user, or global hook (including `reference-transaction`, which ordinary
+    ref updates invoke) can execute regardless of what hooks the real
+    checkout has configured; verified empirically that a real hook script
+    does not fire under this override. This applies uniformly to every
+    caller, not only Loop 3's apply step, since read-only Loop 1/2 calls
+    have no reason to risk it either.
+
     `extra_env` may add only `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
     `GIT_NO_REPLACE_OBJECTS` (Loop 2's local-only classification needs);
     any other key, including any of the authority-bearing variables this
     function already controls, raises before any process environment is
     built. This is a fixed, closed allowlist, not a general environment-
     extension mechanism.
+
+    `input`/`text` pass through to the underlying `subprocess.run` call
+    unchanged (Loop 3's object-transfer step feeds NUL-separated tree
+    entries and binary pack data through this same primitive rather than a
+    second wrapper); omitting them preserves every existing caller's
+    behavior exactly.
     """
     if extra_env:
         disallowed = set(extra_env) - _ALLOWED_EXTRA_ENV
@@ -61,6 +76,8 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run):
         global_config = os.path.join(controlled_home, 'controlled_gitconfig')
         with open(global_config, 'w', encoding='utf-8') as handle:
             handle.write('[http]\n\tfollowRedirects = false\n')
+        empty_hooks = os.path.join(controlled_home, 'empty_hooks')
+        os.mkdir(empty_hooks)
         env = {
             'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
             'HOME': controlled_home,
@@ -73,9 +90,10 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run):
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
         if extra_env:
             env.update(extra_env)
-        return runner(('git',) + args, cwd=cwd, env=env,
+        full_args = ('git', '-c', 'core.hooksPath=' + empty_hooks) + args
+        return runner(full_args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       text=True, timeout=30, check=False)
+                       input=input, text=text, timeout=30, check=False)
 
 
 def resolve(resolver=None) -> TargetSnapshot:

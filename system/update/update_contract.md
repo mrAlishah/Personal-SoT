@@ -226,11 +226,75 @@ path's own filename or directory name, so a user-controlled path component
 can never reach the summary or the digest through its label. Advanced
 authorization is not decided here; see Loop 5.
 
+## apply and recovery
+
+`apply(root, plan, digest)` never trusts the caller's `plan`: it
+re-resolves `T` and re-classifies before doing anything, and aborts before
+any mutation on a digest mismatch, a `blocked` state, or a remaining
+`conflict` — a confirmed preview is a claim about a past state, not an
+authorization to act on whatever the live state has become by the time
+`apply` runs. A `no_op` classification returns a truthful already-current
+result without mutating anything or creating a commit.
+
+The candidate tree (target's entry for `already_aligned`/`upstream_only`
+paths, current's entry for `user_only` paths, per the state table above)
+is built as a real Git tree object and materialized into a directory
+outside the live checkout; only that directory, never the live worktree,
+is validated. Validation runs `validate_v1 --mode personal` and
+`validate_prompts` as separate subprocesses rooted at the *candidate's
+own* copies of those files, never the live checkout's already-imported
+modules, so a target that itself changes validator logic is validated
+against its own rules rather than a stale cached version; `validate_public`
+is never invoked on an installed Personal candidate. The live ref, index,
+and worktree are not touched until both validators pass and an immediate
+recheck (clean tracked/index state, `HEAD` still at `C`) confirms nothing
+changed while validation ran.
+
+Only `upstream_only` paths are ever written to the live worktree/index;
+`already_aligned`/`user_only` paths are left completely untouched. Every
+apply-side Git invocation, including object transfer, runs through the
+same `controlled_git` (now always passing `-c core.hooksPath=<empty-dir>`,
+so no repository/user/global hook, including `reference-transaction`,
+executes) and, for any updater-touched path, `git check-attr
+--source=<candidate-tree>` proves the *target-introduced* attributes would
+not select a configured filter/diff helper before mutation proceeds —
+Loop 2's own preflight only ever covered the live repo's current tree, not
+what `T` might newly introduce. Missing objects are copied into the live
+object database with `rev-list --objects` + `pack-objects` +
+`index-pack` — a pure content transfer with no remote/URL argument, so no
+repository-local `url.*.insteadOf` rewrite has anything to redirect.
+
+Live mutation order: write/remove touched worktree paths and update the
+index to match the candidate tree exactly (verified with `git write-tree`),
+then advance the ref last, `git update-ref HEAD <new> <old=C>`, a
+compare-and-swap that fails closed if `C` moved concurrently. The
+resulting commit's two parents are exactly `C` and `T`, and its tree is
+exactly the validated candidate tree.
+
+Recovery exists only while `apply` is running and only for the paths it
+itself wrote. Before restoring any touched path, it verifies that path's
+current content still equals exactly what the updater wrote; a path an
+external process has changed since is left untouched, and recovery is
+reported incomplete for it rather than overwritten. A real process
+kill/crash claims no automatic rollback: because the ref advances last, an
+interruption before that step leaves the ref at `C`, and the next
+`classify()` reports the resulting dirty/untracked state rather than
+success.
+
+`ApplyResult` reports `no_op`, `mutation_started`, `validation_ran`,
+`validation_passed`, `rollback_attempted`, `rollback_completed`,
+`concurrent_change`, a resulting `commit` only on an actually-applied
+update, and a closed non-sensitive `failure` literal — never raw
+Git/validator output or a `workspace/` path. A failed or aborted path is
+never reported as `mutation_started` unless a live mutation genuinely
+began, and `rollback_completed` is never true unless every touched path
+was actually verified and restored.
+
 ## scope
 
 This file currently owns target resolution, the shared `controlled_git`
-primitive, the dirty/untracked preflight, target materialization, Git-clone
-classification, and preview/digest binding. Apply/recovery result
-semantics and side-by-side scope-carry-over rules belong to later loops of
+primitive, the dirty/untracked preflight, target materialization,
+Git-clone classification, preview/digest binding, and Git-clone apply and
+recovery. Side-by-side scope-carry-over rules belong to Loop 4 of
 `guides/developer/update/safe_update_implementation_plan.md` and extend
 this file when implemented; they are not established here.
