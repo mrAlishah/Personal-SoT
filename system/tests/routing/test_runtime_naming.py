@@ -216,6 +216,31 @@ class PromptActionTests(unittest.TestCase):
         result = classify_prompt_action("@delete:ai/context_snapshot")
         self.assertEqual(DELETE_ACTION, result.keyword)
 
+    def test_delete_rejects_single_line_param_after(self):
+        with self.assertRaises(ValueError):
+            classify_prompt_action("@delete:ai/context_snapshot\n@param:x=[1]")
+
+    def test_delete_rejects_single_line_param_before(self):
+        with self.assertRaises(ValueError):
+            classify_prompt_action("@param:x=[1]\n@delete:ai/context_snapshot")
+
+    def test_delete_rejects_multiline_param(self):
+        text = "@delete:ai/context_snapshot\n@param:x=[[\nliteral data\n]]"
+        with self.assertRaises(ValueError):
+            classify_prompt_action(text)
+
+    def test_run_with_param_still_resolves(self):
+        result = classify_prompt_action("@run:ai/context_snapshot\n@param:x=[1]")
+        self.assertEqual(RUN_ACTION, result.keyword)
+
+    def test_edit_with_param_still_resolves(self):
+        result = classify_prompt_action("@edit:ai/context_snapshot\n@param:x=[1]")
+        self.assertEqual(EDIT_ACTION, result.keyword)
+
+    def test_param_looking_text_in_body_does_not_reject_delete(self):
+        result = classify_prompt_action("@delete:ai/context_snapshot\n\n@param:x=[1]")
+        self.assertEqual(DELETE_ACTION, result.keyword)
+
     def test_old_do_prompt_syntax_is_rejected(self):
         self.assertIsNone(classify_prompt_action("@do:prompt:ai/recap"))
 

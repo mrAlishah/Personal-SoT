@@ -1,5 +1,12 @@
 # Runtime Naming Normalization Implementation Plan
 
+> **Historical/superseded:** this is the completed implementation plan for
+> the earlier Runtime Naming Normalization milestone (`@do:sot` and `g.*`
+> profile identities) and predates the runtime command-grammar refactor.
+> It is not the current runtime authority; see
+> `system/routing/switch_syntax.md` and `system/routing/runtime_naming.py`.
+> Preserved below as historical implementation evidence.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `@do:sot` and hierarchical `g.*` shipped profile identities the exact Public Personal-SoT V1 runtime names.
