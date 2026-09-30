@@ -455,6 +455,38 @@ def _candidate_path_conflict(entries: dict) -> bool:
     return False
 
 
+def _ordered_touched_paths(touched_paths, target_tree) -> list:
+    """Order `touched_paths` so a legal Git directory<->file transition
+    (one touched path vacates a name by being deleted, another touched
+    path claims that same name as a file, or the reverse) applies
+    without a spurious `IsADirectoryError`/`FileExistsError`: every
+    deletion (a path absent from `target_tree`) before every
+    creation/modification, deletions ordered deepest-first and
+    creations ordered shallowest-first, so a directory's descendants are
+    gone before its own name is freed for reuse, and a claimed name's
+    old file is gone before a descendant needs it as a directory.
+    """
+    deletions = [path for path in touched_paths if path not in target_tree]
+    creations = [path for path in touched_paths if path in target_tree]
+    deletions.sort(key=lambda path: path.count('/'), reverse=True)
+    creations.sort(key=lambda path: path.count('/'))
+    return deletions + creations
+
+
+def _ordered_recovery_paths(record: dict) -> list:
+    """The same dependency-safe ordering as `_ordered_touched_paths`, but
+    toward restoring the PREVIOUS (pre-update) state: a path whose
+    `before_entry` is absent needs removing (undoing a forward
+    creation), deepest-first; a path whose `before_entry` exists needs
+    recreating (undoing a forward deletion), shallowest-first.
+    """
+    removals = [path for path, (before, _written) in record.items() if before is None]
+    recreations = [path for path, (before, _written) in record.items() if before is not None]
+    removals.sort(key=lambda path: path.count('/'), reverse=True)
+    recreations.sort(key=lambda path: path.count('/'))
+    return removals + recreations
+
+
 def _build_tree(entries: dict[str, tuple[str, str]], ephemeral, extra_env) -> str:
     """Build a Git tree object for exactly `entries` (path -> (mode, blob
     sha)), creating intermediate subtrees bottom-up: `git mktree` only
@@ -644,6 +676,23 @@ def _identify_index_entry(root, path, extra_env) -> tuple | None:
     return (parts[0], parts[1])
 
 
+def _clear_path(file_path: Path) -> None:
+    """Remove whatever currently occupies `file_path` so a new entry can
+    claim that name: a plain file or symlink via `unlink()`, or a
+    directory via `rmdir()` — which raises `OSError` on its own if that
+    directory is not empty, the correct fail-closed outcome. Never
+    `rmtree`; a directory's own descendants are always removed as their
+    own touched paths first (see `_ordered_touched_paths`), never by
+    recursing into unknown/untracked contents here.
+    """
+    if file_path.is_symlink():
+        file_path.unlink()
+    elif file_path.is_dir():
+        file_path.rmdir()
+    elif file_path.exists():
+        file_path.unlink()
+
+
 def _write_entry(ephemeral, root, path, entry, extra_env) -> tuple[bool, bool]:
     """Make the live worktree+index at `path` exactly match `entry` (a
     `(mode, blob sha)` tuple, or `None` for absent).
@@ -660,16 +709,15 @@ def _write_entry(ephemeral, root, path, entry, extra_env) -> tuple[bool, bool]:
     content-based path and can invoke a configured clean filter. A Git
     symlink mode (`120000`) is materialized as a real symlink, never
     collapsed to a regular file. Any real filesystem error (`OSError` —
-    a permission-denied directory, a path segment that collides with an
-    existing file, etc.) encountered once a write has actually begun is
-    caught here and reported as a bounded failure, never left to escape
-    uncaught past the caller's mutation loop.
+    a permission-denied directory, a non-empty directory occupying a
+    name a file needs to claim, etc.) encountered once a write has
+    actually begun is caught here and reported as a bounded failure,
+    never left to escape uncaught past the caller's mutation loop.
     """
     file_path = Path(root, path)
     if entry is None:
         try:
-            if file_path.is_symlink() or file_path.exists():
-                file_path.unlink()
+            _clear_path(file_path)
             result = controlled_git(
                 'update-index', '--force-remove', '--', path, cwd=root, extra_env=extra_env)
         except OSError:
@@ -681,8 +729,7 @@ def _write_entry(ephemeral, root, path, entry, extra_env) -> tuple[bool, bool]:
         return False, False
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        if file_path.is_symlink() or file_path.exists():
-            file_path.unlink()
+        _clear_path(file_path)
         if mode == '120000':
             os.symlink(blob.stdout.decode('utf-8'), file_path)
         else:
@@ -716,13 +763,17 @@ def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env
 
 
 def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
-    """Restore every touched path in `record` to its pre-update state;
-    complete only if every single path was safely restorable (see
-    `_restore_entry`) — one externally-changed path is enough to make
-    this `False`, even though the other paths were still restored.
+    """Restore every touched path in `record` to its pre-update state, in
+    dependency-safe order toward that previous state (see
+    `_ordered_recovery_paths` — the same reasoning `_write_entry`'s
+    forward ordering uses, reversed); complete only if every single path
+    was safely restorable (see `_restore_entry`) — one externally-changed
+    path is enough to make this `False`, even though the other paths
+    were still restored.
     """
     complete = True
-    for path, (before_entry, written_entry) in record.items():
+    for path in _ordered_recovery_paths(record):
+        before_entry, written_entry = record[path]
         if not _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env):
             complete = False
     return complete
@@ -730,28 +781,43 @@ def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
 
 
 
-def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=None) -> ApplyResult:
+def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=None,
+          _before_path=None) -> ApplyResult:
     """Advance the installed clone from `plan.current` to `plan.target`,
     recoverably, per update_contract.md's apply/recovery section.
 
     Never trusts the caller's `plan`: re-resolves T and re-classifies
     before doing anything, and aborts before any mutation on any mismatch
     against `digest`, on `blocked`, or on a remaining `conflict`. A no-op
-    classification never mutates and never creates a commit. The live
-    ref/index/worktree are not touched until the candidate has passed both
-    Personal validators and an immediate clean-state recheck; the ref
-    advances last, with a compare-and-swap old-value check.
+    classification never mutates and never creates a commit.
 
-    `_before_recheck` and `_after_mutation`, when given, are test-only
-    seams; production callers never pass them. `_before_recheck` is called
-    exactly once right after validation, before the immediate pre-mutation
-    recheck runs — for simulating a real external write landing in that
-    window and proving the recheck actually catches it.  `_after_mutation`
-    is called exactly once after the live worktree/index have been
-    mutated but before the ref advances — for simulating a concurrent
-    external change or a controlled post-mutation failure (raise
-    `_SimulatedFailure` to trigger the recovery path; any other exception
-    propagates uncaught, exactly as a real process kill/crash would).
+    Building the candidate tree, validating it, transferring missing
+    objects, and constructing the (as yet unreachable) resulting commit
+    object never touch the live ref/index/worktree, so they happen before
+    the FINAL recheck rather than after it — that recheck (clean tracked
+    state, `HEAD` still at `C`, and target-introduced attribute safety
+    re-evaluated against the live repository's current
+    `.git/info/attributes`/config, not just the one taken before
+    validation) is the last thing before the first live write, closing
+    the window validation's own real work leaves open. A further
+    per-path check immediately precedes each individual touched path's
+    own write, comparing its current worktree AND index identity against
+    the verified pre-update state recorded for it — a single global
+    recheck cannot catch a later path changing while an earlier path is
+    still being written. The ref advances last, with a compare-and-swap
+    old-value check.
+
+    `_before_recheck`, `_before_path`, and `_after_mutation`, when given,
+    are test-only seams; production callers never pass them.
+    `_before_recheck` is called exactly once right after validation,
+    before the FINAL recheck runs. `_before_path` is called once per
+    touched path, with that path, immediately before its own per-path
+    concurrency check and write. `_after_mutation` is called exactly once
+    after the live worktree/index have been mutated but before the ref
+    advances — for simulating a concurrent external change or a
+    controlled post-mutation failure (raise `_SimulatedFailure` to
+    trigger the recovery path; any other exception propagates uncaught,
+    exactly as a real process kill/crash would).
     """
     root = str(root)
     fresh_plan = classify(root)
@@ -787,7 +853,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 return ApplyResult(failure='candidate_path_conflict')
             candidate_tree_sha = _build_tree(candidate_entries, ephemeral, extra_env)
 
-            touched_paths = fresh_plan.upstream_only
+            touched_paths = _ordered_touched_paths(fresh_plan.upstream_only, target_tree)
             if _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured):
                 return ApplyResult(failure='unsafe_repository_state')
 
@@ -796,16 +862,6 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 if not (personal_ok and prompts_ok):
                     return ApplyResult(
                         validation_ran=True, validation_passed=False, failure='validation_failed')
-
-                if _before_recheck is not None:
-                    _before_recheck()
-
-                # Immediate pre-mutation recheck: never trust the state
-                # validated above to still hold by the time we get here.
-                if _preflight(root) is not None or _current_commit(root) != current:
-                    return ApplyResult(
-                        validation_ran=True, validation_passed=True,
-                        failure='concurrent_change_pre_mutation', concurrent_change=True)
 
                 if not _transfer_objects(ephemeral, current, commit_t, candidate_tree_sha, root, extra_env):
                     return ApplyResult(
@@ -819,6 +875,21 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         validation_ran=True, validation_passed=True, failure='object_transfer_failed')
                 new_commit = (commit_result.stdout or '').strip()
 
+                if _before_recheck is not None:
+                    _before_recheck()
+
+                # FINAL recheck, immediately before the first live write:
+                # never trust anything validation/transfer/commit-tree
+                # observed to still hold by the time we get here.
+                final_configured = _configured_drivers(root)
+                if (_preflight(root) is not None or _current_commit(root) != current
+                        or final_configured is None
+                        or _candidate_attribute_unsafe(
+                            root, ephemeral, candidate_tree_sha, touched_paths, final_configured)):
+                    return ApplyResult(
+                        validation_ran=True, validation_passed=True,
+                        failure='concurrent_change_pre_mutation', concurrent_change=True)
+
                 # Record every touched path's (before, written) tree
                 # identity up front — including paths not yet reached if
                 # a sibling path's write fails below — so recovery can
@@ -830,8 +901,20 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
 
                 write_ok = True
                 mutation_started = False
+                per_path_concurrent = False
                 for path in touched_paths:
-                    ok, attempted = _write_entry(ephemeral, root, path, record[path][1], extra_env)
+                    if _before_path is not None:
+                        _before_path(path)
+                    before_entry, written_entry = record[path]
+                    # Per-path concurrency check: a single check at the
+                    # top of this function cannot see a LATER path change
+                    # while an EARLIER path is still being written.
+                    if (_identify_worktree_entry(root, path, extra_env) != before_entry
+                            or _identify_index_entry(root, path, extra_env) != before_entry):
+                        per_path_concurrent = True
+                        write_ok = False
+                        break
+                    ok, attempted = _write_entry(ephemeral, root, path, written_entry, extra_env)
                     mutation_started = mutation_started or attempted
                     if not ok:
                         write_ok = False
@@ -855,12 +938,16 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         # nothing to roll back, and claiming an attempt
                         # would be untruthful.
                         return ApplyResult(
-                            validation_ran=True, validation_passed=True, failure='mutation_failed')
+                            validation_ran=True, validation_passed=True,
+                            concurrent_change=per_path_concurrent,
+                            failure='concurrent_change_pre_mutation' if per_path_concurrent
+                            else 'mutation_failed')
                     rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,
-                        concurrent_change=not rollback_completed, failure='post_mutation_failure')
+                        concurrent_change=per_path_concurrent or not rollback_completed,
+                        failure='post_mutation_failure')
 
                 cas = controlled_git(
                     'update-ref', 'HEAD', new_commit, current, cwd=root, extra_env=extra_env)

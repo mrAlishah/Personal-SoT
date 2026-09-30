@@ -789,5 +789,175 @@ class ApplyModeAndRecoveryHardeningTests(unittest.TestCase):
             self.assertTrue(result.concurrent_change)
 
 
+def _directory_to_file_repos(workdir, extra_base=None):
+    """A `system/x/y.md` descendant at C, replaced at T by a plain file
+    `system/x` — a legal Git directory-to-file transition that
+    `_diverging_repos`' plain dict-of-files helpers cannot express
+    directly (writing a file at a path that is still a live directory
+    on disk raises `IsADirectoryError` in the test fixture itself).
+    """
+    base = _base_files({'system/x/y.md': 'descendant\n', **(extra_base or {})})
+    root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(workdir, base, {}, {})
+    Path(target_dir, 'system', 'x', 'y.md').unlink()
+    Path(target_dir, 'system', 'x').rmdir()
+    Path(target_dir, 'system', 'x').write_text('now a file\n')
+    _run(['git', '-C', target_dir, 'add', '-A'])
+    target_sha = _commit(target_dir, 'directory to file')
+    return root, target_dir, base_sha, current_sha, target_sha
+
+
+def _file_to_directory_repos(workdir, extra_base=None):
+    """The reverse shape: a plain file `system/x` at C, replaced at T by
+    a descendant `system/x/y.md`.
+    """
+    base = _base_files({'system/x': 'a file\n', **(extra_base or {})})
+    root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(workdir, base, {}, {})
+    Path(target_dir, 'system', 'x').unlink()
+    Path(target_dir, 'system', 'x').mkdir()
+    Path(target_dir, 'system', 'x', 'y.md').write_text('descendant\n')
+    _run(['git', '-C', target_dir, 'add', '-A'])
+    target_sha = _commit(target_dir, 'file to directory')
+    return root, target_dir, base_sha, current_sha, target_sha
+
+
+class ApplyDirectoryFileTransitionTests(unittest.TestCase):
+    def test_directory_to_file_transition_applies_successfully(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _directory_to_file_repos(workdir)
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual((), plan.conflict)
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertIsNotNone(result.commit)
+            x_path = Path(root, 'system', 'x')
+            self.assertTrue(x_path.is_file())
+            self.assertEqual('now a file\n', x_path.read_text())
+            write_tree = _run(['git', '-C', root, 'write-tree']).stdout.strip()
+            head_tree = _run(['git', '-C', root, 'rev-parse', 'HEAD^{tree}']).stdout.strip()
+            self.assertEqual(head_tree, write_tree)
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_file_to_directory_transition_applies_successfully(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _file_to_directory_repos(workdir)
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual((), plan.conflict)
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertIsNotNone(result.commit)
+            y_path = Path(root, 'system', 'x', 'y.md')
+            self.assertTrue(y_path.is_file())
+            self.assertEqual('descendant\n', y_path.read_text())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_directory_to_file_failure_recovers_exactly(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _directory_to_file_repos(workdir)
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def fail():
+                raise git_update._SimulatedFailure()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest, _after_mutation=fail)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertEqual('descendant\n', Path(root, 'system', 'x', 'y.md').read_text())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_file_to_directory_failure_recovers_exactly(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, base_sha, current_sha, target_sha = _file_to_directory_repos(workdir)
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def fail():
+                raise git_update._SimulatedFailure()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest, _after_mutation=fail)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            x_path = Path(root, 'system', 'x')
+            self.assertTrue(x_path.is_file())
+            self.assertEqual('a file\n', x_path.read_text())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+
+class ApplyFinalRecheckAndPerPathConcurrencyTests(unittest.TestCase):
+    def test_candidate_helper_safety_recheck_catches_staleness_during_validation_window(self):
+        """The early `_candidate_attribute_unsafe` check runs before
+        validation and is genuinely safe at that moment. Simulate the
+        live repository's `.git/info/attributes` and matching driver
+        config appearing DURING the validation-to-mutation window (the
+        TOCTOU the early check alone cannot close) and require the FINAL
+        recheck to catch it before any live write.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/new.secret': 'sensitive\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            sentinel = str(Path(workdir, 'filter_sentinel'))
+            hostile = str(Path(workdir, 'hostile.sh'))
+            Path(hostile).write_text(f'#!/bin/sh\ntouch {sentinel}\ncat\n')
+            os.chmod(hostile, 0o755)
+
+            def make_stale():
+                Path(root, '.git', 'info', 'attributes').write_text('*.secret filter=redact\n')
+                _run(['git', '-C', root, 'config', 'filter.redact.clean', hostile])
+
+            before_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest, _before_recheck=make_stale)
+
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertFalse(result.mutation_started)
+            self.assertTrue(result.concurrent_change)
+            self.assertEqual(before_head, after_head)
+            self.assertFalse(Path(root, 'system', 'new.secret').exists())
+            self.assertFalse(Path(sentinel).exists())
+
+    def test_external_change_to_a_later_path_during_mutation_is_never_overwritten(self):
+        """Two upstream_only paths; path 1 is written normally, then,
+        immediately before path 2's own turn, an external process
+        changes path 2's live content. The per-path concurrency check
+        must catch this — a single check at the top of `apply()` cannot,
+        since path 1's own write takes real time.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n', 'system/b.md': 'shipped b\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n', 'system/b.md': 'shipped b v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual(('system/a.md', 'system/b.md'), plan.upstream_only)
+
+            def tamper_before_path(path):
+                if path == 'system/b.md':
+                    Path(root, 'system', 'b.md').write_text('externally changed\n')
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _before_path=tamper_before_path)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.concurrent_change)
+            self.assertTrue(result.rollback_attempted)
+            # path 2's external change is never overwritten either way.
+            self.assertEqual('externally changed\n', Path(root, 'system', 'b.md').read_text())
+            # path 1 (safe, untouched externally) is recovered exactly.
+            self.assertEqual('shipped\n', Path(root, 'system', 'a.md').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -245,10 +245,17 @@ is validated. Validation runs `validate_v1 --mode personal` and
 own* copies of those files, never the live checkout's already-imported
 modules, so a target that itself changes validator logic is validated
 against its own rules rather than a stale cached version; `validate_public`
-is never invoked on an installed Personal candidate. The live ref, index,
-and worktree are not touched until both validators pass and an immediate
-recheck (clean tracked/index state, `HEAD` still at `C`) confirms nothing
-changed while validation ran.
+is never invoked on an installed Personal candidate. Building the
+candidate, validating it, transferring missing objects into the live
+object database, and constructing the (as yet unreachable) resulting
+commit object never touch the live ref/index/worktree, so they happen
+before the FINAL recheck rather than after it — that recheck (clean
+tracked/index state, `HEAD` still at `C`, and target-introduced attribute
+safety re-evaluated against the live repository's *current*
+`.git/info/attributes` and driver config, not the one read before
+validation) is the last thing before the first live write, closing the
+window validation's own real work would otherwise leave open. The live
+ref, index, and worktree are not touched until this FINAL recheck passes.
 
 Only `upstream_only` paths are ever written to the live worktree/index;
 `already_aligned`/`user_only` paths are left completely untouched. Every
@@ -298,18 +305,42 @@ only once a live worktree/index write has actually been attempted for
 some path, not merely because the per-path loop was entered, so a
 touched path whose failure occurs during its own read-only content
 resolution (before any write) correctly reports `mutation_started=False`
-with nothing to roll back. Live mutation order: write/remove every
-touched path this way, verify the resulting index matches the candidate
-tree exactly (`git write-tree`), then advance the ref last, `git
-update-ref HEAD <new> <old=C>`, a compare-and-swap that fails closed if
-`C` moved concurrently. The resulting commit's two parents are exactly
+with nothing to roll back.
+
+Touched paths are written in dependency-safe order, not arbitrary or
+lexical order: every deletion before every creation/modification,
+deletions deepest-path-first and creations shallowest-path-first — so a
+legal Git directory↔file transition (one touched path vacating a name by
+being deleted, another touched path claiming that same name as a file,
+or the reverse) applies without a spurious `IsADirectoryError`. Clearing
+a name for reuse removes a plain file/symlink with `unlink()` or an
+empty directory with `rmdir()` — which itself fails closed if that
+directory is unexpectedly non-empty — never a recursive `rmtree`, and
+never anything not itself one of the touched paths. Immediately before
+each individual touched path is written, a per-path check compares its
+current live worktree AND index identity against the verified
+pre-update state recorded for it; a single recheck at the top of `apply`
+cannot see a *later* path change while an *earlier* path is still being
+written, so this is checked again for every path, right before that
+path's own turn. A mismatch here stops further writing, and that path's
+external change is never overwritten, exactly like the existing
+recovery-time concurrency check. Live mutation order otherwise: write/
+remove every touched path this way, verify the resulting index matches
+the candidate tree exactly (`git write-tree`), then advance the ref last,
+`git update-ref HEAD <new> <old=C>`, a compare-and-swap that fails closed
+if `C` moved concurrently. The resulting commit's two parents are exactly
 `C` and `T`, and its tree is exactly the validated candidate tree.
 
 Recovery exists only while `apply` is running, covers every touched path
 (including one never actually reached before a sibling path's mutation
 failed, for which "restore" is a safe no-op), and is owned by `apply`
 itself rather than lost inside a helper that might raise partway through
-mutating several paths. Before restoring a path, it verifies that path's
+mutating several paths. Restoration is ordered toward the pre-update
+state with the same dependency-safety as the forward write, reversed: a
+path being removed (undoing a forward creation) deepest-first, a path
+being recreated (undoing a forward deletion) shallowest-first — never
+arbitrary dictionary order, for the same directory↔file reasons the
+forward write is ordered. Before restoring a path, it verifies that path's
 CURRENT worktree content *and* index entry each still equal exactly what
 the updater itself wrote (or already equal the pre-update state); a path
 whose worktree or index an external process has changed since — either
