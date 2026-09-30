@@ -53,7 +53,7 @@ draft
 deprecated
 ```
 
-`@do` requires active. `@edit` accepts active/draft and may render deprecated only with a warning.
+`@run` requires active. `@edit` accepts active/draft and may render deprecated only with a warning.
 
 ## runtime_defaults
 
@@ -89,7 +89,7 @@ Every non-reserved variable is declared exactly once in required or optional par
 
 ## optional_parameters
 
-If an optional parameter is absent, `@edit` preserves the placeholder and reports it as unbound. `@do` may substitute an empty string only when the resulting template remains valid. V1.1 has no conditions, loops, functions, or expression language.
+If an optional parameter is absent, `@edit` preserves the placeholder and reports it as unbound. `@run` may substitute an empty string only when the resulting template remains valid. V1.1 has no conditions, loops, functions, or expression language.
 
 ## owned_assets
 

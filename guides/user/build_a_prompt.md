@@ -57,7 +57,7 @@ After the beginner flow, you can ask for the canonical identity and expert
 invocation:
 
 ```text
-@do:prompt:<identity>
+@run:<identity>
 ```
 
 This syntax is optional and does not bypass confirmation, access rules, or

@@ -139,13 +139,20 @@ No runtime-control value can weaken external mandatory constraints, required hos
 
 At most one high-level action is valid per control block.
 
+System actions:
+
+```text
+@do:sot
+@do:help
+@do:assist
+```
+
 Prompt actions:
 
 ```text
-@do:prompt
-@edit:prompt
-@delete:prompt
-@confirm:delete:prompt
+@run
+@edit
+@delete
 ```
 
 Conversation action:
@@ -154,7 +161,7 @@ Conversation action:
 @recap:<count>
 ```
 
-No default high-level action exists. Combining recap with a prompt action is invalid.
+No default high-level action exists. Combining a system action, a prompt action, and/or recap in the same control block is invalid.
 
 No high-level action overrides host/tool/write permissions, history availability, context authority, `ai_access`, hard policies, or Git governance.
 
@@ -344,15 +351,16 @@ Parameter values cannot create executable switches after substitution.
 Deletion is two-phase and safety-dominant:
 
 ```text
-@delete:prompt:path
+@delete:path
 → analyze + plan only
-
-@confirm:delete:prompt:path
-→ revalidate current file/references
-→ apply only if the plan still matches
+→ STOP for ordinary explicit confirmation bound to the exact displayed plan
 ```
 
-A changed prompt or changed inbound-reference set invalidates the prior deletion plan.
+There is no separate `@confirm:delete` directive; confirmation follows
+`system/assistant/safe_write_contract.md`'s ordinary confirmation model.
+Before applying, current file/reference state is re-checked against the
+confirmed plan; a changed prompt or changed inbound-reference set
+invalidates it and requires a new plan.
 
 Shared modules are never cascade-deleted merely because a prompt referenced them.
 

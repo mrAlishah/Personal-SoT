@@ -17,12 +17,12 @@ If the repository/branch/entrypoint cannot actually be accessed in the active en
 When the selected canonical repository/branch is accessible:
 
 ```text
-@edit:prompt:path
+@edit:path
 → read workspace/prompts/path.md
 → bind supplied params
 → return rendered prompt preview only
 
-@do:prompt:path
+@run:path
 → read workspace/prompts/path.md
 → bind/validate params
 → execute rendered request in the same turn

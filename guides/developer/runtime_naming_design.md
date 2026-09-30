@@ -2,7 +2,13 @@
 
 ## status
 
-Approved design for Public Personal-SoT V1.
+Historical design record. Superseded as current command-grammar authority
+by the runtime command-grammar refactor (`@run`/`@edit`/`@delete`, plus
+`@do:help`/`@do:assist`). This document describes only the earlier Runtime
+Naming Normalization milestone (bootstrap-literal and profile-identity
+normalization) and must not be read as the current runtime authority. For
+current grammar and its executable ownership, see
+`system/routing/switch_syntax.md` and `system/routing/runtime_naming.py`.
 
 ## purpose
 

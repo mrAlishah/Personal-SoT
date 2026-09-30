@@ -47,7 +47,7 @@ After the beginner explanation, you may ask to see the exact canonical identity,
 matching metadata, or expert invocation:
 
 ```text
-@do:prompt:<identity>
+@run:<identity>
 ```
 
 Expert syntax is optional. It does not bypass prompt validation, required input,

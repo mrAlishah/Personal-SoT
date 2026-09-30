@@ -104,7 +104,7 @@ Expected: invalid control block in V1.1.
 
 ## case_13_prompt_action_allows_control
 
-Input combines `@do:prompt:<path>` with `@control:clarify_risk=off`.
+Input combines `@run:<path>` with `@control:clarify_risk=off`.
 
 Expected: valid when all other prompt-action requirements are satisfied; the explicit control applies to that invocation.
 

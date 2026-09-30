@@ -42,16 +42,16 @@ draft
 deprecated
 ```
 
-- `active`: may be rendered with `@edit` and executed with `@do`;
-- `draft`: may be rendered with `@edit`; `@do` fails closed;
-- `deprecated`: retained for migration/recovery; `@edit` may render with warning, `@do` fails closed.
+- `active`: may be rendered with `@edit` and executed with `@run`;
+- `draft`: may be rendered with `@edit`; `@run` fails closed;
+- `deprecated`: retained for migration/recovery; `@edit` may render with warning, `@run` fails closed.
 
 ## runtime actions
 
 ```text
-@do:prompt:<path>      → render + validate + execute
-@edit:prompt:<path>    → render + validate + show only
-@delete:prompt:<path>  → analyze deletion + show plan + require confirmation
+@run:<path>      → render + validate + execute
+@edit:<path>     → render + validate + show only
+@delete:<path>   → analyze deletion + show plan + require ordinary confirmation
 ```
 
 Parameters use:
