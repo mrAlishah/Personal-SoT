@@ -71,7 +71,7 @@ authorization, host permission, or task capability.
 
 Default presentation explains the use case, evidence for the match, required
 input, capability limitation, and simple natural-language usage. Canonical path,
-metadata evidence, and `@do:prompt:<identity>` belong in optional Advanced
+metadata evidence, and `@run:<identity>` belong in optional Advanced
 output.
 
 Unavailable diagnostics never expose unselected bodies, secret values,

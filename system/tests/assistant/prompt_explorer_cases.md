@@ -34,7 +34,7 @@ invent a capability, tag, parameter, alias, or factual scope.
 One prompt is recommended.
 
 Expected: show what it helps with, why it matches, what input is needed, and one
-natural-language example. Hide its path and `@do:prompt:...` under Advanced.
+natural-language example. Hide its path and `@run:...` under Advanced.
 
 ## Draft
 

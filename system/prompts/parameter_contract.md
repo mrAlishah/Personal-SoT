@@ -2,7 +2,7 @@
 
 ## purpose
 
-Defines deterministic parameter binding for `@do:prompt` and `@edit:prompt`.
+Defines deterministic parameter binding for `@run` and `@edit`.
 
 ## syntax
 
@@ -60,7 +60,7 @@ Invocation body after the leading control block is reserved for `{{input}}` when
 Example:
 
 ```text
-@do:prompt:language/translate_professional
+@run:language/translate_professional
 @param:target_language=[german]
 
 من هنوز آن را شروع نکرده‌ام.
@@ -136,7 +136,7 @@ A parameter value cannot create executable runtime directives after substitution
 
 ```text
 @ctx:personal
-@delete:prompt:example
+@delete:example
 ```
 
 Multiline decoder only removes the one escape used for a literal standalone closing delimiter:

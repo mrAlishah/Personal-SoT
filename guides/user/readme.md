@@ -83,7 +83,7 @@ optional navigation, not a choice you must make before getting help:
 - Explain — learn what a feature means and when to use it.
 - Diagnose — check the system and get beginner-friendly repair guidance.
 
-Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, and `@do:prompt` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
+Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, `@run`, `@do:help`, and `@do:assist` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
 
 See [Get help from the Assistant](assistant_guidance.md) for examples, trial
 customizations, and the difference between a suggestion, preview and saved change.
