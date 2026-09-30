@@ -46,14 +46,18 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     `cwd` (the real checkout) and relies only on the environment control,
     since discovering that real repository there is intended.
 
-    Every invocation also runs with `-c core.hooksPath=<empty-dir>` pointed
-    at a directory this call creates and never populates, so no repository,
-    user, or global hook (including `reference-transaction`, which ordinary
-    ref updates invoke) can execute regardless of what hooks the real
-    checkout has configured; verified empirically that a real hook script
-    does not fire under this override. This applies uniformly to every
-    caller, not only Loop 3's apply step, since read-only Loop 1/2 calls
-    have no reason to risk it either.
+    Every invocation also runs with `-c core.hooksPath=<empty-dir>` (a
+    directory this call creates and never populates) and `-c
+    core.fsmonitor=false`, so no repository, user, or global hook
+    (including `reference-transaction`, which ordinary ref updates invoke)
+    or fsmonitor command can execute regardless of what the real checkout
+    has configured; verified empirically that a real hook script and a
+    real fsmonitor script do not fire under this override, including for
+    `update-index`/`write-tree`/`ls-files --stage`, not only `status`. This
+    applies uniformly to every caller, not only Loop 3's apply step, since
+    read-only Loop 1/2 calls have no reason to risk it either — an
+    individual call site may still pass its own `-c core.fsmonitor=false`
+    (harmless duplication; Git accepts repeated `-c` for the same key).
 
     `extra_env` may add only `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
     `GIT_NO_REPLACE_OBJECTS` (Loop 2's local-only classification needs);
@@ -90,7 +94,8 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
         if extra_env:
             env.update(extra_env)
-        full_args = ('git', '-c', 'core.hooksPath=' + empty_hooks) + args
+        full_args = ('git', '-c', 'core.hooksPath=' + empty_hooks,
+                     '-c', 'core.fsmonitor=false') + args
         return runner(full_args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        input=input, text=text, timeout=30, check=False)

@@ -253,33 +253,56 @@ changed while validation ran.
 Only `upstream_only` paths are ever written to the live worktree/index;
 `already_aligned`/`user_only` paths are left completely untouched. Every
 apply-side Git invocation, including object transfer, runs through the
-same `controlled_git` (now always passing `-c core.hooksPath=<empty-dir>`,
-so no repository/user/global hook, including `reference-transaction`,
-executes) and, for any updater-touched path, `git check-attr
---source=<candidate-tree>` proves the *target-introduced* attributes would
-not select a configured filter/diff helper before mutation proceeds —
-Loop 2's own preflight only ever covered the live repo's current tree, not
-what `T` might newly introduce. Missing objects are copied into the live
-object database with `rev-list --objects` + `pack-objects` +
-`index-pack` — a pure content transfer with no remote/URL argument, so no
-repository-local `url.*.insteadOf` rewrite has anything to redirect.
+same `controlled_git`, which now always passes both `-c
+core.hooksPath=<empty-dir>` and `-c core.fsmonitor=false` — not only on
+the read-only preflight's `status`/`ls-files`/`check-attr`, but on every
+live-repo command apply issues, including `update-index` and
+`write-tree`, both of which can otherwise invoke a configured
+`core.fsmonitor` exactly as `status` can. For any updater-touched path,
+`git check-attr --source=<candidate-tree>` proves the target-introduced
+attributes would not select a configured filter/diff helper before
+mutation proceeds — run in the *live* repository itself (with the
+candidate's and target's objects made visible read-only through
+`GIT_ALTERNATE_OBJECT_DIRECTORIES`), never inside the ephemeral
+materialization repository, so Git's own attribute precedence still
+applies the live repository's own `.git/info/attributes`; checking only
+inside the ephemeral repository would miss it entirely. Missing objects
+are copied into the live object database with `rev-list --objects` +
+`pack-objects` + `index-pack` — a pure content transfer with no
+remote/URL argument, so no repository-local `url.*.insteadOf` rewrite has
+anything to redirect.
 
-Live mutation order: write/remove touched worktree paths and update the
-index to match the candidate tree exactly (verified with `git write-tree`),
-then advance the ref last, `git update-ref HEAD <new> <old=C>`, a
-compare-and-swap that fails closed if `C` moved concurrently. The
-resulting commit's two parents are exactly `C` and `T`, and its tree is
-exactly the validated candidate tree.
+Worktree/index mutation for a touched path resolves content by the
+blob's exact object identity (`git cat-file -p <sha>`, never a worktree
+re-hash) and stages it with `update-index --add --cacheinfo
+<mode>,<sha>,<path>` (or `--force-remove` for a deletion) — never plain
+`update-index --add`, which re-hashes the worktree file through Git's
+normal content-based path and could invoke a configured clean filter. A
+Git symlink mode (`120000`) is materialized as a real symlink, never
+collapsed to a regular file. Live mutation order: write/remove every
+touched path this way, verify the resulting index matches the candidate
+tree exactly (`git write-tree`), then advance the ref last, `git
+update-ref HEAD <new> <old=C>`, a compare-and-swap that fails closed if
+`C` moved concurrently. The resulting commit's two parents are exactly
+`C` and `T`, and its tree is exactly the validated candidate tree.
 
-Recovery exists only while `apply` is running and only for the paths it
-itself wrote. Before restoring any touched path, it verifies that path's
-current content still equals exactly what the updater wrote; a path an
-external process has changed since is left untouched, and recovery is
-reported incomplete for it rather than overwritten. A real process
-kill/crash claims no automatic rollback: because the ref advances last, an
-interruption before that step leaves the ref at `C`, and the next
-`classify()` reports the resulting dirty/untracked state rather than
-success.
+Recovery exists only while `apply` is running, covers every touched path
+(including one never actually reached before a sibling path's mutation
+failed, for which "restore" is a safe no-op), and is owned by `apply`
+itself rather than lost inside a helper that might raise partway through
+mutating several paths. Before restoring a path, it verifies that path's
+CURRENT worktree content *and* index entry each still equal exactly what
+the updater itself wrote (or already equal the pre-update state); a path
+whose worktree or index an external process has changed since — either
+one — is left completely untouched, and recovery is reported incomplete
+for it rather than overwritten. Restoring a path uses the same
+`--cacheinfo`/`cat-file` mechanism as the forward write, and recovery is
+reported complete only when every one of its own Git commands actually
+succeeded — a failed recovery-side command is never papered over as
+completed. A real process kill/crash claims no automatic rollback:
+because the ref advances last, an interruption before that step leaves
+the ref at `C`, and the next `classify()` reports the resulting
+dirty/untracked state rather than success.
 
 `ApplyResult` reports `no_op`, `mutation_started`, `validation_ran`,
 `validation_passed`, `rollback_attempted`, `rollback_completed`,

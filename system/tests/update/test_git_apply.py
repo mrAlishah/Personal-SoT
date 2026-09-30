@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 import tempfile
@@ -284,6 +285,25 @@ class ApplyHardeningTests(unittest.TestCase):
             for name in ('reference-transaction', 'post-checkout', 'update'):
                 self.assertFalse(Path(f'{sentinel}_{name}').exists())
 
+
+    def test_fsmonitor_does_not_fire_during_apply_mutation(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n', 'system/b.md': 'new\n'})
+            sentinel = str(Path(workdir, 'fsmonitor_sentinel'))
+            hostile_fsmonitor = str(Path(workdir, 'fsmonitor.sh'))
+            Path(hostile_fsmonitor).write_text(f'#!/bin/sh\ntouch {sentinel}\nprintf "1\\n"\n')
+            os.chmod(hostile_fsmonitor, 0o755)
+            _run(['git', '-C', root, 'config', 'core.fsmonitor', hostile_fsmonitor])
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.validation_passed)
+            self.assertFalse(Path(sentinel).exists())
+
     def test_repository_url_rewrite_cannot_redirect_apply(self):
         with tempfile.TemporaryDirectory() as workdir:
             base = _base_files({'system/a.md': 'shipped\n'})
@@ -340,6 +360,37 @@ class ApplyHardeningTests(unittest.TestCase):
             self.assertFalse(result.mutation_started)
             self.assertEqual(before_head, after_head)
             self.assertFalse(Path(root, 'system', 'a.secret').exists())
+
+
+    def test_live_info_attributes_selects_helper_for_target_introduced_path(self):
+        """A `filter=`/`diff=` selection can live in the installed clone's
+        own `.git/info/attributes`, not only in a tracked `.gitattributes`
+        the candidate tree carries. `_candidate_attribute_unsafe` must
+        catch this too, or a target-introduced path sharing that pattern
+        slips through and the live mutation step can invoke the helper.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/new.secret': 'sensitive\n'})
+            info_attrs = Path(root, '.git', 'info', 'attributes')
+            info_attrs.write_text('*.secret filter=redact\n')
+            sentinel = str(Path(workdir, 'filter_sentinel'))
+            hostile = str(Path(workdir, 'hostile.sh'))
+            Path(hostile).write_text(f'#!/bin/sh\ntouch {sentinel}\ncat\n')
+            os.chmod(hostile, 0o755)
+            _run(['git', '-C', root, 'config', 'filter.redact.clean', hostile])
+            plan, digest = _confirm(root, target_dir, target_sha)
+            before_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual('unsafe_repository_state', result.failure)
+            self.assertFalse(result.mutation_started)
+            self.assertEqual(before_head, after_head)
+            self.assertFalse(Path(root, 'system', 'new.secret').exists())
+            self.assertFalse(Path(sentinel).exists())
 
 
 class ApplyRecheckAndRecoveryTests(unittest.TestCase):
@@ -451,6 +502,176 @@ class ApplyRecheckAndRecoveryTests(unittest.TestCase):
             self.assertEqual(current_sha, after_head)
             fresh_plan, _digest = _confirm(root, target_dir, target_sha)
             self.assertEqual('dirty_or_untracked', fresh_plan.blocked)
+
+
+class ApplyModeAndRecoveryHardeningTests(unittest.TestCase):
+    def test_target_introduces_symlink_and_materializes_it_correctly(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {})
+            # _diverging_repos' plain-file helpers only write regular-file
+            # content; introduce a real symlink directly.
+            os.symlink('a.md', Path(target_dir, 'system', 'link_to_a.md'))
+            _run(['git', '-C', target_dir, 'add', '-A'])
+            target_sha = _commit(target_dir, 'introduce symlink')
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertIn('system/link_to_a.md', plan.upstream_only)
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.validation_passed)
+            link_path = Path(root, 'system', 'link_to_a.md')
+            self.assertTrue(link_path.is_symlink())
+            self.assertEqual('a.md', os.readlink(link_path))
+
+    def test_rollback_restores_executable_mode_exactly(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.sh': 'echo hi\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {})
+            script = Path(target_dir, 'system', 'a.sh')
+            script.write_text('echo hi v2\n')
+            os.chmod(script, 0o755)
+            _run(['git', '-C', target_dir, 'add', '-A'])
+            target_sha = _commit(target_dir, 'make executable')
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertIn('system/a.sh', plan.upstream_only)
+
+            def fail():
+                raise git_update._SimulatedFailure()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest, _after_mutation=fail)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            a_sh = Path(root, 'system', 'a.sh')
+            self.assertEqual('echo hi\n', a_sh.read_text())
+            self.assertFalse(os.access(a_sh, os.X_OK))
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+
+    def test_fsmonitor_and_hooks_do_not_fire_during_recovery(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            fsmonitor_sentinel = str(Path(workdir, 'fsmonitor_sentinel'))
+            hostile_fsmonitor = str(Path(workdir, 'fsmonitor.sh'))
+            Path(hostile_fsmonitor).write_text(
+                f'#!/bin/sh\ntouch {fsmonitor_sentinel}\nprintf "1\\n"\n')
+            os.chmod(hostile_fsmonitor, 0o755)
+            _run(['git', '-C', root, 'config', 'core.fsmonitor', hostile_fsmonitor])
+            hook_sentinel = str(Path(workdir, 'hook_sentinel'))
+            hooks_dir = Path(root, '.git', 'hooks')
+            hooks_dir.mkdir(exist_ok=True)
+            hook = hooks_dir / 'reference-transaction'
+            hook.write_text(f'#!/bin/sh\ntouch {hook_sentinel}\nexit 0\n')
+            hook.chmod(0o755)
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def fail():
+                raise git_update._SimulatedFailure()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest, _after_mutation=fail)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            self.assertFalse(Path(fsmonitor_sentinel).exists())
+            self.assertFalse(Path(hook_sentinel).exists())
+
+    def test_second_path_failure_during_mutation_still_recovers_the_first(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n', 'system/b.md': 'new\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            # Sorted upstream_only is ('system/a.md', 'system/b.md'); fail
+            # exactly the SECOND path's --cacheinfo write, after the first
+            # has already genuinely mutated the live worktree/index.
+            real_controlled_git = git_update.controlled_git
+            counted = {'n': 0}
+
+            class _Fail:
+                returncode = 1
+                stdout = ''
+                stderr = 'simulated failure'
+
+            def spy(*args, **kwargs):
+                if args and args[0] == 'update-index' and '--cacheinfo' in args:
+                    counted['n'] += 1
+                    if counted['n'] == 2:
+                        return _Fail()
+                return real_controlled_git(*args, **kwargs)
+
+            with mock.patch.object(git_update, 'controlled_git', spy):
+                result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            self.assertEqual('shipped\n', Path(root, 'system', 'a.md').read_text())
+            self.assertFalse(Path(root, 'system', 'b.md').exists())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_recovery_command_failure_reports_incomplete_rollback(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            real_controlled_git = git_update.controlled_git
+            counted = {'n': 0}
+
+            class _Fail:
+                returncode = 1
+                stdout = ''
+                stderr = 'simulated recovery failure'
+
+            def spy(*args, **kwargs):
+                if args and args[0] == 'update-index':
+                    counted['n'] += 1
+                    if counted['n'] == 2:  # the forward write's own call is #1
+                        return _Fail()
+                return real_controlled_git(*args, **kwargs)
+
+            def fail():
+                raise git_update._SimulatedFailure()
+
+            with mock.patch.object(git_update, 'controlled_git', spy):
+                result = _do_apply(root, target_dir, target_sha, plan, digest, _after_mutation=fail)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertFalse(result.rollback_completed)
+
+    def test_external_index_only_change_stops_automatic_recovery(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def tamper_index_only():
+                # Another process re-stages the SAME path against
+                # different content without touching the worktree file
+                # the updater itself already wrote there.
+                other = subprocess.run(
+                    ['git', '-C', root, 'hash-object', '-w', '--stdin'],
+                    input='different content\n', capture_output=True, text=True, check=True)
+                other_sha = other.stdout.strip()
+                _run(['git', '-C', root, 'update-index', '--add', '--cacheinfo',
+                      f'100644,{other_sha},system/a.md'])
+                raise git_update._SimulatedFailure()
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _after_mutation=tamper_index_only)
+
+            self.assertTrue(result.rollback_attempted)
+            self.assertFalse(result.rollback_completed)
+            self.assertTrue(result.concurrent_change)
 
 
 if __name__ == '__main__':

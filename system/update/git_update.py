@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -464,20 +465,36 @@ def _build_tree(entries: dict[str, tuple[str, str]], ephemeral, extra_env) -> st
     return build(root)
 
 
-def _candidate_attribute_unsafe(ephemeral, candidate_tree_sha, touched_paths, configured, extra_env) -> bool:
-    """True when any updater-touched path would, under the candidate's own
-    `.gitattributes` (which the update may itself introduce or change),
-    select a filter/diff driver this machine has configured — checked with
-    Git's own attribute plumbing directly against the candidate tree via
-    `--source`, never a hand-written parser, and never by executing the
-    helper. Only `upstream_only` paths are ever touched (aligned/user_only
-    paths are never written), so only those need checking.
+def _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured) -> bool:
+    """True when any updater-touched path would, under EITHER the
+    candidate's own `.gitattributes` (which the update may itself
+    introduce or change) OR the installed clone's own
+    `.git/info/attributes` (which a tracked `.gitattributes` cannot
+    override and a candidate-only check therefore cannot see), select a
+    filter/diff driver this machine has configured — checked with Git's
+    own attribute plumbing, never a hand-written parser, and never by
+    executing the helper.
+
+    This runs `check-attr --source=<candidate-tree>` in the LIVE repo
+    itself (`root`), with the candidate's (and target's) objects made
+    visible read-only through `GIT_ALTERNATE_OBJECT_DIRECTORIES` pointed
+    at the ephemeral repository — never the other way around — so Git's
+    own attribute-precedence rules apply `.git/info/attributes` exactly
+    as a real `git status`/`checkout` in this repository would, while the
+    `.gitattributes` content itself still comes from the candidate tree.
+    Running the same check inside the ephemeral repository instead would
+    silently miss `root`'s own `.git/info/attributes`.
+
+    Only `upstream_only` paths are ever touched (aligned/user_only paths
+    are never written), so only those need checking.
     """
     if not touched_paths or not configured:
         return False
+    extra_env = {'GIT_ALTERNATE_OBJECT_DIRECTORIES': str(Path(ephemeral, 'objects')),
+                 'GIT_NO_REPLACE_OBJECTS': '1'}
     check = controlled_git(
         'check-attr', '--source', candidate_tree_sha, '--all', '-z', '--', *touched_paths,
-        cwd=ephemeral, extra_env=extra_env)
+        cwd=root, extra_env=extra_env)
     if check.returncode != 0:
         return True
     fields = (check.stdout or '').split('\0')
@@ -562,62 +579,118 @@ def _provenance_message(current: str, commit_t: str) -> str:
     return f'Safe Update: apply canonical target\n\nbaseline={current}\ntarget={commit_t}\n'
 
 
-def _mutate_touched(root, touched_paths, target_tree, candidate_root, extra_env) -> dict:
-    """Write/remove exactly the updater-touched paths in the live worktree
-    and index; `already_aligned`/`user_only` paths are never written, so
-    their existing index entries and mtimes are left completely alone.
-
-    Returns a recovery record `{path: (before_bytes_or_None,
-    written_bytes_or_None)}` captured as each path is mutated — the sole
-    basis both for restoring on a controlled failure and for detecting
-    that an external process has since changed a path the updater itself
-    wrote.
+def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
+    """The `(mode, blob sha)` the live worktree path would hash to right
+    now, computed by explicit blob hashing (`--no-filters`, never a
+    configured clean filter) rather than by letting `update-index --add`
+    re-hash it through Git's normal content-based path. `None` if the
+    path does not currently exist.
     """
-    record: dict = {}
-    for path in touched_paths:
-        file_path = Path(root, path)
-        before = file_path.read_bytes() if file_path.is_file() else None
-        if path in target_tree:
-            mode, _sha = target_tree[path]
-            written = Path(candidate_root, path).read_bytes()
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_bytes(written)
-            file_path.chmod(0o755 if mode == '100755' else 0o644)
-            result = controlled_git('update-index', '--add', '--', path, cwd=root, extra_env=extra_env)
-        else:
-            written = None
-            if file_path.exists():
-                file_path.unlink()
-            result = controlled_git('update-index', '--remove', '--', path, cwd=root, extra_env=extra_env)
+    file_path = Path(root, path)
+    if file_path.is_symlink():
+        result = controlled_git(
+            'hash-object', '--stdin', '-t', 'blob', cwd=root, extra_env=extra_env,
+            input=os.readlink(file_path))
         if result.returncode != 0:
-            raise TargetMaterializationError('index_update_failed')
-        record[path] = (before, written)
-    return record
+            return None
+        return ('120000', (result.stdout or '').strip())
+    if file_path.is_file():
+        result = controlled_git(
+            'hash-object', '--no-filters', '--', path, cwd=root, extra_env=extra_env)
+        if result.returncode != 0:
+            return None
+        mode = '100755' if os.access(file_path, os.X_OK) else '100644'
+        return (mode, (result.stdout or '').strip())
+    return None
 
 
-def _restore_touched(root, record: dict, extra_env) -> bool:
-    """Restore each touched path to its pre-update content, but only for a
-    path whose current on-disk content still equals exactly what the
-    updater itself wrote; any path an external process has changed since
-    is left untouched, and recovery is reported incomplete rather than
-    overwriting it.
+def _identify_index_entry(root, path, extra_env) -> tuple | None:
+    """The `(mode, blob sha)` the live INDEX currently has staged for
+    `path`, or `None` if the path is not staged there at all.
+    """
+    result = controlled_git(
+        '--no-optional-locks', 'ls-files', '--stage', '-z', '--', path, cwd=root, extra_env=extra_env)
+    if result.returncode != 0:
+        return None
+    chunk = (result.stdout or '').split('\0', 1)[0]
+    if not chunk:
+        return None
+    meta, _, _rest = chunk.partition('\t')
+    parts = meta.split(' ')
+    if len(parts) < 2:
+        return None
+    return (parts[0], parts[1])
+
+
+def _write_entry(ephemeral, root, path, entry, extra_env) -> bool:
+    """Make the live worktree+index at `path` exactly match `entry` (a
+    `(mode, blob sha)` tuple, or `None` for absent).
+
+    Content is resolved by the blob's exact object identity
+    (`git cat-file -p`) and staged with `update-index --add --cacheinfo
+    <mode>,<sha>,<path>` — never plain `update-index --add`, which
+    re-hashes the worktree file through Git's normal content-based path
+    and can invoke a configured clean filter. A Git symlink mode
+    (`120000`) is materialized as a real symlink, never collapsed to a
+    regular file (which is the underlying reason Loop 2's raw `(mode,
+    blob sha)` classification exists in the first place).
+    """
+    file_path = Path(root, path)
+    if entry is None:
+        if file_path.is_symlink() or file_path.exists():
+            file_path.unlink()
+        result = controlled_git(
+            'update-index', '--force-remove', '--', path, cwd=root, extra_env=extra_env)
+        return result.returncode == 0
+    mode, sha = entry
+    blob = controlled_git('cat-file', '-p', sha, cwd=ephemeral, extra_env=extra_env, text=False)
+    if blob.returncode != 0:
+        return False
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    if file_path.is_symlink() or file_path.exists():
+        file_path.unlink()
+    if mode == '120000':
+        os.symlink(blob.stdout.decode('utf-8'), file_path)
+    else:
+        file_path.write_bytes(blob.stdout)
+        file_path.chmod(0o755 if mode == '100755' else 0o644)
+    result = controlled_git(
+        'update-index', '--add', '--cacheinfo', f'{mode},{sha},{path}', cwd=root, extra_env=extra_env)
+    return result.returncode == 0
+
+
+def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env) -> bool:
+    """Restore `path` to `before_entry`, but only if its CURRENT worktree
+    AND index state each still equal exactly `written_entry` (what the
+    updater itself wrote) or already equal `before_entry` (nothing to
+    do, e.g. this path was never reached before a sibling path's
+    mutation failed); any other current state means an external process
+    has touched it since, and it is left completely untouched — neither
+    worktree nor index — rather than risk overwriting that change.
+    """
+    current_worktree = _identify_worktree_entry(root, path, extra_env)
+    current_index = _identify_index_entry(root, path, extra_env)
+    safe_states = (before_entry, written_entry)
+    if current_worktree not in safe_states or current_index not in safe_states:
+        return False
+    if current_worktree == before_entry and current_index == before_entry:
+        return True
+    return _write_entry(ephemeral, root, path, before_entry, extra_env)
+
+
+def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
+    """Restore every touched path in `record` to its pre-update state;
+    complete only if every single path was safely restorable (see
+    `_restore_entry`) — one externally-changed path is enough to make
+    this `False`, even though the other paths were still restored.
     """
     complete = True
-    for path, (before, written) in record.items():
-        file_path = Path(root, path)
-        current_bytes = file_path.read_bytes() if file_path.is_file() else None
-        if current_bytes != written:
+    for path, (before_entry, written_entry) in record.items():
+        if not _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env):
             complete = False
-            continue
-        if before is None:
-            if file_path.exists():
-                file_path.unlink()
-            controlled_git('update-index', '--remove', '--', path, cwd=root, extra_env=extra_env)
-        else:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_bytes(before)
-            controlled_git('update-index', '--add', '--', path, cwd=root, extra_env=extra_env)
     return complete
+
+
 
 
 def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=None) -> ApplyResult:
@@ -676,8 +749,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
             candidate_tree_sha = _build_tree(candidate_entries, ephemeral, extra_env)
 
             touched_paths = fresh_plan.upstream_only
-            if _candidate_attribute_unsafe(
-                    ephemeral, candidate_tree_sha, touched_paths, configured, extra_env):
+            if _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured):
                 return ApplyResult(failure='unsafe_repository_state')
 
             with _extracted_candidate(ephemeral, candidate_tree_sha, extra_env) as candidate_root:
@@ -708,21 +780,35 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         validation_ran=True, validation_passed=True, failure='object_transfer_failed')
                 new_commit = (commit_result.stdout or '').strip()
 
-                record = _mutate_touched(root, touched_paths, target_tree, candidate_root, extra_env)
+                # Record every touched path's (before, written) tree
+                # identity up front — including paths not yet reached if
+                # a sibling path's write fails below — so recovery can
+                # treat "never actually mutated" as a trivially safe
+                # no-op via the same before/written comparison, rather
+                # than losing track of what happened on a partial failure.
+                record = {path: (current_tree.get(path), target_tree.get(path))
+                          for path in touched_paths}
 
-                write_tree = controlled_git('write-tree', cwd=root, extra_env=extra_env)
-                if write_tree.returncode != 0 or (write_tree.stdout or '').strip() != candidate_tree_sha:
-                    rollback_completed = _restore_touched(root, record, extra_env)
-                    return ApplyResult(
-                        mutation_started=True, validation_ran=True, validation_passed=True,
-                        rollback_attempted=True, rollback_completed=rollback_completed,
-                        concurrent_change=not rollback_completed, failure='index_mismatch')
+                write_ok = True
+                for path in touched_paths:
+                    if not _write_entry(ephemeral, root, path, record[path][1], extra_env):
+                        write_ok = False
+                        break
 
-                try:
-                    if _after_mutation is not None:
-                        _after_mutation()
-                except _SimulatedFailure:
-                    rollback_completed = _restore_touched(root, record, extra_env)
+                if write_ok:
+                    write_tree = controlled_git('write-tree', cwd=root, extra_env=extra_env)
+                    write_ok = (write_tree.returncode == 0
+                                and (write_tree.stdout or '').strip() == candidate_tree_sha)
+
+                if write_ok:
+                    try:
+                        if _after_mutation is not None:
+                            _after_mutation()
+                    except _SimulatedFailure:
+                        write_ok = False
+
+                if not write_ok:
+                    rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,
@@ -731,7 +817,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 cas = controlled_git(
                     'update-ref', 'HEAD', new_commit, current, cwd=root, extra_env=extra_env)
                 if cas.returncode != 0:
-                    rollback_completed = _restore_touched(root, record, extra_env)
+                    rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,
