@@ -152,7 +152,10 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     `workspace/prompts/` physical prefix or a traversal segment) raises
     rather than silently guessing. A system action or `@recap` elsewhere
     in the same control block is a second high-level action and is
-    rejected regardless of which one comes first.
+    rejected regardless of which one comes first. `@delete` additionally
+    rejects any `@param` directive in the control block (single-line or a
+    multiline opener): it is a maintenance action and does not accept
+    parameters, unlike `@run`/`@edit`.
     """
     control, _body = _leading_control_block(text)
     matches: list[tuple[str, str]] = []
@@ -169,6 +172,8 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     if any(line in _SYSTEM_ACTIONS or line.startswith("@recap:") for line in control):
         raise ValueError("A prompt action cannot coexist with a system action or recap")
     keyword, candidate = matches[0]
+    if keyword == DELETE_ACTION and any(line.startswith("@param:") for line in control):
+        raise ValueError("@delete is a maintenance action and does not accept parameters")
     if candidate.startswith(_PHYSICAL_PROMPT_PREFIX) or candidate == "workspace":
         raise ValueError(f"{keyword} takes a prompt identity, not the physical prefix")
     if not _PROMPT_PATH_RE.fullmatch(candidate):
