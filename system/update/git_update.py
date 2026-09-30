@@ -433,6 +433,28 @@ def _candidate_entries(plan: Plan, target_tree, current_tree) -> dict[str, tuple
     return entries
 
 
+def _candidate_path_conflict(entries: dict) -> bool:
+    """True when `entries` cannot form a legal Git tree: some path is a
+    blob/symlink entry while another path in the same set begins with
+    that path plus `/`, which would require it to also be a directory.
+    Git cannot represent both at once, and ordinary per-path
+    classification (Loop 2) cannot see this — it compares each flattened
+    path independently, so a user-only file at `workspace/x` and an
+    upstream-only descendant `workspace/x/y.md` can each classify with
+    no conflict of their own while still being jointly impossible.
+
+    Sorting first makes this an adjacent-pairs check: if `path` is a
+    strict prefix (plus `/`) of another entry, that other entry sorts
+    immediately after it lexicographically, with nothing able to sort
+    between them.
+    """
+    paths = sorted(entries)
+    for earlier, later in zip(paths, paths[1:]):
+        if later.startswith(earlier + '/'):
+            return True
+    return False
+
+
 def _build_tree(entries: dict[str, tuple[str, str]], ephemeral, extra_env) -> str:
     """Build a Git tree object for exactly `entries` (path -> (mode, blob
     sha)), creating intermediate subtrees bottom-up: `git mktree` only
@@ -622,41 +644,55 @@ def _identify_index_entry(root, path, extra_env) -> tuple | None:
     return (parts[0], parts[1])
 
 
-def _write_entry(ephemeral, root, path, entry, extra_env) -> bool:
+def _write_entry(ephemeral, root, path, entry, extra_env) -> tuple[bool, bool]:
     """Make the live worktree+index at `path` exactly match `entry` (a
     `(mode, blob sha)` tuple, or `None` for absent).
 
-    Content is resolved by the blob's exact object identity
-    (`git cat-file -p`) and staged with `update-index --add --cacheinfo
-    <mode>,<sha>,<path>` — never plain `update-index --add`, which
-    re-hashes the worktree file through Git's normal content-based path
-    and can invoke a configured clean filter. A Git symlink mode
-    (`120000`) is materialized as a real symlink, never collapsed to a
-    regular file (which is the underlying reason Loop 2's raw `(mode,
-    blob sha)` classification exists in the first place).
+    Returns `(success, attempted_mutation)`. `attempted_mutation` is
+    `False` only when the failure happened during this function's
+    read-only resolution step (`cat-file`, before any live worktree/index
+    write was even attempted) — this is what the caller's
+    `mutation_started` truthfully depends on, not merely on having
+    entered the per-path loop. Content is resolved by the blob's exact
+    object identity (`git cat-file -p`) and staged with `update-index
+    --add --cacheinfo <mode>,<sha>,<path>` — never plain `update-index
+    --add`, which re-hashes the worktree file through Git's normal
+    content-based path and can invoke a configured clean filter. A Git
+    symlink mode (`120000`) is materialized as a real symlink, never
+    collapsed to a regular file. Any real filesystem error (`OSError` —
+    a permission-denied directory, a path segment that collides with an
+    existing file, etc.) encountered once a write has actually begun is
+    caught here and reported as a bounded failure, never left to escape
+    uncaught past the caller's mutation loop.
     """
     file_path = Path(root, path)
     if entry is None:
-        if file_path.is_symlink() or file_path.exists():
-            file_path.unlink()
-        result = controlled_git(
-            'update-index', '--force-remove', '--', path, cwd=root, extra_env=extra_env)
-        return result.returncode == 0
+        try:
+            if file_path.is_symlink() or file_path.exists():
+                file_path.unlink()
+            result = controlled_git(
+                'update-index', '--force-remove', '--', path, cwd=root, extra_env=extra_env)
+        except OSError:
+            return False, True
+        return result.returncode == 0, True
     mode, sha = entry
     blob = controlled_git('cat-file', '-p', sha, cwd=ephemeral, extra_env=extra_env, text=False)
     if blob.returncode != 0:
-        return False
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    if file_path.is_symlink() or file_path.exists():
-        file_path.unlink()
-    if mode == '120000':
-        os.symlink(blob.stdout.decode('utf-8'), file_path)
-    else:
-        file_path.write_bytes(blob.stdout)
-        file_path.chmod(0o755 if mode == '100755' else 0o644)
+        return False, False
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        if file_path.is_symlink() or file_path.exists():
+            file_path.unlink()
+        if mode == '120000':
+            os.symlink(blob.stdout.decode('utf-8'), file_path)
+        else:
+            file_path.write_bytes(blob.stdout)
+            file_path.chmod(0o755 if mode == '100755' else 0o644)
+    except OSError:
+        return False, True
     result = controlled_git(
         'update-index', '--add', '--cacheinfo', f'{mode},{sha},{path}', cwd=root, extra_env=extra_env)
-    return result.returncode == 0
+    return result.returncode == 0, True
 
 
 def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env) -> bool:
@@ -675,7 +711,8 @@ def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env
         return False
     if current_worktree == before_entry and current_index == before_entry:
         return True
-    return _write_entry(ephemeral, root, path, before_entry, extra_env)
+    ok, _attempted = _write_entry(ephemeral, root, path, before_entry, extra_env)
+    return ok
 
 
 def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
@@ -746,6 +783,8 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
             target_tree = _ls_tree(ephemeral, commit_t, extra_env)
             current_tree = _ls_tree(ephemeral, current, extra_env)
             candidate_entries = _candidate_entries(fresh_plan, target_tree, current_tree)
+            if _candidate_path_conflict(candidate_entries):
+                return ApplyResult(failure='candidate_path_conflict')
             candidate_tree_sha = _build_tree(candidate_entries, ephemeral, extra_env)
 
             touched_paths = fresh_plan.upstream_only
@@ -790,8 +829,11 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                           for path in touched_paths}
 
                 write_ok = True
+                mutation_started = False
                 for path in touched_paths:
-                    if not _write_entry(ephemeral, root, path, record[path][1], extra_env):
+                    ok, attempted = _write_entry(ephemeral, root, path, record[path][1], extra_env)
+                    mutation_started = mutation_started or attempted
+                    if not ok:
                         write_ok = False
                         break
 
@@ -808,6 +850,12 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         write_ok = False
 
                 if not write_ok:
+                    if not mutation_started:
+                        # Nothing was ever actually written; there is
+                        # nothing to roll back, and claiming an attempt
+                        # would be untruthful.
+                        return ApplyResult(
+                            validation_ran=True, validation_passed=True, failure='mutation_failed')
                     rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,

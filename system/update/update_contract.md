@@ -272,6 +272,17 @@ are copied into the live object database with `rev-list --objects` +
 remote/URL argument, so no repository-local `url.*.insteadOf` rewrite has
 anything to redirect.
 
+Before the candidate tree is built, its flattened path/entry set is
+checked for a structural collision: Loop 2 classifies each path
+independently, so a user-only file at some path and an upstream-only
+descendant below that same path (or the reverse) can each classify with
+no per-path `conflict` while still being jointly impossible — no Git
+tree can hold a path as a blob and as a directory of descendants at
+once. Detecting this is a sorted adjacent-pair check (a colliding pair
+always sorts next to each other), not a general filesystem resolver or
+a rename heuristic; a collision fails closed with `candidate_path_conflict`
+before any candidate tree, validation, or live mutation.
+
 Worktree/index mutation for a touched path resolves content by the
 blob's exact object identity (`git cat-file -p <sha>`, never a worktree
 re-hash) and stages it with `update-index --add --cacheinfo
@@ -279,7 +290,15 @@ re-hash) and stages it with `update-index --add --cacheinfo
 `update-index --add`, which re-hashes the worktree file through Git's
 normal content-based path and could invoke a configured clean filter. A
 Git symlink mode (`120000`) is materialized as a real symlink, never
-collapsed to a regular file. Live mutation order: write/remove every
+collapsed to a regular file. A real filesystem error (a permission-denied
+directory, a colliding path segment, etc.) raised while writing a touched
+path is caught there and reported as a bounded failure, never left to
+escape `apply` as an uncaught exception; `mutation_started` becomes true
+only once a live worktree/index write has actually been attempted for
+some path, not merely because the per-path loop was entered, so a
+touched path whose failure occurs during its own read-only content
+resolution (before any write) correctly reports `mutation_started=False`
+with nothing to roll back. Live mutation order: write/remove every
 touched path this way, verify the resulting index matches the candidate
 tree exactly (`git write-tree`), then advance the ref last, `git
 update-ref HEAD <new> <old=C>`, a compare-and-swap that fails closed if

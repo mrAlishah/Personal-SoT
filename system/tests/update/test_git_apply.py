@@ -617,6 +617,121 @@ class ApplyModeAndRecoveryHardeningTests(unittest.TestCase):
             status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
             self.assertEqual('', status.strip())
 
+
+    def test_real_filesystem_exception_on_second_path_still_recovers_the_first(self):
+        """A REAL OSError (not a mocked/injected return value) raised
+        inside `_write_entry`'s own filesystem operations, for the SECOND
+        touched path, after the first path has already been genuinely
+        mutated live. Proves the exception cannot escape `apply()`
+        uncaught and skip recovery.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {},
+                {'system/a.md': 'shipped v2\n', 'system/locked/b.md': 'new\n'})
+            locked_dir = Path(root, 'system', 'locked')
+            locked_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(locked_dir, 0o555)  # read+execute, no write: a real PermissionError source
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual(('system/a.md', 'system/locked/b.md'), plan.upstream_only)
+
+            try:
+                result = _do_apply(root, target_dir, target_sha, plan, digest)
+            finally:
+                os.chmod(locked_dir, 0o755)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.rollback_attempted)
+            self.assertTrue(result.rollback_completed)
+            self.assertEqual('shipped\n', Path(root, 'system', 'a.md').read_text())
+            self.assertFalse(Path(root, 'system', 'locked', 'b.md').exists())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_first_path_failure_before_any_mutation_reports_mutation_started_false(self):
+        """A failure resolving the FIRST touched path's own blob content
+        (a pure read, before any live worktree/index write is even
+        attempted) must not be reported as having started a mutation —
+        nothing was actually touched, so there is nothing to roll back.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            real_controlled_git = git_update.controlled_git
+
+            class _Fail:
+                returncode = 1
+                stdout = b''
+                stderr = b'simulated read failure'
+
+            def spy(*args, **kwargs):
+                if args and args[0] == 'cat-file':
+                    return _Fail()
+                return real_controlled_git(*args, **kwargs)
+
+            with mock.patch.object(git_update, 'controlled_git', spy):
+                result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertFalse(result.mutation_started)
+            self.assertFalse(result.rollback_attempted)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+
+
+    def test_user_only_file_with_upstream_descendant_fails_closed_before_mutation(self):
+        """B has neither; C has `workspace/x` as a plain file (preserved,
+        user_only); T introduces `workspace/x/y.md` (upstream_only). Both
+        classify independently with no per-path conflict, but a Git tree
+        cannot hold `workspace/x` as a blob AND `workspace/x/...` as a
+        descendant at once — this must fail closed before any candidate
+        is built or any live path is touched, not silently drop one side.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {'workspace/x': 'a file\n'}, {'workspace/x/y.md': 'descendant\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual((), plan.conflict)
+            before_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertFalse(result.mutation_started)
+            self.assertEqual('candidate_path_conflict', result.failure)
+            self.assertEqual(before_head, after_head)
+            self.assertEqual('a file\n', Path(root, 'workspace', 'x').read_text())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
+    def test_user_only_descendant_with_upstream_file_fails_closed_before_mutation(self):
+        """The reverse shape: C has a descendant under `workspace/x/`
+        (user_only); T replaces `workspace/x` itself with a plain file
+        (upstream_only). Against current HEAD this raises an unbounded
+        Python TypeError from inside `_build_tree` — must instead fail
+        closed the same way as the other direction.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {'workspace/x/y.md': 'descendant\n'}, {'workspace/x': 'a file now\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual((), plan.conflict)
+            before_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertFalse(result.mutation_started)
+            self.assertEqual('candidate_path_conflict', result.failure)
+            self.assertEqual(before_head, after_head)
+            self.assertEqual('descendant\n', Path(root, 'workspace', 'x', 'y.md').read_text())
+            status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
+            self.assertEqual('', status.strip())
+
     def test_recovery_command_failure_reports_incomplete_rollback(self):
         with tempfile.TemporaryDirectory() as workdir:
             base = _base_files({'system/a.md': 'shipped\n'})
