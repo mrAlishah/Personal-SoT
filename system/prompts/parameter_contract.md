@@ -95,7 +95,7 @@ An explicit parameter not declared by the selected prompt and not reserved `inpu
 
 ## required_parameters
 
-For `@do`:
+For `@run`:
 
 ```text
 missing required parameter
@@ -117,14 +117,14 @@ missing required parameter
 
 For `@edit`, unbound optional parameters remain visible as placeholders and are reported as optional/unbound.
 
-For `@do`, an unbound optional parameter may resolve to an empty string only when no unresolved variable remains and the resulting template remains renderable. Prompt authors must make optional placement omission-safe.
+For `@run`, an unbound optional parameter may resolve to an empty string only when no unresolved variable remains and the resulting template remains renderable. Prompt authors must make optional placement omission-safe.
 
 ## body_without_input
 
 If invocation body exists but selected template does not consume `{{input}}`:
 
 ```text
-@do   → fail closed; never discard/append silently
+@run  → fail closed; never discard/append silently
 @edit → render preview + report unconsumed body
 ```
 
