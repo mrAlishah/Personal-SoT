@@ -376,6 +376,60 @@ class DirtyPreflightTests(unittest.TestCase):
             git_update.classify(root)
         self.assertFalse(Path(sentinel).exists())
 
+    def test_attribute_scan_disables_fsmonitor_for_unreferenced_driver(self):
+        """A configured-but-unreferenced driver makes `configured` non-empty,
+        so the attribute scan proceeds past its early `if not configured`
+        return into `ls-files`/`check-attr` — both of which must run with
+        fsmonitor disabled, or a repository-configured `core.fsmonitor` hook
+        executes before the hardened `status` call is ever reached."""
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            sentinel = str(Path(workdir, 'fsmonitor_sentinel'))
+            _init_repo(root)
+            _write(root, 'a.md', 'plain\n')
+            _commit(root, 'base')
+            _run(['git', '-C', root, 'config', 'filter.unused.clean', 'cat'])
+            hostile_fsmonitor = str(Path(workdir, 'fsmonitor.sh'))
+            Path(hostile_fsmonitor).write_text(
+                f'#!/bin/sh\ntouch {sentinel}\nprintf "1\\n"\n')
+            os.chmod(hostile_fsmonitor, 0o755)
+            _run(['git', '-C', root, 'config', 'core.fsmonitor', hostile_fsmonitor])
+            before = Path(root, '.git', 'index').read_bytes()
+            blocked = git_update._preflight(root)
+            after = Path(root, '.git', 'index').read_bytes()
+            # Assert before the TemporaryDirectory is cleaned up: checking
+            # sentinel existence after the `with` block exits would always
+            # read False (the whole directory, sentinel included, is gone
+            # by then) regardless of whether it was ever actually created.
+            self.assertIsNone(blocked)
+            self.assertFalse(Path(sentinel).exists())
+            self.assertEqual(before, after)
+
+    def test_attribute_scan_disables_fsmonitor_with_selected_driver(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            fsmonitor_sentinel = str(Path(workdir, 'fsmonitor_sentinel'))
+            filter_sentinel = str(Path(workdir, 'filter_sentinel'))
+            _init_repo(root)
+            _write(root, '.gitattributes', '*.secret filter=redact\n')
+            _write(root, 'a.secret', 'sensitive\n')
+            _commit(root, 'base')
+            hostile_filter = str(Path(workdir, 'filter.sh'))
+            Path(hostile_filter).write_text(f'#!/bin/sh\ntouch {filter_sentinel}\ncat\n')
+            os.chmod(hostile_filter, 0o755)
+            _run(['git', '-C', root, 'config', 'filter.redact.clean', hostile_filter])
+            hostile_fsmonitor = str(Path(workdir, 'fsmonitor.sh'))
+            Path(hostile_fsmonitor).write_text(
+                f'#!/bin/sh\ntouch {fsmonitor_sentinel}\nprintf "1\\n"\n')
+            os.chmod(hostile_fsmonitor, 0o755)
+            _run(['git', '-C', root, 'config', 'core.fsmonitor', hostile_fsmonitor])
+            plan = git_update.classify(root)
+            # See the sibling test above: these must run before the
+            # TemporaryDirectory is cleaned up.
+            self.assertEqual('unsafe_repository_state', plan.blocked)
+            self.assertFalse(Path(fsmonitor_sentinel).exists())
+            self.assertFalse(Path(filter_sentinel).exists())
+
     def test_dirty_preflight_runs_with_no_optional_locks_and_fsmonitor_disabled(self):
         captured = []
         real_controlled_git = git_update.controlled_git

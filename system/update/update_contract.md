@@ -111,6 +111,16 @@ the final known suffix, matched against the config key alone, never
 against a raw "key value" line where the value could contain unrelated
 dot-suffix-like text.
 
+This attribute/config safety inspection is itself a live-repo read that can
+run repository-configured code before the hardened `status` call below is
+ever reached: both its `git ls-files -z` (listing tracked paths to check)
+and its `git check-attr --all -z` (resolving each path's attributes) can
+invoke a configured `core.fsmonitor` hook exactly as `git status` can, so
+both run with `--no-optional-locks -c core.fsmonitor=false` as well —
+disabling fsmonitor only on the later `status` call is not sufficient.
+`git config --get-regexp`, used only to read `filter.*`/`diff.*` values,
+does not read the index/worktree and does not need this.
+
 Otherwise it runs `git --no-optional-locks -c core.fsmonitor=false status
 --porcelain=v2 -z --untracked-files=all` through `controlled_git`.
 `--no-optional-locks` is Git's own documented mechanism for preventing

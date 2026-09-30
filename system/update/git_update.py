@@ -214,14 +214,17 @@ def _attribute_safety_blocked(root) -> bool:
     if not configured:
         return False
 
-    files = controlled_git('ls-files', '-z', cwd=root)
+    files = controlled_git(
+        '--no-optional-locks', '-c', 'core.fsmonitor=false', 'ls-files', '-z', cwd=root)
     if files.returncode != 0:
         return True
     paths = [path for path in (files.stdout or '').split('\0') if path]
     if not paths:
         return False
 
-    check = controlled_git('check-attr', '--all', '-z', '--', *paths, cwd=root)
+    check = controlled_git(
+        '--no-optional-locks', '-c', 'core.fsmonitor=false',
+        'check-attr', '--all', '-z', '--', *paths, cwd=root)
     if check.returncode != 0:
         return True
     fields = (check.stdout or '').split('\0')

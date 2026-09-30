@@ -465,7 +465,12 @@ checkout (`cwd=root`, no `extra_env`):
    patch text, not this underlying comparison, so they are not a fix here).
    If any such filter/textconv is configured for a tracked path, stop and
    report unsafe-repository-state — a non-sensitive capability result, not
-   a content leak — rather than risk invoking it.
+   a content leak — rather than risk invoking it. This step's own Git reads
+   (listing tracked paths and resolving their attributes) run before the
+   hardened `status` call in step 2 and can themselves invoke a configured
+   `core.fsmonitor` hook, so they need `--no-optional-locks -c
+   core.fsmonitor=false` too — disabling fsmonitor only for step 2 is not
+   sufficient.
 2. Otherwise, `controlled_git('--no-optional-locks', '-c',
    'core.fsmonitor=false', 'status', '--porcelain=v2',
    '--untracked-files=all', cwd=root)`. `--no-optional-locks`
