@@ -463,6 +463,7 @@ class ApplyRecheckAndRecoveryTests(unittest.TestCase):
             root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
                 workdir, base, {}, {'system/a.md': 'shipped v2\n'})
             plan, digest = _confirm(root, target_dir, target_sha)
+            concurrent_commit_holder = {}
 
             def move_ref_concurrently():
                 # A real, independent ref advance (as another process would
@@ -473,6 +474,7 @@ class ApplyRecheckAndRecoveryTests(unittest.TestCase):
                     ['git', '-C', root, 'commit-tree', tree, '-p', current_sha,
                      '-m', 'concurrent update']).stdout.strip()
                 _run(['git', '-C', root, 'update-ref', 'HEAD', concurrent_commit, current_sha])
+                concurrent_commit_holder['sha'] = concurrent_commit
 
             result = _do_apply(
                 root, target_dir, target_sha, plan, digest, _after_mutation=move_ref_concurrently)
@@ -481,9 +483,15 @@ class ApplyRecheckAndRecoveryTests(unittest.TestCase):
             self.assertEqual('ref_cas_failed', result.failure)
             self.assertTrue(result.concurrent_change)
             self.assertTrue(result.rollback_attempted)
+            # A concurrent ref move means the overall recovery boundary is
+            # incomplete — the ref component of it can never be "restored"
+            # since the updater deliberately never overwrites it — even
+            # though every updater-owned worktree/index path may still be
+            # safely restored.
+            self.assertFalse(result.rollback_completed)
             after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
             # Our own CAS never overwrote the concurrent process's ref move.
-            self.assertNotEqual(current_sha, after_head)
+            self.assertEqual(concurrent_commit_holder['sha'], after_head)
 
     def test_interrupted_process_leaves_ref_at_c_and_next_check_reports_unstable_state(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -957,6 +965,104 @@ class ApplyFinalRecheckAndPerPathConcurrencyTests(unittest.TestCase):
             self.assertEqual('externally changed\n', Path(root, 'system', 'b.md').read_text())
             # path 1 (safe, untouched externally) is recovered exactly.
             self.assertEqual('shipped\n', Path(root, 'system', 'a.md').read_text())
+
+
+class ApplyFinalIntegrityGateTests(unittest.TestCase):
+    def test_post_mutation_worktree_tamper_without_raising_never_succeeds(self):
+        """`_after_mutation` tampers with a touched live path but returns
+        normally (no exception) — the final integrity gate, not an
+        exception, must be what catches this before the ref ever
+        advances.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def tamper_worktree_no_raise():
+                Path(root, 'system', 'a.md').write_text('externally changed after mutation\n')
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _after_mutation=tamper_worktree_no_raise)
+
+            self.assertIsNone(result.commit)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertTrue(result.concurrent_change)
+            self.assertTrue(result.rollback_attempted)
+            self.assertFalse(result.rollback_completed)
+            # The external content is never overwritten.
+            self.assertEqual('externally changed after mutation\n', Path(root, 'system', 'a.md').read_text())
+
+    def test_post_mutation_index_tamper_without_raising_never_succeeds(self):
+        """`_after_mutation` re-stages a touched path against a different
+        real blob (the index, not the worktree file) and returns
+        normally — must be caught the same way.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def tamper_index_no_raise():
+                other = subprocess.run(
+                    ['git', '-C', root, 'hash-object', '-w', '--stdin'],
+                    input='different content\n', capture_output=True, text=True, check=True)
+                other_sha = other.stdout.strip()
+                _run(['git', '-C', root, 'update-index', '--add', '--cacheinfo',
+                      f'100644,{other_sha},system/a.md'])
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _after_mutation=tamper_index_no_raise)
+
+            self.assertIsNone(result.commit)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertTrue(result.concurrent_change)
+            self.assertTrue(result.rollback_attempted)
+            self.assertFalse(result.rollback_completed)
+
+    def test_untouched_tracked_path_changed_during_mutation_window_never_succeeds(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n', 'system/untouched.md': 'leave me\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual(('system/a.md',), plan.upstream_only)
+
+            def tamper_untouched():
+                Path(root, 'system', 'untouched.md').write_text('changed by someone else\n')
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _after_mutation=tamper_untouched)
+
+            self.assertIsNone(result.commit)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertTrue(result.concurrent_change)
+            self.assertEqual('changed by someone else\n', Path(root, 'system', 'untouched.md').read_text())
+
+    def test_untracked_path_created_during_mutation_window_never_succeeds(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            def create_untracked():
+                Path(root, 'system', 'surprise.md').write_text('new untracked file\n')
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest, _after_mutation=create_untracked)
+
+            self.assertIsNone(result.commit)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertTrue(result.concurrent_change)
+            # Never deleted/reset; the surprise file is left exactly as-is.
+            self.assertTrue(Path(root, 'system', 'surprise.md').exists())
 
 
 if __name__ == '__main__':

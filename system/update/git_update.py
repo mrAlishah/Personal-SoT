@@ -661,6 +661,13 @@ def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
 def _identify_index_entry(root, path, extra_env) -> tuple | None:
     """The `(mode, blob sha)` the live INDEX currently has staged for
     `path`, or `None` if the path is not staged there at all.
+
+    `git ls-files -- <path>` treats `path` as a pathspec, not a literal
+    exact-path lookup: when `path` itself is absent but a descendant
+    like `<path>/y.md` is tracked, it matches that descendant instead —
+    so the one chunk returned is only trusted after confirming its own
+    reported path is exactly `path`, never merely checking that *some*
+    chunk came back.
     """
     result = controlled_git(
         '--no-optional-locks', 'ls-files', '--stage', '-z', '--', path, cwd=root, extra_env=extra_env)
@@ -669,7 +676,9 @@ def _identify_index_entry(root, path, extra_env) -> tuple | None:
     chunk = (result.stdout or '').split('\0', 1)[0]
     if not chunk:
         return None
-    meta, _, _rest = chunk.partition('\t')
+    meta, _, reported_path = chunk.partition('\t')
+    if reported_path != path:
+        return None
     parts = meta.split(' ')
     if len(parts) < 2:
         return None
@@ -760,6 +769,48 @@ def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env
         return True
     ok, _attempted = _write_entry(ephemeral, root, path, before_entry, extra_env)
     return ok
+
+
+def _post_mutation_integrity_ok(root, ephemeral, candidate_tree_sha, touched_paths, record,
+                                 extra_env) -> bool:
+    """Verify, immediately before the ref CAS, that the live installation
+    genuinely still equals the validated candidate and nothing else has
+    drifted since the mutation loop finished — this is what closes the
+    window a controlled post-mutation event that tampers with live state
+    WITHOUT raising (a worktree or index change to a touched path, an
+    untouched tracked path, or a new untracked file) would otherwise
+    leave open for `apply` to advance the ref and report success anyway.
+
+    Does NOT itself re-check `HEAD == current`: the ref CAS immediately
+    following this is already the atomic, authoritative check for ref
+    drift (a separate read-then-later-CAS here would only add its own
+    TOCTOU gap); ref concurrency is `update-ref`'s job, worktree/index/
+    attribute concurrency is this function's.
+
+    Re-reads configured drivers and re-checks attribute safety (both the
+    general dirty-state one and the target-introduced-path one) before
+    running the one status-like command this function issues, exactly
+    as the dirty/untracked preflight does, so this gate itself can never
+    need to execute a configured helper to decide anything. Content
+    identity only — never a text comparison.
+    """
+    configured = _configured_drivers(root)
+    if configured is None or _attribute_safety_blocked(root):
+        return False
+    if _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured):
+        return False
+    for path in touched_paths:
+        _before, written_entry = record[path]
+        if (_identify_worktree_entry(root, path, extra_env) != written_entry
+                or _identify_index_entry(root, path, extra_env) != written_entry):
+            return False
+    status = controlled_git(
+        '--no-optional-locks', 'status', '--porcelain=v2', '-z', '--untracked-files=all',
+        cwd=root, extra_env=extra_env)
+    if status.returncode != 0:
+        return False
+    changed = set(_porcelain_v2_paths(status.stdout or ''))
+    return changed <= set(touched_paths)
 
 
 def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
@@ -932,6 +983,16 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     except _SimulatedFailure:
                         write_ok = False
 
+                # Final post-mutation integrity gate, after whatever
+                # _after_mutation just simulated: a real concurrent event
+                # in this exact window need not raise to be dangerous —
+                # it must still be caught before the ref ever advances.
+                integrity_failed = False
+                if write_ok and not _post_mutation_integrity_ok(
+                        root, ephemeral, candidate_tree_sha, touched_paths, record, extra_env):
+                    write_ok = False
+                    integrity_failed = True
+
                 if not write_ok:
                     if not mutation_started:
                         # Nothing was ever actually written; there is
@@ -946,16 +1007,23 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,
-                        concurrent_change=per_path_concurrent or not rollback_completed,
+                        concurrent_change=per_path_concurrent or integrity_failed or not rollback_completed,
                         failure='post_mutation_failure')
 
                 cas = controlled_git(
                     'update-ref', 'HEAD', new_commit, current, cwd=root, extra_env=extra_env)
                 if cas.returncode != 0:
-                    rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
+                    # Recovery may still restore every updater-written
+                    # worktree/index path it can safely verify, but the
+                    # ref itself is deliberately never overwritten back
+                    # to C once another process has moved it — so the
+                    # overall recovery boundary can never be reported
+                    # complete here, regardless of how much of the
+                    # touched-path state was restorable.
+                    _attempt_recovery(ephemeral, root, record, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
-                        rollback_attempted=True, rollback_completed=rollback_completed,
+                        rollback_attempted=True, rollback_completed=False,
                         concurrent_change=True, failure='ref_cas_failed')
 
                 return ApplyResult(

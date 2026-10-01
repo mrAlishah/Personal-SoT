@@ -326,10 +326,37 @@ path's own turn. A mismatch here stops further writing, and that path's
 external change is never overwritten, exactly like the existing
 recovery-time concurrency check. Live mutation order otherwise: write/
 remove every touched path this way, verify the resulting index matches
-the candidate tree exactly (`git write-tree`), then advance the ref last,
-`git update-ref HEAD <new> <old=C>`, a compare-and-swap that fails closed
-if `C` moved concurrently. The resulting commit's two parents are exactly
-`C` and `T`, and its tree is exactly the validated candidate tree.
+the candidate tree exactly (`git write-tree`).
+
+Immediately before the ref CAS — the last thing before it — a FINAL
+post-mutation integrity gate re-verifies the complete live installation
+against the validated candidate: configured drivers and attribute safety
+are re-read first (so this gate itself can never need to execute a
+configured helper), then every touched path's current worktree AND
+index identity is compared against what the updater wrote, and a
+`git status --porcelain=v2 -z --untracked-files=all` confirms every
+reported changed path is one of the updater's own touched paths — no
+untouched tracked path and no new untracked path. This closes the
+window a concurrent external event in that exact spot would otherwise
+leave open: such an event need not raise an exception to be dangerous,
+and an exception is not the only thing this gate must catch. The gate
+never resets, cleans, or deletes an external path it finds; failing it
+aborts before the ref advances and routes into the same recovery
+behavior as any other post-mutation failure.
+
+Only once that gate passes does the ref advance, last, `git update-ref
+HEAD <new> <old=C>`, a compare-and-swap that fails closed if `C` moved
+concurrently — ref drift itself is this CAS's own atomic job, not the
+integrity gate's, so there is no separate read-then-act gap for the ref
+specifically. A CAS failure never reports `rollback_completed=True`,
+regardless of how much updater-owned worktree/index state the ensuing
+recovery attempt can still safely restore: once another process has
+moved the ref, the updater never overwrites it back to `C`, so the ref
+component of the verified pre-update boundary can never be completed by
+this updater, and `rollback_completed` means the *complete* boundary,
+not merely "the touched files were restored." The resulting commit's
+two parents are exactly `C` and `T`, and its tree is exactly the
+validated candidate tree.
 
 Recovery exists only while `apply` is running, covers every touched path
 (including one never actually reached before a sibling path's mutation
