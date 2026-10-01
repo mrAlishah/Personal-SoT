@@ -26,15 +26,27 @@ other guided flow (`system/assistant/guided_flow_contract.md`).
 ## Install-type routing
 
 Step 1 determines whether the installation is a real Git clone/worktree or a
-downloaded/no-Git archive using actual host/repository evidence (the smallest
-existing Git probe through the controlled Git boundary — `.git` may be a file,
-as in a linked worktree, not only a directory). It never infers this from how
-the user describes their install ("I cloned it" / "I downloaded a ZIP").
+downloaded/no-Git archive using actual host/repository evidence. It never
+infers this from how the user describes their install ("I cloned it" / "I
+downloaded a ZIP"). Install type must be PROVEN at the exact selected root,
+not merely somewhere above or below it: a Git route requires the selected
+path itself to be the repository's working-tree top level (so an arbitrary
+subdirectory nested inside an unrelated parent repository is never
+misidentified as the installation, and a linked worktree — whose `.git` is a
+file, not a directory — is still correctly recognized as its own root). A
+no-Git route requires the selected path to actually carry Personal-SoT's own
+stable repository-owned markers; an arbitrary empty or unrelated directory is
+never treated as an archive installation merely for existing.
 
 - Git clone/worktree → routes to `system.update.git_update`.
 - No-Git archive → routes to `system.update.side_by_side`.
 - Neither provable → the route fails closed and the workflow explains what
   capability is missing, rather than guessing.
+
+Every check this step performs is itself a local command/Git execution, so it
+never runs at all without local-command capability (below) — a route is never
+produced on the strength of filesystem shape alone when the commands needed
+to actually confirm it could not run.
 
 ## One material question at a time
 
@@ -50,6 +62,14 @@ parsed from the user's message. A client that cannot prove write and local
 command capability can preview but can never cause `apply`/`migrate` to run,
 regardless of what the user says or "confirms".
 
+Local-command capability specifically gates ALL of install-type detection,
+classification, and preview — every one of them shells out to Git or a
+validator. A client that cannot run local commands at all gets an honest
+no-write report immediately, before any of those are even attempted; this
+workflow never claims to have checked or previewed an installation using
+commands that could not actually execute, and not every web/read-only host
+can necessarily run this local Python workflow at all.
+
 ## Preview is non-mutating; apply requires exact confirmation
 
 Every call recomputes a fresh preview and digest from current state. Apply
@@ -60,6 +80,22 @@ the workflow reports that a new preview is required. Re-verification of
 staleness is itself owned by Loop 1–4 (`classify`/`preview` re-run fresh, and
 `apply`/`migrate` independently re-verify before mutating); this workflow
 does not duplicate that logic, only gates on its result.
+
+## Success means the result actually succeeded
+
+A Git update is reported applied/ready only when the canonical apply result
+itself proves it: a resulting commit, no failure literal, and real validator
+success — never inferred from validator flags alone, since a controlled
+failure can legitimately have every validator flag set true (object-transfer
+failure, or a fully rolled-back post-mutation failure) without the update
+having succeeded at all. A rolled-back or recovered update is reported as not
+applied, with the prior verified state restored — never as success.
+
+A no-Git (side-by-side) update that fails after copying has already begun is
+never reported as "nothing changed": Loop 4 does not promise to delete a
+partially built destination on failure, only that the ORIGINAL installation
+is never touched. Such a failure always says the original folder was not
+changed and that the new copy specifically did not finish and is not ready.
 
 ## No-write handoff
 
@@ -81,13 +117,23 @@ than re-deriving disclosure decisions.
 
 A `workspace/context/*.md` path may be named in Advanced detail only when
 `system.context.access.permitted(...)` returns `True` for it, called
-directly with honestly-sourced inputs (a bounded host-side header read, the
-canonical registry scope, and trusted host/deployment capability — never
-derived from user/chat/prompt text). `advanced=True` alone authorizes
+directly with honestly-sourced inputs (a frontmatter-only host-side header
+read, the canonical registry scope, and trusted host/deployment capability —
+never derived from user/chat/prompt text). `advanced=True` alone authorizes
 nothing; it is a presentation toggle, exactly as in `doctor.py`. Product/
 implementation detail (commit SHAs, baseline provenance, recovery flags) may
 appear in Advanced output freely, since it was never Personal in the first
 place.
+
+The one production Advanced view (`advanced_report`) stores and renders only
+already-authorized Personal paths and safe product/result facts — never a
+raw frontmatter header, a module body, or an unauthorized Personal path, and
+nothing resembling a raw header ever survives as hidden state on the result
+object the workflow returns. The header read itself is bounded to the
+frontmatter block alone (stops at the matching closing `---`, never returns
+body bytes even if they would fit within the read limit) and refuses an
+obvious final-component symlink, so it cannot be redirected outside the
+selected root.
 
 ## Dirty Git clone guidance
 

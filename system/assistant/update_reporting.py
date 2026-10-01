@@ -15,7 +15,7 @@ this module implements.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from system.context.access import permitted
@@ -25,6 +25,14 @@ from system.validation.validate_v1 import context_registry_entries
 
 _KNOWN_AREAS = frozenset({'workspace', 'system', 'guides'})
 _HEADER_READ_LIMIT = 4096
+# Stable, repository-owned markers a real Personal-SoT installation has
+# regardless of whether it is a Git clone or a downloaded archive — the
+# smallest evidence that distinguishes one from an arbitrary directory,
+# never a guess from user wording.
+_ARCHIVE_MARKERS = (
+    Path('workspace', 'adapters', 'runtime_entrypoint.md'),
+    Path('system', 'validation', 'validate_v1.py'),
+)
 
 
 @dataclass(frozen=True)
@@ -33,9 +41,11 @@ class HostCapability:
     deployment/adapter boundary, NEVER parsed from user/chat/prompt
     text. `can_read` is source/current-installation read access,
     `can_write` is canonical write/apply capability, and
-    `can_run_local_commands` is the ability to execute local
-    validators/Git — these are independent: a web client may have
-    `can_read` without either of the others.
+    `can_run_local_commands` is the ability to execute local Git/
+    validator subprocesses at all — this workflow's own install-type
+    detection, classification, and preview are themselves local-command
+    operations, so without this capability nothing here can even be
+    probed, let alone applied.
     """
     can_read: bool = False
     can_write: bool = False
@@ -63,14 +73,29 @@ class BeginnerReport:
 
 
 @dataclass(frozen=True)
+class AdvancedReport:
+    """Safe Advanced-tier detail: `lines` are product/implementation
+    facts that were never Personal (a commit SHA, recovery flags, a
+    ready/failure literal) and `personal_paths` are ONLY the
+    `workspace/context/*.md` paths `access.permitted` actually
+    authorized — never a raw frontmatter header, module body, or an
+    unauthorized Personal path. Calling this function, or any
+    `advanced=True`-style flag, authorizes nothing by itself.
+    """
+    lines: tuple[str, ...] = ()
+    personal_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class WorkflowResult:
     """The one object `run_update_workflow` returns. `digest` is the
     FRESH preview digest for this call — pass it back as
     `confirm_digest` on a subsequent call to actually apply/migrate;
-    passing a stale one is always refused. `advanced_candidates` holds
-    raw `(path, header, scope_path)` triples a caller may later pass to
-    `disclosed_paths` for Advanced rendering — never pre-filtered content,
-    never shown by default.
+    passing a stale one is always refused. `applied` means the update
+    actually became the installed/ready result, never merely that
+    `apply`/`migrate` was invoked. Carries no raw header, module body,
+    or unauthorized Personal path — Advanced detail is built separately
+    by `advanced_report`, only after a real `access.permitted` call.
     """
     install_type: str
     digest: str | None
@@ -78,34 +103,54 @@ class WorkflowResult:
     applied: bool
     beginner: BeginnerReport
     failure: str | None = None
-    advanced_candidates: tuple[tuple[str, str, str], ...] = ()
 
 
 # --- install-type routing -------------------------------------------------
 
 def _is_git_installation(root) -> bool:
-    """The smallest proof of a real Git clone/worktree at `root`: a
-    successful `git rev-parse --git-dir` through the same controlled Git
-    boundary every other probe in this project uses. Correct for a
-    linked worktree, where `.git` is a FILE (a `gitdir: <path>`
-    pointer) rather than a directory — `rev-parse` resolves that on
-    Git's own authority, never by this module inspecting `.git` itself.
+    """Whether `root` itself — not merely some directory inside a
+    repository — is the top level of a real Git clone/worktree.
+    `git rev-parse --show-toplevel` returns the WORKING TREE root
+    (correct for a linked worktree too, where `.git` is a file, not a
+    directory: it resolves to the worktree's own root, never the main
+    repository's), and that must be the exact same physical directory
+    as `root` — otherwise an arbitrary subdirectory nested inside some
+    unrelated parent repository would be misidentified as the selected
+    installation, even though Git itself would resolve it to that
+    parent.
     """
-    result = controlled_git('rev-parse', '--git-dir', cwd=str(root))
-    return result.returncode == 0
+    result = controlled_git('rev-parse', '--show-toplevel', cwd=str(root))
+    if result.returncode != 0:
+        return False
+    toplevel = (result.stdout or '').strip()
+    if not toplevel:
+        return False
+    try:
+        return Path(toplevel).resolve() == Path(root).resolve()
+    except OSError:
+        return False
+
+
+def _is_personal_sot_archive(root) -> bool:
+    """Whether `root` carries the smallest stable, repository-owned
+    evidence of being an actual Personal-SoT installation (Git or not)
+    — never true for an arbitrary directory that merely exists.
+    """
+    root = Path(root)
+    return all((root / marker).is_file() for marker in _ARCHIVE_MARKERS)
 
 
 def detect_install_type(root, capability: HostCapability) -> str:
     """`'git'`, `'zip'`, or `'unknown'` — from actual host/repository
     evidence only, never from how the user describes their install.
-    Without proven read capability, the route cannot be determined at
-    all and fails closed to `'unknown'`.
+    Fails closed to `'unknown'` without proven read AND local-command
+    capability (every check here is itself a local-command operation).
     """
-    if capability.can_read is not True:
+    if capability.can_read is not True or capability.can_run_local_commands is not True:
         return 'unknown'
     if _is_git_installation(root):
         return 'git'
-    if Path(root).is_dir():
+    if _is_personal_sot_archive(root):
         return 'zip'
     return 'unknown'
 
@@ -135,6 +180,20 @@ def _count_lines(counts: dict[str, int], suffix: str) -> tuple[str, ...]:
 
 # --- Git beginner report ---------------------------------------------------
 
+def _git_apply_succeeded(result: git_update.ApplyResult) -> bool:
+    """The update actually became the installed result — never
+    inferred from validator flags alone. A controlled failure can
+    legitimately have `validation_ran=True, validation_passed=True,
+    concurrent_change=False` (e.g. `object_transfer_failed`, or a
+    completely rolled-back `post_mutation_failure`) without the update
+    having succeeded at all; only a real resulting commit, with no
+    failure literal recorded, counts as success.
+    """
+    return (result.failure is None and result.commit is not None
+            and result.validation_ran and result.validation_passed
+            and not result.concurrent_change)
+
+
 def git_beginner_report(plan: git_update.Plan, summary: dict,
                          result: git_update.ApplyResult | None) -> BeginnerReport:
     """Build a beginner report from Loop 1–3's own `Plan`/`summary`
@@ -160,21 +219,21 @@ def git_beginner_report(plan: git_update.Plan, summary: dict,
         details = _count_lines(dict(summary.get('hidden_by_area', {})), 'preserved')
         return BeginnerReport('Ready to preview this update.', details)
 
-    if result.concurrent_change:
+    if _git_apply_succeeded(result):
+        return BeginnerReport('Update applied and validation passed.')
+
+    if result.mutation_started:
         if result.rollback_completed:
-            return BeginnerReport('Update failed validation; the updater restored the verified prior state.')
+            return BeginnerReport(
+                'Update did not complete; the updater restored the verified prior state.')
         return BeginnerReport(
             'Update did not complete and some updater changes could not be safely restored '
             'because the installation changed concurrently.')
-    if not result.validation_ran:
-        return BeginnerReport('Nothing was changed. The update could not be completed safely.')
-    if not result.validation_passed:
-        if result.rollback_completed:
-            return BeginnerReport('Update failed validation; the updater restored the verified prior state.')
-        return BeginnerReport(
-            'Update did not complete and some updater changes could not be safely restored '
-            'because the installation changed concurrently.')
-    return BeginnerReport('Update applied and validation passed.')
+
+    if result.validation_ran and not result.validation_passed:
+        return BeginnerReport('Update not applied: validation failed. The installation was not changed.')
+
+    return BeginnerReport('Update not applied. The installation was not changed by the updater.')
 
 
 # --- ZIP/side-by-side beginner report --------------------------------------
@@ -186,6 +245,14 @@ def zip_beginner_report(plan: side_by_side.SideBySidePlan,
     summary (unlike `git_update.Preview`), so the display-only grouping
     above is applied here to its raw path tuples — never a new
     classification decision.
+
+    Once `migrate` has actually been called, "Nothing was changed" is
+    never said for a failure: Loop 4 does not promise to delete a
+    partially built side-by-side destination on failure (only that the
+    ORIGINAL installation is never touched), so a failed result after
+    `migrate` ran always says the original is unchanged and the new
+    copy specifically is not ready — regardless of how far migration
+    got before failing.
     """
     if plan.blocked is not None:
         return BeginnerReport('Nothing was changed. The update could not be checked safely.')
@@ -199,13 +266,16 @@ def zip_beginner_report(plan: side_by_side.SideBySidePlan,
         details = _count_lines(_area_counts(plan.kept), 'to preserve')
         return BeginnerReport('Ready to preview this update.', details)
 
-    if not result.ready:
-        if result.failure == 'personal_validation_failed':
-            return BeginnerReport('Update did not pass validation. Nothing was changed.')
-        return BeginnerReport('Nothing was changed. The update could not be completed safely.')
-    details = _count_lines(_area_counts(plan.kept), 'preserved')
+    if result.ready:
+        details = _count_lines(_area_counts(plan.kept), 'preserved')
+        return BeginnerReport(
+            'Updated side-by-side copy is ready. Your original folder was not changed.', details)
+
+    if result.failure == 'personal_validation_failed':
+        return BeginnerReport(
+            'Your original folder was not changed. The new copy did not pass validation and is not ready.')
     return BeginnerReport(
-        'Updated side-by-side copy is ready. Your original folder was not changed.', details)
+        'Your original folder was not changed. The new copy did not finish and is not ready.')
 
 
 def no_write_report() -> BeginnerReport:
@@ -214,20 +284,41 @@ def no_write_report() -> BeginnerReport:
         ('nothing was written', 'validation was not run here'))
 
 
+def _no_local_command_report() -> BeginnerReport:
+    return BeginnerReport(
+        'This client cannot run the local commands needed to check or preview an update here.',
+        ('nothing was written', 'validation was not run here'))
+
+
 # --- Advanced authorization -------------------------------------------------
 
-def _read_bounded_header(path) -> str:
-    """At most `_HEADER_READ_LIMIT` bytes — enough for any realistic
-    frontmatter block, never the whole module body, so a programming
-    error elsewhere in this presentation layer cannot pull full
-    Personal content into an authorization check.
+def _read_frontmatter_only(root, path: str) -> str:
+    """ONLY the bounded `---`-delimited frontmatter block of `path`
+    under `root` — never module body bytes, even if they would fit
+    within `_HEADER_READ_LIMIT`: the text must open with `---` on its
+    own line and a matching closing `---` must appear within that
+    bound, or this returns `''`. The final path component is refused
+    if it is itself a symlink, so an obvious final-component symlink
+    cannot redirect this read outside the selected root.
+    `access.permitted` remains the sole policy owner; this only bounds
+    what text physically reaches it.
     """
+    full = Path(root, path)
     try:
-        with open(path, 'rb') as handle:
+        if full.is_symlink():
+            return ''
+        with open(full, 'rb') as handle:
             raw = handle.read(_HEADER_READ_LIMIT)
     except OSError:
         return ''
-    return raw.decode('utf-8', errors='replace')
+    text = raw.decode('utf-8', errors='replace')
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != '---':
+        return ''
+    for index in range(1, len(lines)):
+        if lines[index].strip() == '---':
+            return ''.join(lines[:index + 1])
+    return ''
 
 
 def scope_candidates(root, registry_text: str, paths) -> tuple[tuple[str, str, str], ...]:
@@ -235,10 +326,10 @@ def scope_candidates(root, registry_text: str, paths) -> tuple[tuple[str, str, s
     produced by an existing Plan), the ones that fall under a scope the
     registry actually names — resolved exclusively via
     `context_registry_entries` (no second parser) — paired with a
-    bounded host-side header read of each. An unclassifiable path (no
-    `.md` suffix, not under any registered scope) is simply never
-    included, which is what later makes `access.permitted` fail closed
-    for it on its own.
+    bounded, frontmatter-only host-side header read of each. An
+    unclassifiable path (no `.md` suffix, not under any registered
+    scope) is simply never included, which is what later makes
+    `access.permitted` fail closed for it on its own.
     """
     entries = context_registry_entries(registry_text)
     candidates = []
@@ -250,11 +341,64 @@ def scope_candidates(root, registry_text: str, paths) -> tuple[tuple[str, str, s
             if canonical is None:
                 continue
             if path == canonical or path.startswith(canonical + '/'):
-                header = _read_bounded_header(Path(root, path))
+                header = _read_frontmatter_only(root, path)
                 candidates.append((path, header, canonical))
                 break
     return tuple(candidates)
 
+
+def disclosed_paths(candidates: tuple[tuple[str, str, str], ...], *, host_read: bool,
+                     deployment: DeploymentBinding = DeploymentBinding()) -> tuple[str, ...]:
+    """Of `candidates` (`(path, header, scope_path)` triples), only the
+    ones `access.permitted` actually authorizes — called directly, per
+    path, never reimplemented. `deployment` defaults to the fail-closed
+    binding, so a caller with no trusted deployment state discloses
+    nothing restricted.
+    """
+    allowed = []
+    for path, header, scope_path in candidates:
+        if permitted(header, path=path, scope_path=scope_path, host_read=host_read,
+                     required=True, personal_owner=deployment.personal_owner,
+                     private_instance=deployment.private_instance):
+            allowed.append(path)
+    return tuple(allowed)
+
+
+def _advanced_result_lines(install_type: str, result) -> tuple[str, ...]:
+    """Product/implementation facts only — never Personal, never a
+    raw Plan object.
+    """
+    if install_type == 'git' and isinstance(result, git_update.ApplyResult):
+        if _git_apply_succeeded(result):
+            return (f'commit: {result.commit}',)
+        return (f'failure: {result.failure or "none"}',
+                f'rollback_attempted: {result.rollback_attempted}',
+                f'rollback_completed: {result.rollback_completed}')
+    if install_type == 'zip' and isinstance(result, side_by_side.MigrationResult):
+        return (f'ready: {result.ready}', f'failure: {result.failure or "none"}')
+    return ()
+
+
+def advanced_report(install_type: str, result=None, *, root=None, registry_text: str | None = None,
+                     candidate_paths=(), host_read: bool = False,
+                     deployment: DeploymentBinding = DeploymentBinding()) -> AdvancedReport:
+    """The one Advanced-tier view: safe product/result facts plus ONLY
+    the `candidate_paths` that `access.permitted` actually authorizes
+    for the given, honestly-sourced `host_read`/`deployment` inputs.
+    Calling this (or an `advanced=True`-style flag anywhere upstream)
+    authorizes nothing by itself — every Personal path still passes
+    through a real `permitted()` call, and no raw header or module body
+    ever reaches the returned object.
+    """
+    lines = _advanced_result_lines(install_type, result)
+    personal_paths: tuple[str, ...] = ()
+    if root is not None and registry_text is not None and candidate_paths:
+        candidates = scope_candidates(root, registry_text, candidate_paths)
+        personal_paths = disclosed_paths(candidates, host_read=host_read, deployment=deployment)
+    return AdvancedReport(lines=lines, personal_paths=personal_paths)
+
+
+# --- workflow orchestration -------------------------------------------------
 
 def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) -> WorkflowResult:
     plan = git_update.classify(root)
@@ -286,8 +430,8 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) 
                                git_beginner_report(plan, preview.summary, None))
 
     result = git_update.apply(root, plan, fresh_digest)
-    ready = result.validation_ran and result.validation_passed and not result.concurrent_change
-    return WorkflowResult('git', fresh_digest, ready, True,
+    succeeded = _git_apply_succeeded(result)
+    return WorkflowResult('git', fresh_digest, succeeded, succeeded,
                            git_beginner_report(plan, preview.summary, result), failure=result.failure)
 
 
@@ -323,7 +467,7 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
         return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
 
     result = side_by_side.migrate(root, destination, plan, fresh_digest, exclude=exclude)
-    return WorkflowResult('zip', fresh_digest, result.ready, True,
+    return WorkflowResult('zip', fresh_digest, result.ready, result.ready,
                            zip_beginner_report(plan, result), failure=result.failure)
 
 
@@ -342,7 +486,18 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
     a stale or absent `confirm_digest` always stays preview-only, and a
     client lacking write/local-command capability can never cause
     apply/migrate to run no matter what it passes as `confirm_digest`.
+
+    Without proven local-command capability, NOTHING in this module
+    runs at all — install-type detection, classification, and preview
+    are themselves local Git/validator subprocess operations, so a
+    client that cannot run those gets an honest no-write report
+    immediately, never a preview built on commands that could not
+    actually execute.
     """
+    if capability.can_run_local_commands is not True:
+        return WorkflowResult('unknown', None, False, False, _no_local_command_report(),
+                               failure='no_local_command_capability')
+
     install_type = detect_install_type(root, capability)
     if install_type == 'unknown':
         return WorkflowResult(
@@ -352,20 +507,3 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
     if install_type == 'git':
         return _git_workflow(root, capability, confirm_digest)
     return _zip_workflow(root, destination, capability, confirm_digest, exclude)
-
-
-def disclosed_paths(candidates: tuple[tuple[str, str, str], ...], *, host_read: bool,
-                     deployment: DeploymentBinding = DeploymentBinding()) -> tuple[str, ...]:
-    """Of `candidates` (`(path, header, scope_path)` triples), only the
-    ones `access.permitted` actually authorizes — called directly, per
-    path, never reimplemented. `deployment` defaults to the fail-closed
-    binding, so a caller with no trusted deployment state discloses
-    nothing restricted.
-    """
-    allowed = []
-    for path, header, scope_path in candidates:
-        if permitted(header, path=path, scope_path=scope_path, host_read=host_read,
-                     required=True, personal_owner=deployment.personal_owner,
-                     private_instance=deployment.private_instance):
-            allowed.append(path)
-    return tuple(allowed)

@@ -66,9 +66,15 @@ confirmed preview and actually validate it.
   change.
 - **Blocked:** if something failed validation, or the updater could not
   safely finish, it reports that honestly as a failure, never as a
-  successful update. If it already started changing things and then hit a
+  successful update — a clone update is only ever reported as applied when
+  it actually produced a real result, not just because the validators
+  happened to run. If it already started changing things and then hit a
   problem, it tells you whether it was able to safely restore your prior
   state.
+- **Archive, didn't finish:** if a side-by-side update fails partway
+  through, your original folder is still untouched, but the Assistant will
+  never say "nothing changed" — it will say plainly that the new copy did
+  not finish and is not ready to use.
 
 ## 8. Advanced detail is optional and still access-controlled
 
