@@ -443,16 +443,41 @@ automatically; the pristine target's own copy of that path is
 authoritative and untouched.
 
 Every content read of a current source path — for classification
-hashing and for the copy step alike — goes through one safe primitive
-(`_safe_read_regular`) that opens the path once with `O_NOFOLLOW`,
-confirms it is a regular file via `fstat` on that same descriptor, and
+hashing, for the copy step, and for the current registry alike — goes
+through one safe primitive (`_safe_read_regular(root, relative)`) that
+opens a dedicated fd for `root`, then one `openat(..., O_NOFOLLOW)` per
+path component from there — every intermediate directory and the final
+component alike, not merely the final one — confirms the final
+descriptor is a regular file via `fstat` on that same descriptor, and
 reads from that same descriptor; it never `lstat`s a path, confirms it
 is regular, and then separately re-opens it by pathname for the actual
-read — a path swapped for a symlink in that gap would otherwise let the
-second, independent open follow it and read an outside target. A path
-that fails this safe read (missing, a symlink, a special file, or the
-platform has no `O_NOFOLLOW` to make the check safe at all) is a
-bounded classification/migration failure, never an uncaught exception.
+read, and no intermediate directory swapped for a symlink (whether
+swapped mid-operation or simply planted in advance) can be followed
+either. A path that fails this safe read (missing, a symlink anywhere
+along it, a special file, or the platform has no `O_NOFOLLOW`/`dir_fd`
+support to make the check safe at all) is a bounded
+classification/migration failure, never an uncaught exception. The
+current registry is read through this same boundary
+(`_safe_registry_text`); a legitimately absent registry is empty, but
+one that exists and is unsafe (a symlink anywhere along its path, or a
+special file) is a bounded conflict, never silently treated as empty —
+the pristine/target registry read is exempt, since it lives inside the
+already-validated, updater-owned pristine tree, and keeps using a plain
+read.
+
+Every destination write (a new kept file, or the registry replacement)
+is root-anchored through the symmetric write-side primitives
+(`_safe_create_new_regular`, `_safe_replace_existing_regular`): each
+intermediate directory component is created-if-absent and reopened with
+`O_DIRECTORY | O_NOFOLLOW`, a kept file is created with
+`O_CREAT | O_EXCL | O_NOFOLLOW` (the pristine tree already proved the
+path does not exist, so anything found there is a concurrent change,
+never silently overwritten), and the registry is replaced through a
+single `O_RDWR | O_NOFOLLOW` descriptor that verifies the file's current
+bytes still hash to the expected pristine value before truncating and
+rewriting that same descriptor — never a separate write-mode reopen,
+which would leave its own TOCTOU gap. No destination write ever follows
+a symlink, intermediate or final, planted or swapped in at any point.
 
 The one Personal-written state outside `workspace/` is the scope
 mappings in `system/routing/context_registry.md`. Both the current and
@@ -464,7 +489,17 @@ scope or target mapping, invalid scope grammar, or a target outside
 `workspace/context/` is a conflict, never silently collapsed by
 `dict.setdefault`, since neither `validate_public` nor
 `validate_v1`'s own registry check covers every one of these target
-alias-ownership classes. A current mapping is kept only if its target
+alias-ownership classes. Ownership/duplicate comparisons use a
+canonical, trailing-slash-insensitive target identity
+(`normalize_relative(dest.rstrip('/'))`) throughout — the scope-ownership
+map, the reverse target-ownership map, duplicate detection, and the
+preserved-candidate-directory match alike — so two differently-spelled
+paths to the same directory are the same target. Every registry (target
+and current) tracks scope *occurrence*, not merely the scope's
+dict-stored value, so a scope appearing a second time is always a
+conflict even when its target is byte-identical to the first
+occurrence — an identical duplicate registration is a conflict exactly
+like a contradictory one, never carried once or twice by accident. A current mapping is kept only if its target
 is a `workspace/context/` directory actually present in the *resulting
 candidate's own file set* — the pristine target's regular files plus
 the selected current-only kept files, not the kept set alone, since a
@@ -497,18 +532,28 @@ the exact content hash the preview bound to it (never reading twice is
 not assumed safe); a mismatch stops the migration as a concurrent
 change rather than overwriting or silently accepting the new content,
 and the destination copy's own hash is verified too before it is
-accepted. Immediately before reporting the candidate ready, every
-target-owned file the migration did not intentionally rewrite is
-re-verified against that captured manifest, the one intentionally
-rewritten product file (the registry) must have exactly the expected
-reconstructed bytes, and no unexpected regular file, symlink, or special
-path may have appeared anywhere in the destination — closing the window
-between validating the destination and finishing the copy. After all of
-that, `validate_v1 --mode personal` and `validate_prompts` run against
+accepted.
+
+From that captured manifest, one exact transient expected final
+manifest is derived — never written to disk — covering every path the
+finished candidate must have: the pristine manifest, minus the registry
+entry (intentionally rewritten), plus *every kept path's own
+preview-bound content hash* (not merely an allowlist of kept paths), plus
+the registry's expected reconstructed hash. This manifest is checked for
+**exact path-set and hash equality** — not an allowlist containment
+check — twice: once immediately before, and once again immediately
+after, `validate_v1 --mode personal` and `validate_prompts` run against
 the candidate's own files (the same candidate-own-subprocess strategy
-Loop 3 uses); `validate_public` legitimately runs against the real
-destination before any Personal file enters it, but never again once
-Personal content has.
+Loop 3 uses). The second check closes the window those validators' own
+(possibly non-trivial) subprocess runtime would otherwise leave open: a
+kept file tampered with after its own copy but before a later file
+finishes, or a candidate file changed during validation while the
+validators still report success, is caught by exact-manifest equality
+either way, and reported as `ready=False`,
+`personal_validation_ran=True`, with `personal_validation_passed`
+reflecting the validators' own real result. `validate_public`
+legitimately runs against the real destination before any Personal file
+enters it, but never again once Personal content has.
 
 Host code may read and hash full Personal/restricted/deny file bytes to
 classify and copy them — this is the design's permitted opaque host-side

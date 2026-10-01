@@ -458,6 +458,134 @@ class SideBySideRegistryTests(unittest.TestCase):
             self.assertTrue(any(c.startswith('target_conflict:') for c in result.plan.registry.conflicts))
             self.assertEqual((), result.plan.registry.carried)
 
+    def test_exact_duplicate_target_registry_entry_is_a_conflict(self):
+        """The TARGET's own registry lists the exact same scope→target
+        pair twice. A duplicate scope occurrence is a conflict
+        regardless of whether its target also matches the first one.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    self._registry_text([
+                        ('alpha_scope', 'workspace/context/alpha'),
+                        ('alpha_scope', 'workspace/context/alpha'),
+                    ]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any(
+                c.startswith('target_registry_scope_conflict:') for c in result.plan.registry.conflicts))
+            self.assertEqual((), result.plan.registry.carried)
+
+    def test_exact_duplicate_current_registry_entry_is_a_conflict_not_two_carries(self):
+        """The CURRENT registry lists the exact same preserved
+        scope→target pair twice. It must be rejected as a conflict, not
+        carried once (or twice).
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md': self._registry_text([]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/context/my_project/note.md': 'kept content\n',
+                'system/routing/context_registry.md':
+                    self._registry_text([
+                        ('my_project', 'workspace/context/my_project'),
+                        ('my_project', 'workspace/context/my_project'),
+                    ]),
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any(c.startswith('scope_conflict:') for c in result.plan.registry.conflicts))
+            self.assertEqual((), result.plan.registry.carried)
+
+    def test_target_registry_trailing_slash_alias_of_already_claimed_scope_is_a_conflict(self):
+        """The TARGET registry lists the same scope twice, the second
+        occurrence spelled with a trailing slash — same canonical
+        target identity, so still a duplicate-scope conflict, not two
+        independent mappings.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    self._registry_text([
+                        ('alpha_scope', 'workspace/context/a'),
+                        ('alpha_scope', 'workspace/context/a/'),
+                    ]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any(
+                c.startswith('target_registry_scope_conflict:') for c in result.plan.registry.conflicts))
+            self.assertEqual((), result.plan.registry.carried)
+
+    def test_two_different_scopes_claiming_trailing_slash_variants_of_one_target_is_a_conflict(self):
+        """Two DIFFERENT target-registry scopes spell the SAME target
+        directory differently (one with a trailing slash) — canonical
+        target identity must still treat this as one contested target,
+        not two independently-owned ones.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    self._registry_text([
+                        ('alpha_scope', 'workspace/context/shared'),
+                        ('beta_scope', 'workspace/context/shared/'),
+                    ]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any(
+                c.startswith('target_registry_target_conflict:') for c in result.plan.registry.conflicts))
+            self.assertEqual((), result.plan.registry.carried)
+
+    def test_current_registry_hidden_behind_a_symlink_is_never_read(self):
+        """The current installation's own registry path is a symlink
+        to an outside secret file. It must never be parsed as the
+        current registry's content (silently treated as empty would be
+        just as wrong as reading through it) — it is a bounded unsafe
+        condition that blocks the migration.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md': self._registry_text([]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/placeholder2.md': 'x\n'})
+            outside = Path(workdir, 'outside_registry.md')
+            outside.write_text(self._registry_text([('leaked_scope', 'workspace/context/leaked')]))
+            registry_path = Path(current_root, 'system', 'routing', 'context_registry.md')
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(outside, registry_path)
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertNotIn(
+                side_by_side.RegistryMapping('leaked_scope', 'workspace/context/leaked'),
+                result.plan.registry.carried)
+            self.assertIn('unsafe_registry', result.plan.registry.conflicts)
+
     def test_current_system_registry_file_not_copied_wholesale_and_round_trips(self):
         with tempfile.TemporaryDirectory() as workdir:
             files = _base_target_files({
@@ -513,7 +641,9 @@ class SideBySideFinalValidationTests(unittest.TestCase):
         the destination-pristine-validation fix) — what must never
         happen is it running AFTER the first Personal/current file has
         been written into that destination. Tracked by event order,
-        not by "never touches destination at all".
+        using `_during_copy` (implementation-independent) rather than
+        patching whatever low-level write primitive the copy happens
+        to use internally.
         """
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
@@ -524,7 +654,6 @@ class SideBySideFinalValidationTests(unittest.TestCase):
             result = _preview(current_root, destination, target_dir, target_sha)
 
             real_run = subprocess.run
-            real_write_bytes = Path.write_bytes
             events = []
 
             def run_spy(args, *a, **kw):
@@ -532,15 +661,13 @@ class SideBySideFinalValidationTests(unittest.TestCase):
                     events.append(('run', Path(args[2]).name, Path(args[2])))
                 return real_run(args, *a, **kw)
 
-            def write_spy(self_path, data, *a, **kw):
-                if destination in self_path.parents and 'workspace' in self_path.parts:
-                    events.append(('write', self_path.name, self_path))
-                return real_write_bytes(self_path, data, *a, **kw)
+            def before_copy(relative):
+                events.append(('write', relative, None))
 
-            with mock.patch.object(side_by_side.subprocess, 'run', run_spy), \
-                 mock.patch.object(Path, 'write_bytes', write_spy):
+            with mock.patch.object(side_by_side.subprocess, 'run', run_spy):
                 migrate_result = _migrate(
-                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                    _during_copy=before_copy)
 
             self.assertTrue(migrate_result.ready)
             invoked_names = {name for _kind, name, _path in events if _kind == 'run'}
@@ -679,7 +806,9 @@ class SideBySidePrivacyTests(unittest.TestCase):
 
     def test_host_side_hashing_of_restricted_content_is_allowed_and_never_leaks(self):
         with tempfile.TemporaryDirectory() as workdir:
-            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
+                'system/routing/context_registry.md': SideBySideRegistryTests._registry_text([]),
+            }))
             current_root = Path(workdir, 'current')
             _write_tree(current_root, {
                 'workspace/context/personal/deny_module.md':
@@ -758,9 +887,9 @@ class SideBySideDestinationIntegrityTests(unittest.TestCase):
     def test_destination_target_owned_file_changed_during_copy_still_reports_ready(self):
         """Two kept files; between copying the first and the second, an
         external process tampers with an UNRELATED target-owned file
-        already present in the real destination. No new test seam
-        needed: `Path.write_bytes` is patched to tamper once, right
-        after the first kept-file write lands.
+        already present in the real destination, injected through the
+        `_during_copy` seam (the per-kept-file hook, independent of
+        which low-level primitive the copy itself uses).
         """
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
@@ -773,22 +902,153 @@ class SideBySideDestinationIntegrityTests(unittest.TestCase):
             result = _preview(current_root, destination, target_dir, target_sha)
             self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
 
-            real_write_bytes = Path.write_bytes
-            state = {'count': 0}
+            def tamper_before_b(relative):
+                if relative == 'workspace/b.md':
+                    Path(destination, 'guides', 'placeholder.md').write_text('tampered\n')
 
-            def tampering_write_bytes(self_path, data, *a, **kw):
-                result_value = real_write_bytes(self_path, data, *a, **kw)
-                if self_path.name == 'a.md' and 'dest' in self_path.parts:
-                    state['count'] += 1
-                    if state['count'] == 1:
-                        Path(destination, 'guides', 'placeholder.md').write_text('tampered\n')
-                return result_value
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=tamper_before_b)
 
-            with mock.patch.object(Path, 'write_bytes', tampering_write_bytes):
+            self.assertFalse(migrate_result.ready)
+
+    def test_kept_file_tampered_after_its_own_copy_while_a_later_file_still_copies(self):
+        """Two kept files. Right after the FIRST is copied, its own
+        destination copy (not the source) is modified while the SECOND
+        is still being copied. A per-file post-copy check alone would
+        miss this, since it only re-verifies at the moment of its own
+        copy; the final manifest check (covering every kept path, not
+        just the one just written) must still catch it.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/a.md': 'kept a\n',
+                'workspace/b.md': 'kept b\n',
+            })
+            destination = Path(workdir, 'dest')
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
+
+            def tamper_a_before_b(relative):
+                if relative == 'workspace/b.md':
+                    Path(destination, 'workspace', 'a.md').write_text('tampered a\n')
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=tamper_a_before_b)
+
+            self.assertFalse(migrate_result.ready)
+            self.assertEqual('concurrent_change', migrate_result.failure)
+
+    def test_candidate_tampered_during_the_final_personal_validators_is_detected(self):
+        """After the candidate reaches final Personal validation (and
+        the validators still return success), an external process
+        modifies a kept workspace file. The pre-validator integrity
+        check alone cannot see this, since it runs BEFORE the
+        validators; a second check immediately before `ready=True` is
+        required to catch tampering that lands during their own
+        (possibly non-trivial) runtime.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/mine.md': 'note\n'})
+            destination = Path(workdir, 'dest')
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/mine.md',), result.plan.kept)
+
+            real_validate_candidate = side_by_side.validate_candidate
+
+            def tampering_validate_candidate(dest):
+                outcome = real_validate_candidate(dest)
+                Path(dest, 'workspace', 'mine.md').write_text('tampered during validation\n')
+                return outcome
+
+            with mock.patch.object(side_by_side, 'validate_candidate', tampering_validate_candidate):
                 migrate_result = _migrate(
                     current_root, destination, target_dir, target_sha, result.plan, result.digest)
 
             self.assertFalse(migrate_result.ready)
+            self.assertTrue(migrate_result.personal_validation_ran)
+            self.assertTrue(migrate_result.personal_validation_passed)
+            self.assertEqual('concurrent_change', migrate_result.failure)
+
+    def test_destination_intermediate_directory_symlink_escape_on_kept_file_write_is_refused(self):
+        """Target ships no `workspace/context/`; current has a kept
+        file `workspace/context/mine.md`. Right before that file would
+        be copied, `destination/workspace/context` is swapped for a
+        symlink to an outside directory. The write must never land
+        through that symlink — root-anchored directory creation refuses
+        to accept a symlink as a directory component.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/context/mine.md': 'kept context\n'})
+            destination = Path(workdir, 'dest')
+            outside = Path(workdir, 'outside_context')
+            outside.mkdir()
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/context/mine.md',), result.plan.kept)
+
+            def swap_context_for_symlink(relative):
+                if relative == 'workspace/context/mine.md':
+                    context_dir = Path(destination, 'workspace', 'context')
+                    if context_dir.is_dir():
+                        context_dir.rmdir()
+                    os.symlink(outside, context_dir)
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=swap_context_for_symlink)
+
+            self.assertFalse(migrate_result.ready)
+            self.assertFalse((outside / 'mine.md').exists())
+
+    def test_destination_registry_symlink_write_escape_is_refused(self):
+        """Right before the registry replacement write, the
+        destination's `system/routing/context_registry.md` is swapped
+        for a symlink to an outside file. The replacement must never
+        follow it: it must fail closed rather than writing through the
+        symlink into the outside file.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([]),
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/context/mine/note.md': 'kept\n',
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('mine', 'workspace/context/mine')]),
+            })
+            destination = Path(workdir, 'dest')
+            outside_file = Path(workdir, 'outside_registry.md')
+            outside_file.write_text('outside before\n')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/context/mine/note.md',), result.plan.kept)
+            self.assertEqual(
+                (side_by_side.RegistryMapping('mine', 'workspace/context/mine'),),
+                result.plan.registry.carried)
+
+            def swap_registry_for_symlink(relative):
+                if relative == 'workspace/context/mine/note.md':
+                    registry_path = Path(destination, 'system', 'routing', 'context_registry.md')
+                    registry_path.unlink()
+                    os.symlink(outside_file, registry_path)
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=swap_registry_for_symlink)
+
+            self.assertFalse(migrate_result.ready)
+            self.assertEqual('outside before\n', outside_file.read_text())
 
 
 class SideBySideSafeReadTests(unittest.TestCase):
@@ -824,7 +1084,7 @@ class SideBySideSafeReadTests(unittest.TestCase):
             outside.write_text(self._SECRET + '\n')
             os.symlink(outside, path)
 
-            result = side_by_side._safe_read_regular(path)
+            result = side_by_side._safe_read_regular(Path(workdir), 'a.md')
 
             self.assertIsNone(result)
 
@@ -832,11 +1092,33 @@ class SideBySideSafeReadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir, 'a.md')
             path.write_text('real content\n')
-            self.assertEqual(b'real content\n', side_by_side._safe_read_regular(path))
+            self.assertEqual(b'real content\n', side_by_side._safe_read_regular(Path(workdir), 'a.md'))
 
     def test_safe_read_regular_returns_none_for_a_missing_path(self):
         with tempfile.TemporaryDirectory() as workdir:
-            self.assertIsNone(side_by_side._safe_read_regular(Path(workdir, 'absent.md')))
+            self.assertIsNone(side_by_side._safe_read_regular(Path(workdir), 'absent.md'))
+
+    def test_safe_read_regular_rejects_an_intermediate_directory_symlink(self):
+        """The defect this whole correction targets: `O_NOFOLLOW` on
+        only the FINAL component does not stop an intermediate
+        directory from being a symlink out of the selected root.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            (root / 'workspace').mkdir(parents=True)
+            (root / 'workspace' / 'private').mkdir()
+            (root / 'workspace' / 'private' / 'a.md').write_text('inside\n')
+            outside = Path(workdir, 'outside')
+            outside.mkdir()
+            (outside / 'a.md').write_text(self._SECRET + '\n')
+
+            import shutil
+            shutil.rmtree(root / 'workspace' / 'private')
+            os.symlink(outside, root / 'workspace' / 'private')
+
+            result = side_by_side._safe_read_regular(root, 'workspace/private/a.md')
+
+            self.assertIsNone(result)
 
 
 class SideBySideScopePreservationTests(unittest.TestCase):
