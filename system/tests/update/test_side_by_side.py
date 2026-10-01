@@ -58,11 +58,12 @@ def _preview(current_root, destination, target_dir, target_sha, exclude=frozense
         return side_by_side.preview(current_root, destination, exclude=exclude)
 
 
-def _migrate(current_root, destination, target_dir, target_sha, plan, digest, exclude=frozenset()):
+def _migrate(current_root, destination, target_dir, target_sha, plan, digest, exclude=frozenset(),
+             **kwargs):
     with mock.patch.object(side_by_side.target, 'resolve',
                             return_value=TargetSnapshot(target_sha, 'main', 'test')), \
          mock.patch.object(side_by_side.target, 'CANONICAL_URL', 'file://' + target_dir):
-        return side_by_side.migrate(current_root, destination, plan, digest, exclude=exclude)
+        return side_by_side.migrate(current_root, destination, plan, digest, exclude=exclude, **kwargs)
 
 
 def _hash_tree(root):
@@ -506,7 +507,14 @@ class SideBySideFinalValidationTests(unittest.TestCase):
             self.assertFalse(migrate_result.personal_validation_passed)
             self.assertEqual('personal_validation_failed', migrate_result.failure)
 
-    def test_validate_public_not_run_after_personal_copy(self):
+    def test_validate_public_never_runs_after_personal_copy_has_begun(self):
+        """`validate_public` legitimately runs against the real
+        destination too now (before any Personal file enters it, per
+        the destination-pristine-validation fix) — what must never
+        happen is it running AFTER the first Personal/current file has
+        been written into that destination. Tracked by event order,
+        not by "never touches destination at all".
+        """
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
             current_root = Path(workdir, 'current')
@@ -516,29 +524,34 @@ class SideBySideFinalValidationTests(unittest.TestCase):
             result = _preview(current_root, destination, target_dir, target_sha)
 
             real_run = subprocess.run
-            invoked = []
+            real_write_bytes = Path.write_bytes
+            events = []
 
-            def spy(args, *a, **kw):
+            def run_spy(args, *a, **kw):
                 if args and args[0] == side_by_side.sys.executable:
-                    invoked.append(Path(args[2]))
+                    events.append(('run', Path(args[2]).name, Path(args[2])))
                 return real_run(args, *a, **kw)
 
-            with mock.patch.object(side_by_side.subprocess, 'run', spy):
+            def write_spy(self_path, data, *a, **kw):
+                if destination in self_path.parents and 'workspace' in self_path.parts:
+                    events.append(('write', self_path.name, self_path))
+                return real_write_bytes(self_path, data, *a, **kw)
+
+            with mock.patch.object(side_by_side.subprocess, 'run', run_spy), \
+                 mock.patch.object(Path, 'write_bytes', write_spy):
                 migrate_result = _migrate(
                     current_root, destination, target_dir, target_sha, result.plan, result.digest)
 
             self.assertTrue(migrate_result.ready)
-            invoked_names = {path.name for path in invoked}
+            invoked_names = {name for _kind, name, _path in events if _kind == 'run'}
             self.assertIn('validate_v1.py', invoked_names)
             self.assertIn('validate_prompts.py', invoked_names)
-            # validate_public may legitimately run again during migrate()'s
-            # own pristine re-check (always BEFORE any Personal file is
-            # copied, against a throwaway recheck directory) — what must
-            # never happen is validate_public running against the REAL
-            # destination once Personal content has entered it.
-            for path in invoked:
-                if path.name == 'validate_public.py':
-                    self.assertNotIn(destination, path.parents)
+            write_indices = [i for i, event in enumerate(events) if event[0] == 'write']
+            self.assertTrue(write_indices)
+            first_personal_write = write_indices[0]
+            for i, (kind, name, path) in enumerate(events):
+                if kind == 'run' and name == 'validate_public.py' and destination in path.parents:
+                    self.assertLess(i, first_personal_write)
 
 
 class SideBySidePreviewStalenessTests(unittest.TestCase):
@@ -646,28 +659,16 @@ class SideBySideCopyTimeTests(unittest.TestCase):
             result = _preview(current_root, destination, target_dir, target_sha)
             self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
 
-            real_run = subprocess.run
-            copied_first = {'done': False}
+            # Simulate: after the copy loop has already copied
+            # workspace/a.md, but immediately before its own turn, an
+            # external process edits workspace/b.md.
+            def tamper_before_b(relative):
+                if relative == 'workspace/b.md':
+                    Path(current_root, 'workspace', 'b.md').write_text('tampered during copy\n')
 
-            def spy(args, *a, **kw):
-                return real_run(args, *a, **kw)
-
-            # Simulate: after classify_workspace's own fresh read inside
-            # migrate() but before the copy loop reaches workspace/b.md,
-            # an external process edits it.
-            original_read_bytes = Path.read_bytes
-            state = {'count': 0}
-
-            def tampering_read_bytes(self_path, *a, **kw):
-                if self_path.name == 'b.md' and 'current' in self_path.parts:
-                    state['count'] += 1
-                    if state['count'] == 2:
-                        self_path.write_text('tampered during copy\n')
-                return original_read_bytes(self_path, *a, **kw)
-
-            with mock.patch.object(Path, 'read_bytes', tampering_read_bytes):
-                migrate_result = _migrate(
-                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=tamper_before_b)
 
             self.assertEqual('concurrent_change', migrate_result.failure)
             self.assertFalse(migrate_result.ready)
@@ -712,6 +713,207 @@ class SideBySidePrivacyTests(unittest.TestCase):
             # Plan/Preview/Result surfaces must stay content-free.
             self.assertIn(self._SECRET,
                           Path(destination, 'workspace', 'context', 'personal', 'deny_module.md').read_text())
+
+
+class SideBySideDestinationIntegrityTests(unittest.TestCase):
+    def test_real_destination_pristine_modification_before_copy_is_detected(self):
+        """A target-owned file in the REAL destination is tampered with
+        right after `build_pristine(destination, ...)` returns, before
+        any Personal/current file is copied — no new test seam needed:
+        `build_pristine` is patched to tamper immediately after the real
+        (unpatched) build succeeds, for the real `destination` path
+        specifically (never for the throwaway `recheck_pristine`).
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/mine.md': 'note\n'})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertIsNone(result.plan.blocked)
+
+            real_build_pristine = side_by_side.build_pristine
+
+            def tampering_build_pristine(dest, commit):
+                ok = real_build_pristine(dest, commit)
+                if ok and Path(dest) == destination:
+                    Path(destination, 'guides', 'placeholder.md').write_text('tampered\n')
+                return ok
+
+            with mock.patch.object(side_by_side, 'build_pristine', tampering_build_pristine):
+                migrate_result = _migrate(
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+
+            # The tamper is detected and the candidate is never ready;
+            # the destination itself is NOT reverted/cleaned — it was
+            # never promised to be, only that Personal data never
+            # enters it on top of an unverified pristine tree.
+            self.assertFalse(migrate_result.ready)
+            self.assertIn(migrate_result.failure,
+                          ('stale_state', 'destination_pristine_validation_failed'))
+            self.assertFalse(migrate_result.personal_validation_ran)
+            self.assertFalse(Path(destination, 'workspace', 'mine.md').exists())
+
+    def test_destination_target_owned_file_changed_during_copy_still_reports_ready(self):
+        """Two kept files; between copying the first and the second, an
+        external process tampers with an UNRELATED target-owned file
+        already present in the real destination. No new test seam
+        needed: `Path.write_bytes` is patched to tamper once, right
+        after the first kept-file write lands.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/a.md': 'kept a\n',
+                'workspace/b.md': 'kept b\n',
+            })
+            destination = Path(workdir, 'dest')
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
+
+            real_write_bytes = Path.write_bytes
+            state = {'count': 0}
+
+            def tampering_write_bytes(self_path, data, *a, **kw):
+                result_value = real_write_bytes(self_path, data, *a, **kw)
+                if self_path.name == 'a.md' and 'dest' in self_path.parts:
+                    state['count'] += 1
+                    if state['count'] == 1:
+                        Path(destination, 'guides', 'placeholder.md').write_text('tampered\n')
+                return result_value
+
+            with mock.patch.object(Path, 'write_bytes', tampering_write_bytes):
+                migrate_result = _migrate(
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+
+            self.assertFalse(migrate_result.ready)
+
+
+class SideBySideSafeReadTests(unittest.TestCase):
+    _SECRET = 'OUTSIDE-SYMLINK-RACE-SECRET'
+
+    def test_lstat_then_reopen_pattern_is_race_prone_in_isolation(self):
+        """Demonstrates the vulnerability class the current `migrate()`
+        copy loop uses (`lstat` a path, confirm regular, THEN
+        separately re-open it by pathname for `read_bytes()`): if the
+        path is swapped for a symlink in between, the independent
+        re-open follows it and reads the outside target. This is
+        exactly the TOCTOU window a same-descriptor safe-open-and-read
+        primitive closes.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            path = Path(workdir, 'a.md')
+            path.write_text('original\n')
+            outside = Path(workdir, 'outside.md')
+            outside.write_text(self._SECRET + '\n')
+
+            st = path.lstat()
+            self.assertTrue(stat.S_ISREG(st.st_mode))
+            path.unlink()
+            os.symlink(outside, path)  # the race: swapped between check and read
+            data = path.read_bytes()  # the vulnerable pattern's separate re-open
+
+            self.assertIn(self._SECRET.encode(), data)
+
+    def test_safe_read_regular_refuses_a_symlink_and_never_follows_it(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            path = Path(workdir, 'a.md')
+            outside = Path(workdir, 'outside.md')
+            outside.write_text(self._SECRET + '\n')
+            os.symlink(outside, path)
+
+            result = side_by_side._safe_read_regular(path)
+
+            self.assertIsNone(result)
+
+    def test_safe_read_regular_reads_a_genuine_regular_file(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            path = Path(workdir, 'a.md')
+            path.write_text('real content\n')
+            self.assertEqual(b'real content\n', side_by_side._safe_read_regular(path))
+
+    def test_safe_read_regular_returns_none_for_a_missing_path(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            self.assertIsNone(side_by_side._safe_read_regular(Path(workdir, 'absent.md')))
+
+
+class SideBySideScopePreservationTests(unittest.TestCase):
+    def test_candidate_present_scope_with_no_current_only_kept_file_is_wrongly_dropped(self):
+        """The scope directory `workspace/context/shared` is present in
+        the resulting candidate purely because T already ships an
+        identical file there — there is no current-ONLY kept file under
+        it at all. The design says this still counts as preserved.
+        """
+        registry_text = SideBySideRegistryTests._registry_text([])
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'workspace/context/shared/module.md': 'shipped content\n',
+                'system/routing/context_registry.md': registry_text,
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/context/shared/module.md': 'shipped content\n',  # identical overlap
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('shared', 'workspace/context/shared')]),
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertEqual((), result.plan.kept)
+            self.assertIn('workspace/context/shared/module.md', result.plan.identical)
+            self.assertIn(
+                side_by_side.RegistryMapping('shared', 'workspace/context/shared'),
+                result.plan.registry.carried)
+
+
+class SideBySideTargetRegistryValidationTests(unittest.TestCase):
+    def test_malformed_target_registry_scope_ownership_is_not_silently_accepted(self):
+        """The TARGET's own registry claims one scope name for two
+        different directories — a malformed/ambiguous mapping that
+        `setdefault`-based loading would silently collapse to whichever
+        entry it saw first.
+        """
+        target_registry = (
+            "# context_registry\n\n## registered_scopes\n\n"
+            "```text\nalpha\n→ workspace/context/alpha\nalpha\n→ workspace/context/alpha_v2\n```\n"
+        )
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md': target_registry,
+                'workspace/context/alpha/x.md': 'a\n',
+                'workspace/context/alpha_v2/y.md': 'b\n',
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            current_root.mkdir()
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any('target_registry' in c for c in result.plan.registry.conflicts))
+
+    def test_two_target_scopes_claiming_one_target_is_a_conflict(self):
+        target_registry = (
+            "# context_registry\n\n## registered_scopes\n\n"
+            "```text\nalpha\n→ workspace/context/shared\nbeta\n→ workspace/context/shared\n```\n"
+        )
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md': target_registry,
+                'workspace/context/shared/x.md': 'a\n',
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            current_root.mkdir()
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertTrue(any('target_registry' in c for c in result.plan.registry.conflicts))
 
 
 if __name__ == '__main__':

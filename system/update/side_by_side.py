@@ -232,8 +232,65 @@ def validate_candidate(destination: Path) -> tuple[bool, bool]:
     return personal.returncode == 0, prompts.returncode == 0
 
 
-def _hash_file(path: Path) -> str:
-    return sha256(path.read_bytes()).hexdigest()
+def _safe_read_regular(path: Path) -> bytes | None:
+    """Read `path`'s content from the EXACT object a single no-follow
+    open resolved, never `lstat`-then-separately-reopen-by-pathname: a
+    symlink swapped in between those two steps would make the second,
+    independent open follow it and read an outside target. `os.open`
+    with `O_NOFOLLOW` resolves the path once; `fstat` on that SAME
+    descriptor (not a fresh `lstat` on the pathname) confirms it is a
+    regular file; the bytes are read from that same descriptor, so
+    whatever is read is provably the object that was verified, never a
+    file reached after the fact through a swapped symlink. Returns
+    `None` — never raises — for any expected `OSError` (missing,
+    permission denied, is itself a symlink, not a regular file, etc.)
+    or if this platform has no `O_NOFOLLOW` to make the check safe at
+    all, so an unsafe/concurrent/unreadable source is always a bounded
+    classification/migration failure, never an uncaught exception that
+    could carry a Personal path.
+    """
+    nofollow = getattr(os, 'O_NOFOLLOW', None)
+    if nofollow is None:
+        return None
+    try:
+        fd = os.open(str(path), os.O_RDONLY | nofollow)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None
+        with os.fdopen(fd, 'rb') as handle:
+            return handle.read()
+    except OSError:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+
+
+def _hash_file(path: Path) -> str | None:
+    data = _safe_read_regular(path)
+    if data is None:
+        return None
+    return sha256(data).hexdigest()
+
+
+def _tree_manifest(root: Path) -> dict[str, str]:
+    """`{relative_posix_path: content_hash}` for every regular file
+    under `root`, read via `_safe_read_regular`; a path that fails that
+    safe read (unreadable/raced/not actually regular by the time it is
+    opened) is simply omitted — never silently treated as empty or as
+    a cache-coherent value.
+    """
+    files, _unsafe = _scan_tree(root)
+    manifest = {}
+    for relative, path in files.items():
+        digest = _hash_file(path)
+        if digest is not None:
+            manifest[relative] = digest
+    return manifest
 
 
 def _fingerprint_tree(root: Path) -> str:
@@ -242,8 +299,8 @@ def _fingerprint_tree(root: Path) -> str:
     for "has the materialized pristine distribution itself changed",
     bound into the preview digest.
     """
-    files, _unsafe = _scan_tree(root)
-    lines = [f'{relative}:{_hash_file(path)}' for relative, path in sorted(files.items())]
+    manifest = _tree_manifest(root)
+    lines = [f'{relative}:{digest}' for relative, digest in sorted(manifest.items())]
     return sha256('\n'.join(lines).encode('utf-8')).hexdigest()
 
 
@@ -253,39 +310,70 @@ def _read_text_or_empty(path: Path) -> str:
     return path.read_text(encoding='utf-8') if path.is_file() else ''
 
 
-def _registry_plan(current_root: Path, pristine_root: Path, kept_workspace: frozenset[str]) -> RegistryPlan:
+def _validated_target_registry(target_entries) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """Validate the TARGET registry's own entries before trusting them
+    as the carry-over baseline: `validate_public`/`validate_v1` do not
+    cover every ownership-conflict class this loop depends on (target
+    alias ownership in particular), so a duplicate or ambiguous target
+    scope/target mapping is reported as a conflict here rather than
+    silently collapsed by `dict.setdefault`. A malformed entry (bad
+    scope grammar, or a target outside `workspace/context/`, including
+    an unsafe/traversal-shaped one) is also a conflict and is excluded
+    from the accepted maps entirely.
+    """
+    scope_to_target: dict[str, str] = {}
+    target_to_scope: dict[str, str] = {}
+    conflicts: list[str] = []
+    for scope, dest in target_entries:
+        if not SCOPE_RE.fullmatch(scope):
+            conflicts.append(f'invalid_target_scope:{scope}')
+            continue
+        normalized = normalize_relative(dest.rstrip('/'))
+        if normalized is None or not normalized.startswith('workspace/context/'):
+            conflicts.append(f'invalid_target_mapping:{scope}')
+            continue
+        existing_target = scope_to_target.get(scope)
+        if existing_target is not None and existing_target != dest:
+            conflicts.append(f'target_registry_scope_conflict:{scope}')
+            continue
+        existing_scope = target_to_scope.get(dest)
+        if existing_scope is not None and existing_scope != scope:
+            conflicts.append(f'target_registry_target_conflict:{dest}')
+            continue
+        scope_to_target[scope] = dest
+        target_to_scope[dest] = scope
+    return scope_to_target, target_to_scope, conflicts
+
+
+def _registry_plan(current_root: Path, pristine_root: Path, candidate_paths: frozenset[str]) -> RegistryPlan:
     """Read both registries exclusively with `context_registry_entries`
     (never a second parser), keep only current mappings whose target is
-    a preserved `workspace/context/` directory, and fail closed on a
-    genuine scope/target conflict rather than silently choosing either
-    side.
+    a `workspace/context/` directory actually present in the resulting
+    candidate's own file set, and fail closed on a genuine scope/target
+    conflict — within current entries, or against a validated target
+    registry — rather than silently choosing either side.
     """
     current_text = _read_text_or_empty(current_root / _REGISTRY_RELATIVE)
     target_text = _read_text_or_empty(pristine_root / _REGISTRY_RELATIVE)
     current_entries = context_registry_entries(current_text)
     target_entries = context_registry_entries(target_text)
 
-    accepted_scope_to_target: dict[str, str] = {}
-    accepted_target_to_scope: dict[str, str] = {}
-    for scope, dest in target_entries:
-        accepted_scope_to_target.setdefault(scope, dest)
-        accepted_target_to_scope.setdefault(dest, scope)
+    accepted_scope_to_target, accepted_target_to_scope, conflicts = _validated_target_registry(target_entries)
     provided_by_target = set(accepted_scope_to_target.items())
 
     carried: list[RegistryMapping] = []
     dropped: list[RegistryMapping] = []
-    conflicts: list[str] = []
 
     for scope, dest in current_entries:
         if not SCOPE_RE.fullmatch(scope):
             conflicts.append(f'invalid_scope:{scope}')
             continue
-        normalized = dest.rstrip('/')
-        if not normalized.startswith('workspace/context/'):
+        normalized = normalize_relative(dest.rstrip('/'))
+        if normalized is None or not normalized.startswith('workspace/context/'):
             dropped.append(RegistryMapping(scope, dest))
             continue
         preserved = any(
-            path == normalized or path.startswith(normalized + '/') for path in kept_workspace)
+            path == normalized or path.startswith(normalized + '/') for path in candidate_paths)
         if not preserved:
             dropped.append(RegistryMapping(scope, dest))
             continue
@@ -341,7 +429,9 @@ def classify_workspace(current_root: Path, pristine_root: Path,
     tree. No Git baseline exists for this path, so classification never
     infers history/authorship: a current-only `workspace/` file is
     reported as kept-from-current, never as "user-created"; equality is
-    decided by content hash only, never mtime/size.
+    decided by content hash only, never mtime/size, read through the
+    same no-follow safe primitive the copy step uses, so classification
+    itself can never be tricked into following a raced symlink either.
     """
     current_root = Path(current_root)
     pristine_root = Path(pristine_root)
@@ -358,11 +448,21 @@ def classify_workspace(current_root: Path, pristine_root: Path,
     conflicts: list[str] = []
     manual_resolution: list[str] = []
     excluded: list[str] = []
+    unsafe_late: list[str] = []
 
     for relative, absolute in current_files.items():
         area = relative.split('/', 1)[0]
-        if relative in pristine_files:
-            same = _hash_file(absolute) == _hash_file(pristine_files[relative])
+        current_hash = _hash_file(absolute)
+        if current_hash is None:
+            unsafe_late.append(relative)
+            continue
+        pristine_path = pristine_files.get(relative)
+        if pristine_path is not None:
+            pristine_hash = _hash_file(pristine_path)
+            if pristine_hash is None:
+                unsafe_late.append(relative)
+                continue
+            same = current_hash == pristine_hash
             if area == 'workspace':
                 (identical if same else conflicts).append(relative)
             elif not same:
@@ -372,11 +472,18 @@ def classify_workspace(current_root: Path, pristine_root: Path,
                 excluded.append(relative)
             else:
                 kept.append(relative)
-                kept_hashes.append((relative, _hash_file(absolute)))
+                kept_hashes.append((relative, current_hash))
         else:
             manual_resolution.append(relative)
 
-    registry = _registry_plan(current_root, pristine_root, frozenset(kept))
+    # The resulting candidate's own file set — what a registry scope
+    # directory being "preserved" actually means — is the pristine
+    # target's regular files plus the current-only workspace files
+    # selected to be kept, not the kept set alone: a scope already
+    # shipped by T, or identically present on both sides, is just as
+    # preserved as one that only exists because of a kept file.
+    candidate_paths = frozenset(pristine_files) | frozenset(kept)
+    registry = _registry_plan(current_root, pristine_root, candidate_paths)
 
     return SideBySidePlan(
         kept=tuple(sorted(kept)),
@@ -384,7 +491,7 @@ def classify_workspace(current_root: Path, pristine_root: Path,
         identical=tuple(sorted(identical)),
         conflicts=tuple(sorted(conflicts)),
         manual_resolution=tuple(sorted(manual_resolution)),
-        rejected_unsafe=tuple(sorted(set(current_unsafe))),
+        rejected_unsafe=tuple(sorted(set(current_unsafe) | set(unsafe_late))),
         excluded=tuple(sorted(excluded)),
         registry=registry,
     )
@@ -445,12 +552,57 @@ def preview(current_root, destination, exclude: frozenset[str] = frozenset()) ->
 
 # --- migrate ---------------------------------------------------------------
 
+def _destination_integrity_ok(destination: Path, pristine_manifest: dict[str, str],
+                                kept_paths: tuple[str, ...], expected_registry_hash: str) -> bool:
+    """Verify, immediately before reporting a migration ready, that
+    every target-owned file migration did not intentionally rewrite
+    still has exactly the hash captured right after the real
+    destination's own pristine build/validation, that the one
+    intentionally-rewritten product file (the registry) has exactly
+    the expected reconstructed bytes, and that no unexpected regular
+    file, symlink, or special path has appeared anywhere.
+    """
+    current_files, unsafe = _scan_tree(destination)
+    if unsafe:
+        return False
+    registry_rel = _REGISTRY_RELATIVE.as_posix()
+    for relative, expected_hash in pristine_manifest.items():
+        if relative == registry_rel:
+            continue
+        current_path = current_files.get(relative)
+        if current_path is None or _hash_file(current_path) != expected_hash:
+            return False
+    registry_path = current_files.get(registry_rel)
+    if registry_path is None or _hash_file(registry_path) != expected_registry_hash:
+        return False
+    allowed_new = set(kept_paths) | {registry_rel}
+    for relative in current_files:
+        if relative not in pristine_manifest and relative not in allowed_new:
+            return False
+    return True
+
+
 def migrate(current_root, destination, plan: SideBySidePlan, digest: str,
-            exclude: frozenset[str] = frozenset()) -> MigrationResult:
+            exclude: frozenset[str] = frozenset(), _during_copy=None) -> MigrationResult:
     """Advance from a confirmed preview to a finished side-by-side
     candidate. Never trusts `plan`/`digest`: re-resolves `T`, rebuilds
     and revalidates the pristine distribution, and reclassifies the
     current installation before touching the real destination at all.
+
+    The REAL destination's own just-built pristine tree is itself
+    validated and fingerprint-checked before any Personal/current file
+    enters it — validating only the throwaway recheck tree is not
+    equivalent, since the real destination is a separate extraction
+    that could itself be concurrently tampered with. Immediately
+    before reporting `ready=True`, every target-owned file the
+    migration did not intentionally rewrite is re-verified against the
+    manifest captured right after that check, and no unexpected path
+    may have appeared — closing the window between validating the
+    destination and finishing the copy.
+
+    `_during_copy`, when given, is a test-only seam called once per
+    kept file, immediately before it is copied; production callers
+    never pass it.
     """
     current_root = Path(current_root)
     destination = Path(destination)
@@ -499,22 +651,28 @@ def migrate(current_root, destination, plan: SideBySidePlan, digest: str,
         if not build_pristine(destination, resolved.commit):
             return MigrationResult(**base_result, failure='target_materialization_failed')
 
+        # The REAL destination is itself validated and fingerprinted —
+        # a separate extraction from recheck_pristine, so validating
+        # only the throwaway tree does not prove this one is genuinely
+        # pristine (it may have been built concurrently-tampered-with,
+        # or simply differ for any other reason).
+        if not validate_pristine(destination):
+            return MigrationResult(
+                **base_result, failure='destination_pristine_validation_failed')
+        if _fingerprint_tree(destination) != fresh_plan.pristine_fingerprint:
+            return MigrationResult(**base_result, failure='stale_state')
+
+        pristine_manifest = _tree_manifest(destination)
         target_registry_text = _read_text_or_empty(destination / _REGISTRY_RELATIVE)
         expected_hashes = dict(fresh_plan.kept_hashes)
 
         migration_started = True
         for relative in fresh_plan.kept:
+            if _during_copy is not None:
+                _during_copy(relative)
             source = Path(current_root, relative)
-            try:
-                st = source.lstat()
-            except OSError:
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            if not stat.S_ISREG(st.st_mode):
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            data = source.read_bytes()
-            if sha256(data).hexdigest() != expected_hashes.get(relative):
+            data = _safe_read_regular(source)
+            if data is None or sha256(data).hexdigest() != expected_hashes.get(relative):
                 return MigrationResult(
                     **base_result, migration_started=migration_started, failure='concurrent_change')
             dest_path = Path(destination, relative)
@@ -524,10 +682,16 @@ def migrate(current_root, destination, plan: SideBySidePlan, digest: str,
                 return MigrationResult(
                     **base_result, migration_started=migration_started, failure='concurrent_change')
 
+        registry_text = _write_registry(target_registry_text, fresh_plan.registry.carried)
         registry_path = Path(destination, _REGISTRY_RELATIVE)
         registry_path.parent.mkdir(parents=True, exist_ok=True)
-        registry_path.write_text(
-            _write_registry(target_registry_text, fresh_plan.registry.carried), encoding='utf-8')
+        registry_path.write_text(registry_text, encoding='utf-8')
+        expected_registry_hash = sha256(registry_text.encode('utf-8')).hexdigest()
+
+        if not _destination_integrity_ok(
+                destination, pristine_manifest, fresh_plan.kept, expected_registry_hash):
+            return MigrationResult(
+                **base_result, migration_started=migration_started, failure='concurrent_change')
 
         personal_ok, prompts_ok = validate_candidate(destination)
         if not (personal_ok and prompts_ok):

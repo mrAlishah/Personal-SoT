@@ -442,14 +442,36 @@ customization requiring manual resolution and is never copied
 automatically; the pristine target's own copy of that path is
 authoritative and untouched.
 
+Every content read of a current source path — for classification
+hashing and for the copy step alike — goes through one safe primitive
+(`_safe_read_regular`) that opens the path once with `O_NOFOLLOW`,
+confirms it is a regular file via `fstat` on that same descriptor, and
+reads from that same descriptor; it never `lstat`s a path, confirms it
+is regular, and then separately re-opens it by pathname for the actual
+read — a path swapped for a symlink in that gap would otherwise let the
+second, independent open follow it and read an outside target. A path
+that fails this safe read (missing, a symlink, a special file, or the
+platform has no `O_NOFOLLOW` to make the check safe at all) is a
+bounded classification/migration failure, never an uncaught exception.
+
 The one Personal-written state outside `workspace/` is the scope
 mappings in `system/routing/context_registry.md`. Both the current and
 target registry text are read exclusively with
 `system.validation.validate_v1.context_registry_entries` (no second
-parser); a current mapping is kept only if its target is a preserved
-`workspace/context/` directory, using `SCOPE_RE` for grammar validation,
-and a genuine scope/target conflict — within current entries or against
-the target's own entries — fails closed rather than silently choosing
+parser). The target registry's own entries are validated before being
+trusted as the carry-over baseline — a duplicate/ambiguous target
+scope or target mapping, invalid scope grammar, or a target outside
+`workspace/context/` is a conflict, never silently collapsed by
+`dict.setdefault`, since neither `validate_public` nor
+`validate_v1`'s own registry check covers every one of these target
+alias-ownership classes. A current mapping is kept only if its target
+is a `workspace/context/` directory actually present in the *resulting
+candidate's own file set* — the pristine target's regular files plus
+the selected current-only kept files, not the kept set alone, since a
+scope already shipped by `T` or identically present on both sides is
+just as preserved as one that exists only because of a kept file — and
+a genuine scope/target conflict, within current entries or against the
+validated target registry, fails closed rather than silently choosing
 either side. The target registry's own text is written back verbatim,
 with carried mappings inserted as an additional fenced `scope`/`→ target`
 block — the same two-line shape the parser already understands, not a
@@ -463,16 +485,30 @@ Loop 2 does. Before any Personal file enters the real destination,
 `migrate` re-resolves `T`, rebuilds and revalidates the pristine
 distribution into a throwaway location, reclassifies the current
 installation, and recomputes the digest; any mismatch is a stale result
-and no Personal file is copied. Immediately before copying each kept
-file, its live identity is re-verified against the exact content hash
-the preview bound to it (never reading twice is not assumed safe); a
-mismatch stops the migration as a concurrent change rather than
-overwriting or silently accepting the new content, and the destination
-copy's own hash is verified too before it is accepted. After all kept
-files and the carried registry mappings are in place, `validate_v1
---mode personal` and `validate_prompts` run against the candidate's own
-files (the same candidate-own-subprocess strategy Loop 3 uses);
-`validate_public` is never run again at this stage.
+and no Personal file is copied. The REAL destination (a separate
+extraction from that throwaway recheck tree) is then itself built,
+validated with its own `validate_public.py`, and fingerprint-checked
+against the same expected pristine fingerprint — validating only the
+throwaway tree does not prove the real one is genuinely pristine —
+before anything enters it. A manifest of the real destination's own
+`(path, content hash)` pairs is captured at that point. Immediately
+before copying each kept file, its live identity is re-verified against
+the exact content hash the preview bound to it (never reading twice is
+not assumed safe); a mismatch stops the migration as a concurrent
+change rather than overwriting or silently accepting the new content,
+and the destination copy's own hash is verified too before it is
+accepted. Immediately before reporting the candidate ready, every
+target-owned file the migration did not intentionally rewrite is
+re-verified against that captured manifest, the one intentionally
+rewritten product file (the registry) must have exactly the expected
+reconstructed bytes, and no unexpected regular file, symlink, or special
+path may have appeared anywhere in the destination — closing the window
+between validating the destination and finishing the copy. After all of
+that, `validate_v1 --mode personal` and `validate_prompts` run against
+the candidate's own files (the same candidate-own-subprocess strategy
+Loop 3 uses); `validate_public` legitimately runs against the real
+destination before any Personal file enters it, but never again once
+Personal content has.
 
 Host code may read and hash full Personal/restricted/deny file bytes to
 classify and copy them — this is the design's permitted opaque host-side
