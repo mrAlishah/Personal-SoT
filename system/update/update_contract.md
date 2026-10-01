@@ -402,11 +402,89 @@ never reported as `mutation_started` unless a live mutation genuinely
 began, and `rollback_completed` is never true unless every touched path
 was actually verified and restored.
 
+## side-by-side migration
+
+`system/update/side_by_side.py` owns the ZIP/no-Git conservative
+side-by-side path. The original installation is read-only input
+throughout — never written, chmod'd, renamed, unlinked, or normalized —
+on success or on failure; recovery is never claimed for it because it was
+never mutated. The destination is always a new/empty location, checked
+before any pristine or Personal file is written; it may not be the
+current installation, sit inside it, or have the current installation
+sit inside it (checked both ways after resolving symlink indirection),
+and a non-empty destination is never cleaned/deleted to "prepare" it.
+
+The pristine distribution is materialized only from the already-resolved
+`T` (`target.resolve()`; no repository, ref, branch, fork, PR, or archive
+argument reaches `build_pristine`), reusing Loop 1/2's exact
+`_materialized_target` fetch/verify boundary rather than a second
+resolver. `git archive`'s tar stream is extracted through a bounded safe
+extractor that rejects absolute paths, `..` traversal, symlink members,
+and hardlink members before anything is written — defense in depth, since
+an ordinary `git archive` of tracked content should not produce any of
+these except a tracked symlink. `validate_public` runs against that
+pristine tree, as a subprocess rooted at the pristine tree's own copy of
+`validate_public.py` (never the live checkout's already-imported module,
+so a target that itself changes validator logic is checked against its
+own rules), before any current/Personal file enters the candidate; a
+pristine validation failure stops there.
+
+The current installation is scanned host-side without following
+symlinks: a symlinked file or directory, or any other special file type
+(FIFO/device/socket), is never read/copied/compared, only reported as
+unsafe by path. Classification has no Git baseline, so it never infers
+history or authorship: a current-only `workspace/` file is reported as
+kept-from-current, never as user-created, since without a baseline it
+may be either; overlap equality is decided by content hash only, never
+mtime or size. A current-only or differently-overlapping file under
+`system/`, `guides/`, or the repository root is a product-area
+customization requiring manual resolution and is never copied
+automatically; the pristine target's own copy of that path is
+authoritative and untouched.
+
+The one Personal-written state outside `workspace/` is the scope
+mappings in `system/routing/context_registry.md`. Both the current and
+target registry text are read exclusively with
+`system.validation.validate_v1.context_registry_entries` (no second
+parser); a current mapping is kept only if its target is a preserved
+`workspace/context/` directory, using `SCOPE_RE` for grammar validation,
+and a genuine scope/target conflict — within current entries or against
+the target's own entries — fails closed rather than silently choosing
+either side. The target registry's own text is written back verbatim,
+with carried mappings inserted as an additional fenced `scope`/`→ target`
+block — the same two-line shape the parser already understands, not a
+new schema — so the migrated file round-trips through the identical
+parser.
+
+The preview binds `T`, a content-hash fingerprint of the materialized
+pristine tree, the complete classified plan (including any requested
+exclusions and the registry carry-over plan), into a digest exactly as
+Loop 2 does. Before any Personal file enters the real destination,
+`migrate` re-resolves `T`, rebuilds and revalidates the pristine
+distribution into a throwaway location, reclassifies the current
+installation, and recomputes the digest; any mismatch is a stale result
+and no Personal file is copied. Immediately before copying each kept
+file, its live identity is re-verified against the exact content hash
+the preview bound to it (never reading twice is not assumed safe); a
+mismatch stops the migration as a concurrent change rather than
+overwriting or silently accepting the new content, and the destination
+copy's own hash is verified too before it is accepted. After all kept
+files and the carried registry mappings are in place, `validate_v1
+--mode personal` and `validate_prompts` run against the candidate's own
+files (the same candidate-own-subprocess strategy Loop 3 uses);
+`validate_public` is never run again at this stage.
+
+Host code may read and hash full Personal/restricted/deny file bytes to
+classify and copy them — this is the design's permitted opaque host-side
+operation — but that content never appears in a `Plan`/`Preview`/
+`MigrationResult` field, an exception message, or any diagnostic text;
+only paths, classification labels, and content hashes do.
+
 ## scope
 
 This file currently owns target resolution, the shared `controlled_git`
 primitive, the dirty/untracked preflight, target materialization,
-Git-clone classification, preview/digest binding, and Git-clone apply and
-recovery. Side-by-side scope-carry-over rules belong to Loop 4 of
-`guides/developer/update/safe_update_implementation_plan.md` and extend
-this file when implemented; they are not established here.
+Git-clone classification, preview/digest binding, Git-clone apply and
+recovery, and ZIP/no-Git side-by-side migration. Loop 5's Assistant
+workflow/UX extends this file when implemented; it is not established
+here.
