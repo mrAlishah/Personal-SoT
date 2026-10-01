@@ -482,6 +482,34 @@ pinned root's identity immediately before and immediately after the
 walk, since `followlinks=False` protects only the subdirectories
 encountered while walking, never the walk's own top-level argument.
 
+The pinned fd and a pathname identity recheck guarantee two DIFFERENT
+things, and both are required. The pinned fd guarantees containment —
+it prevents a replaced root's pathname from redirecting any read or
+write to a substituted directory at all, which is what makes it safe
+to keep using the fd for descendant I/O across an operation that spans
+real time. A pathname identity recheck (`_pinned_root_still_current`)
+guarantees something the fd alone cannot: that the physical directory
+the fd refers to is STILL the one the caller selected by that pathname
+at `current_root`. Containment without that recheck would let a
+migration keep reading a pinned-but-now-orphaned source directory
+indefinitely after its pathname was renamed away and replaced — never
+leaking the replacement's bytes, but also never refusing to continue
+from an installation the pathname no longer names. `current_root`'s
+identity is therefore rechecked immediately before, and again
+immediately after, each kept file's `_during_copy` seam (the exact
+window a concurrent rename/replace would land in) before that file is
+read, and once more right after `classify_workspace` returns (in both
+`preview` and `migrate`'s own reclassification) before its Plan is
+trusted at all, since classification's own hash/registry reads happen
+after `_scan_tree`'s own before/after check and are not otherwise
+covered. A detected mismatch is always a concurrent/stale-state
+failure — `blocked='stale_state'` from `preview`,
+`failure='concurrent_change'` or `'stale_state'` from `migrate`, never
+a successful `ready` candidate — and is never "fixed" by reopening the
+new pathname; a replaced root is a concurrent change that requires a
+new preview, exactly like any other current-side change `migrate`
+already re-verifies against.
+
 Every destination write (a new kept file, or the registry replacement)
 is root-anchored through the symmetric write-side primitives
 (`_safe_create_new_regular`, `_safe_replace_existing_regular`): each

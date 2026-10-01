@@ -1272,10 +1272,11 @@ class SideBySideRootSubstitutionTests(unittest.TestCase):
         """`current_root` is renamed away and replaced by a symlink to
         an outside tree (containing the same relative path, with a
         distinctive sentinel) between preview and the second kept
-        file's copy. The pinned root fd must keep referring to the
-        ORIGINAL directory: the outside secret must never reach the
-        destination, and whatever is copied must be the original
-        content, not the outside substitute.
+        file's copy. The pinned fd alone would keep referring to the
+        ORIGINAL directory (containment), but `current_root`'s
+        pathname no longer identifies the installation the caller
+        selected at all — that is a concurrent change the migration
+        must stop for, not silently continue past using the old fd.
         """
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
@@ -1302,12 +1303,47 @@ class SideBySideRootSubstitutionTests(unittest.TestCase):
                 current_root, destination, target_dir, target_sha, result.plan, result.digest,
                 _during_copy=swap_current_root)
 
+            self.assertFalse(migrate_result.ready)
+            self.assertIn(migrate_result.failure, ('concurrent_change', 'stale_state'))
             blob = repr(migrate_result)
             self.assertNotIn(self._SECRET, blob)
-            copied_b = Path(destination, 'workspace', 'b.md')
-            if copied_b.exists():
-                self.assertEqual('kept b\n', copied_b.read_text())
-                self.assertNotIn(self._SECRET, copied_b.read_text())
+            # The identity check fires before b.md is ever read, so no
+            # further kept file is copied past the detected mismatch.
+            self.assertFalse(Path(destination, 'workspace', 'b.md').exists())
+
+    def test_source_root_replaced_by_a_new_real_directory_during_migrate_is_rejected(self):
+        """Same race, but the replacement at `current_root`'s pathname
+        is an entirely different REAL directory — never a symlink at
+        any point — proving the check is inode/device identity, not
+        merely symlink rejection.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/a.md': 'kept a\n',
+                'workspace/b.md': 'kept b\n',
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
+
+            def replace_current_root_with_new_directory(relative):
+                if relative == 'workspace/b.md':
+                    import shutil
+                    shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                    current_root.mkdir()
+                    (current_root / 'workspace').mkdir()
+                    (current_root / 'workspace' / 'b.md').write_text('kept b\n')
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=replace_current_root_with_new_directory)
+
+            self.assertFalse(migrate_result.ready)
+            self.assertIn(migrate_result.failure, ('concurrent_change', 'stale_state'))
+            self.assertFalse(Path(destination, 'workspace', 'b.md').exists())
 
     def test_destination_root_replaced_by_symlink_during_migrate_never_receives_writes(self):
         """After the real pristine destination is built and validated,
@@ -1391,6 +1427,69 @@ class SideBySideRootSubstitutionTests(unittest.TestCase):
             self.assertTrue(ok)
             mode = (destination / 'run.sh').stat().st_mode
             self.assertTrue(mode & 0o111, 'executable bit should survive extraction')
+
+    def test_preview_rejects_root_drift_detected_during_classification(self):
+        """`current_root`'s pathname is replaced by a new real
+        directory partway through `classify_workspace` — after its
+        scan/hash loop, before it returns — injected via a mock around
+        `_registry_plan` (the last internal step classification takes)
+        rather than any new production callback. The returned preview
+        must never be a usable, confirmable plan for the old,
+        since-replaced installation.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+
+            real_registry_plan = side_by_side._registry_plan
+
+            def drifting_registry_plan(current_pin, pristine_pin, candidate_paths):
+                import shutil
+                shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                current_root.mkdir()
+                (current_root / 'workspace').mkdir()
+                (current_root / 'workspace' / 'a.md').write_text('kept a\n')
+                return real_registry_plan(current_pin, pristine_pin, candidate_paths)
+
+            with mock.patch.object(side_by_side, '_registry_plan', drifting_registry_plan):
+                result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertEqual('stale_state', result.plan.blocked)
+
+    def test_migrate_reclassification_rejects_root_drift_detected_during_classification(self):
+        """Same root-drift-during-classification race, but observed by
+        `migrate`'s own fresh reclassification rather than `preview`.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md',), result.plan.kept)
+
+            real_registry_plan = side_by_side._registry_plan
+
+            def drifting_registry_plan(current_pin, pristine_pin, candidate_paths):
+                # preview() already ran outside this patch, so the ONE
+                # call reachable here is migrate's own reclassification.
+                import shutil
+                shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                current_root.mkdir()
+                (current_root / 'workspace').mkdir()
+                (current_root / 'workspace' / 'a.md').write_text('kept a\n')
+                return real_registry_plan(current_pin, pristine_pin, candidate_paths)
+
+            with mock.patch.object(side_by_side, '_registry_plan', drifting_registry_plan):
+                migrate_result = _migrate(
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+
+            self.assertFalse(migrate_result.ready)
+            self.assertEqual('stale_state', migrate_result.failure)
+            self.assertFalse(Path(destination, 'workspace', 'a.md').exists())
 
 
 class SideBySideCanonicalRegistryIdentityTests(unittest.TestCase):

@@ -959,6 +959,15 @@ def preview(current_root, destination, exclude: frozenset[str] = frozenset()) ->
                     plan = SideBySidePlan(target=resolved.commit, blocked='pristine_validation_failed')
                     return SideBySidePreview(_digest(plan), plan)
                 plan = classify_workspace(current_pin, pristine_pin, exclude=exclude)
+                # The pinned fd keeps classification safely contained
+                # even if `current_root`'s pathname was replaced
+                # mid-classification, but a replaced pathname no longer
+                # identifies the installation the caller selected — a
+                # Plan built against a since-replaced root must never
+                # be handed back as a usable, confirmable preview.
+                if not _pinned_root_still_current(current_pin):
+                    plan = SideBySidePlan(target=resolved.commit, blocked='stale_state')
+                    return SideBySidePreview(_digest(plan), plan)
                 plan = replace(
                     plan, target=resolved.commit, pristine_fingerprint=_fingerprint_tree(pristine_pin))
             finally:
@@ -1074,12 +1083,19 @@ def _migrate_with_current_pin(current_pin: _PinnedRoot, destination: Path, targe
                     pristine_validation_ran=True, pristine_validation_passed=False,
                     failure='pristine_validation_failed')
 
+            base_result = dict(pristine_validation_ran=True, pristine_validation_passed=True)
+
             fresh_plan = classify_workspace(current_pin, recheck_pin, exclude=exclude)
+            # The pinned fd keeps classification safely contained even
+            # if `current_root`'s pathname was replaced
+            # mid-classification, but a replaced pathname no longer
+            # identifies the installation the caller selected — never
+            # trust a Plan built against a since-replaced root.
+            if not _pinned_root_still_current(current_pin):
+                return MigrationResult(**base_result, failure='stale_state')
             fresh_plan = replace(
                 fresh_plan, target=target_commit, pristine_fingerprint=_fingerprint_tree(recheck_pin))
             fresh_digest = _digest(fresh_plan)
-
-            base_result = dict(pristine_validation_ran=True, pristine_validation_passed=True)
 
             if fresh_digest != digest:
                 return MigrationResult(**base_result, failure='stale_state')
@@ -1116,8 +1132,25 @@ def _migrate_into_pinned_destination(current_pin: _PinnedRoot, destination_pin: 
 
     migration_started = True
     for relative in fresh_plan.kept:
+        # Pinning prevents a replaced `current_root` pathname from
+        # redirecting reads to a substituted directory, but it does
+        # NOT by itself mean the pinned fd still identifies the
+        # installation the caller selected — a root replaced (by a
+        # symlink OR by an entirely different real directory at the
+        # same name) is a concurrent change that must stop the
+        # migration, not one the updater silently keeps reading
+        # through via the old fd. Rechecked both immediately before
+        # and immediately after the `_during_copy` seam, since that
+        # seam marks exactly the race window a concurrent rename/
+        # replace would land in.
+        if not _pinned_root_still_current(current_pin):
+            return MigrationResult(
+                **base_result, migration_started=migration_started, failure='concurrent_change')
         if _during_copy is not None:
             _during_copy(relative)
+        if not _pinned_root_still_current(current_pin):
+            return MigrationResult(
+                **base_result, migration_started=migration_started, failure='concurrent_change')
         data = _safe_read_regular(current_pin, relative)
         if data is None or sha256(data).hexdigest() != expected_hashes.get(relative):
             return MigrationResult(
