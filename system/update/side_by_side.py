@@ -27,6 +27,7 @@ from system.validation.validate_v1 import SCOPE_RE, context_registry_entries
 _REGISTRY_RELATIVE = Path('system', 'routing', 'context_registry.md')
 _REGISTRY_REL_POSIX = _REGISTRY_RELATIVE.as_posix()
 _REGISTRY_MARKER = '## registered_scopes'
+_ROOT_UNSAFE_MARKER = '<root>'
 
 
 @dataclass(frozen=True)
@@ -116,35 +117,107 @@ _NOFOLLOW_SUPPORTED = (
 )
 
 
-def _open_root_fd(root: Path):
+@dataclass
+class _PinnedRoot:
+    """A root directory, opened ONCE and held open for the duration of
+    one logical operation (a classification, a copy loop, a candidate's
+    whole build-through-ready lifecycle), identified by its
+    `(st_dev, st_ino)` at the moment it was pinned.
+
+    Every descendant read/write for that operation must go through
+    `fd` via `dir_fd`-relative `openat()` calls, never by re-deriving
+    the root from `path` again: an already-open fd keeps referring to
+    the SAME physical directory even if `path` is later renamed away,
+    replaced by a symlink, or replaced by an entirely different real
+    directory at the same name — none of which a repeated
+    "reopen-by-pathname" strategy could detect or resist. `path` is
+    kept only for identity rechecks (`_pinned_root_still_current`) and
+    for the few operations (a scan via `os.walk`, a validator
+    subprocess argument) that inherently require a pathname rather
+    than an fd.
+    """
+    fd: int
+    path: Path
+    dev: int
+    ino: int
+
+    def close(self) -> None:
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+
+
+def _pin_root(path: Path) -> _PinnedRoot | None:
+    """Open `path` once as a directory, root-anchored
+    (`O_DIRECTORY | O_NOFOLLOW` — the root itself must not be a
+    symlink, not merely its descendants), and record its identity.
+    `None` if the platform has no safe no-follow primitive, or the path
+    cannot be safely opened as a real directory at all.
+    """
+    if not _NOFOLLOW_SUPPORTED:
+        return None
     try:
-        return os.open(str(root), os.O_RDONLY | os.O_DIRECTORY)
+        fd = os.open(str(path), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
         return None
+    try:
+        st = os.fstat(fd)
+    except OSError:
+        os.close(fd)
+        return None
+    return _PinnedRoot(fd=fd, path=Path(path), dev=st.st_dev, ino=st.st_ino)
 
 
-def _safe_stat_kind(root: Path, relative: str) -> str:
+def _pinned_root_still_current(pinned: _PinnedRoot) -> bool:
+    """Whether `pinned.path` still names the SAME physical directory
+    the pinned fd was opened from. Required before and after any
+    operation that must still take a pathname (an `os.walk` scan, a
+    validator subprocess argument) rather than the fd itself — the
+    closest available guarantee that such an operation examined the
+    pinned candidate and not a directory substituted at the same name.
+    """
+    try:
+        st = os.stat(pinned.path, follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) == (pinned.dev, pinned.ino)
+
+
+def _validate_pinned(pinned: _PinnedRoot, validator) -> bool:
+    """Run a single-bool subprocess-backed validator against
+    `pinned.path`, bracketed by root-identity checks immediately before
+    and immediately after the call — a subprocess necessarily takes a
+    pathname, not an fd, so this is the closest equivalent to running
+    it against the pinned fd itself. A validator run against a
+    substituted root is never treated as having validated the pinned
+    candidate.
+    """
+    if not _pinned_root_still_current(pinned):
+        return False
+    ok = validator(pinned.path)
+    if not _pinned_root_still_current(pinned):
+        return False
+    return ok
+
+
+def _safe_stat_kind(root: _PinnedRoot, relative: str) -> str:
     """`'absent'` if `relative` under `root` safely does not exist,
     `'regular'` if it is confirmed — root-anchored, one `openat()` per
     path component with `O_NOFOLLOW`, never a symlink anywhere along
     the way, not merely the final component — to be a regular file, or
-    `'unsafe'` for anything else (a symlink anywhere in the path, a
-    special file, or no safe no-follow primitive on this platform at
-    all). Distinguishing "absent" from "unsafe" matters because a
-    legitimately missing file (no current registry customization, say)
-    must not be treated the same as one hidden behind a symlink.
+    `'unsafe'` for anything else (a symlink anywhere along its path, or
+    a special file). Distinguishing "absent" from "unsafe" matters
+    because a legitimately missing file (no current registry
+    customization, say) must not be treated the same as one hidden
+    behind a symlink.
     """
-    if not _NOFOLLOW_SUPPORTED:
-        return 'unsafe'
     parts = _root_anchored_parts(relative)
     if not parts:
         return 'unsafe'
-    root_fd = _open_root_fd(root)
-    if root_fd is None:
-        return 'unsafe'
-    opened = [root_fd]
+    opened = []
     try:
-        parent = root_fd
+        parent = root.fd
         for part in parts[:-1]:
             try:
                 fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
@@ -173,32 +246,22 @@ def _safe_stat_kind(root: Path, relative: str) -> str:
                 pass
 
 
-def _safe_read_regular(root: Path, relative: str) -> bytes | None:
-    """Read the bytes of `relative` under `root`, root-anchored: one
+def _safe_read_regular(root: _PinnedRoot, relative: str) -> bytes | None:
+    """Read the bytes of `relative` under the pinned `root`: one
     `openat(..., O_NOFOLLOW)` per path component — every intermediate
-    directory and the final component alike — never a plain pathname
-    open, which an intermediate symlink swapped in after some earlier
-    check (or simply planted in advance) would silently follow out of
-    the selected root. `fstat` on the SAME descriptor the bytes are
+    directory and the final component alike — starting from the
+    already-open, identity-pinned root fd, never a plain pathname open
+    of the root itself. `fstat` on the SAME descriptor the bytes are
     read from confirms it is a regular file; there is no separate
     `lstat`-then-reopen step for a race to land in. Returns `None` —
-    never raises — for any expected `OSError` anywhere along the walk
-    (missing, a symlink, a special file, permission denied) or if this
-    platform has no safe no-follow primitive at all, so an unsafe or
-    concurrently-changed source is always a bounded failure, never an
-    uncaught exception that could carry a Personal path.
+    never raises — for any expected `OSError` anywhere along the walk.
     """
-    if not _NOFOLLOW_SUPPORTED:
-        return None
     parts = _root_anchored_parts(relative)
     if not parts:
         return None
-    root_fd = _open_root_fd(root)
-    if root_fd is None:
-        return None
-    opened = [root_fd]
+    opened = []
     try:
-        parent = root_fd
+        parent = root.fd
         for part in parts[:-1]:
             try:
                 fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
@@ -249,27 +312,47 @@ def _safe_ensure_dir(parent_fd: int, name: str):
         return None
 
 
-def _safe_create_new_regular(root: Path, relative: str, data: bytes) -> bool:
-    """Create a NEW regular file at `relative` under `root`,
+def _safe_mkdir_p(root: _PinnedRoot, relative: str) -> bool:
+    """Ensure every component of `relative` under the pinned `root`
+    exists as a verified real directory (creating as needed), root-
+    anchored throughout — used for a directory member of a pristine
+    archive, where even the FINAL component must become a directory.
+    """
+    parts = _root_anchored_parts(relative)
+    if not parts:
+        return False
+    opened = []
+    try:
+        parent = root.fd
+        for part in parts:
+            fd = _safe_ensure_dir(parent, part)
+            if fd is None:
+                return False
+            opened.append(fd)
+            parent = fd
+        return True
+    finally:
+        for fd in opened:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _safe_create_new_regular(root: _PinnedRoot, relative: str, data: bytes, mode: int = 0o644) -> bool:
+    """Create a NEW regular file at `relative` under the pinned `root`,
     root-anchored through every intermediate component (each must
     already be, or safely become, a verified real directory — never a
     symlink). `O_CREAT | O_EXCL | O_NOFOLLOW` on the final component
     means this fails closed if anything already exists there, rather
-    than silently overwriting it or following a pre-planted symlink —
-    correct for a kept path, which the pristine target already proved
-    does not exist yet.
+    than silently overwriting it or following a pre-planted symlink.
     """
-    if not _NOFOLLOW_SUPPORTED:
-        return False
     parts = _root_anchored_parts(relative)
     if not parts:
         return False
-    root_fd = _open_root_fd(root)
-    if root_fd is None:
-        return False
-    opened = [root_fd]
+    opened = []
     try:
-        parent = root_fd
+        parent = root.fd
         for part in parts[:-1]:
             fd = _safe_ensure_dir(parent, part)
             if fd is None:
@@ -278,7 +361,7 @@ def _safe_create_new_regular(root: Path, relative: str, data: bytes) -> bool:
             parent = fd
         try:
             final_fd = os.open(
-                parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=parent)
+                parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=parent)
         except OSError:
             return False
         opened.append(final_fd)
@@ -295,7 +378,7 @@ def _safe_create_new_regular(root: Path, relative: str, data: bytes) -> bool:
                 pass
 
 
-def _safe_replace_existing_regular(root: Path, relative: str, expected_before_hash: str,
+def _safe_replace_existing_regular(root: _PinnedRoot, relative: str, expected_before_hash: str,
                                     new_bytes: bytes) -> bool:
     """Replace the content of an EXISTING, target-owned file (only the
     registry, currently) root-anchored and via a single read-write
@@ -303,19 +386,14 @@ def _safe_replace_existing_regular(root: Path, relative: str, expected_before_ha
     regular file whose current bytes still hash to
     `expected_before_hash`, then truncates and rewrites THAT SAME
     descriptor — never a separate write-mode reopen, which would leave
-    its own TOCTOU gap between verifying and writing.
+    its own TOCTOU gap.
     """
-    if not _NOFOLLOW_SUPPORTED:
-        return False
     parts = _root_anchored_parts(relative)
     if not parts:
         return False
-    root_fd = _open_root_fd(root)
-    if root_fd is None:
-        return False
-    opened = [root_fd]
+    opened = []
     try:
-        parent = root_fd
+        parent = root.fd
         for part in parts[:-1]:
             try:
                 fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
@@ -348,21 +426,23 @@ def _safe_replace_existing_regular(root: Path, relative: str, expected_before_ha
                 pass
 
 
-def _scan_tree(root: Path) -> tuple[dict[str, Path], tuple[str, ...]]:
-    """One bounded host-side walk of `root`. Returns
+def _scan_tree(pinned: _PinnedRoot) -> tuple[dict[str, Path], tuple[str, ...]]:
+    """One bounded host-side walk of the pinned root. Returns
     (`{relative_posix_path: absolute_path}` for every REGULAR file,
     sorted unsafe relative paths). A symlink (file or directory) or any
-    other special file type (FIFO/device/socket) is never followed or
-    read — only reported as unsafe. Directories are traversal structure
-    only. `followlinks=False` already stops `os.walk` from descending
-    into a symlinked directory; the explicit `os.path.islink` filter
-    below additionally keeps it out of `dirnames` so it is never even
-    `scandir`'d, and is reported once as unsafe rather than silently
-    skipped. Content itself is never read through this walk — every
-    actual read goes through the root-anchored `_safe_read_regular`
-    separately, which closes the TOCTOU window this walk alone cannot.
+    other special file type is never followed or read — only reported
+    as unsafe. `os.walk` is pathname-based, so the pinned root's
+    identity is reverified immediately before and immediately after
+    the walk; a mismatch on either side reports a single `'<root>'`
+    sentinel rather than any file content, and the caller must treat
+    that as a hard failure, not an ordinary unsafe path to skip —
+    `followlinks=False` alone does not protect the WALK'S OWN top-level
+    argument from being a symlink or a substituted directory, only the
+    subdirectories encountered while walking it.
     """
-    root = Path(root)
+    if not _pinned_root_still_current(pinned):
+        return {}, (_ROOT_UNSAFE_MARKER,)
+    root = pinned.path
     files: dict[str, Path] = {}
     unsafe: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -382,6 +462,8 @@ def _scan_tree(root: Path) -> tuple[dict[str, Path], tuple[str, ...]]:
                 files[relative] = full
             else:
                 unsafe.append(relative)
+    if not _pinned_root_still_current(pinned):
+        return {}, (_ROOT_UNSAFE_MARKER,)
     return files, tuple(sorted(unsafe))
 
 
@@ -415,13 +497,22 @@ def _destination_safe(destination: Path, current_root: Path) -> bool:
 def _extract_pristine_archive(archive_bytes: bytes, destination: Path) -> bool:
     """Extract ONLY regular files and directories from a tar stream
     produced by `git archive` into `destination`, rejecting absolute
-    paths, `..` traversal, symlink members, and hardlink members —
-    defense in depth even though an ordinary `git archive` of tracked
-    content should not produce any of these except a tracked symlink.
+    paths, `..` traversal, symlink members, and hardlink members before
+    anything is written. The destination root itself is pinned
+    (`O_DIRECTORY | O_NOFOLLOW`) before any write, and every member is
+    created root-anchored through that pin — member-shape validation
+    alone does not protect against the destination ROOT being replaced
+    by a symlink between the earlier `_destination_safe` check and this
+    extraction; pinning closes that window the same way every other
+    destination write in this module does. Executable/ordinary mode
+    bits are preserved from the archive (masked to plain `rwx`, like
+    Python's own tar 'data' extraction filter), never silently
+    collapsed to a fixed mode.
     """
     try:
         with tarfile.open(fileobj=BytesIO(archive_bytes)) as tf:
-            for member in tf.getmembers():
+            members = tf.getmembers()
+            for member in members:
                 if member.issym() or member.islnk():
                     return False
                 if not (member.isfile() or member.isdir()):
@@ -429,7 +520,42 @@ def _extract_pristine_archive(archive_bytes: bytes, destination: Path) -> bool:
                 posix = PurePosixPath(member.name)
                 if posix.is_absolute() or '..' in posix.parts:
                     return False
-            tf.extractall(destination, filter='data')
+
+            # `destination` may be a brand-new path that does not exist
+            # yet at all; `mkdir` creates it as a real directory without
+            # ever following anything (it fails outright, EEXIST, if
+            # ANY node — file, directory, or symlink — already sits
+            # there, rather than silently treating one as acceptable).
+            # If it already exists (the caller's `_destination_safe`
+            # check already confirmed that), this is a no-op, and
+            # `_pin_root` below independently re-verifies it is a real,
+            # non-symlink directory before anything is written into it.
+            try:
+                os.mkdir(str(destination))
+            except FileExistsError:
+                pass
+            except OSError:
+                return False
+
+            pinned = _pin_root(destination)
+            if pinned is None:
+                return False
+            try:
+                for member in members:
+                    relative = PurePosixPath(member.name).as_posix()
+                    if relative in ('', '.'):
+                        continue
+                    if member.isdir():
+                        if not _safe_mkdir_p(pinned, relative):
+                            return False
+                    else:
+                        extracted = tf.extractfile(member)
+                        content = extracted.read() if extracted is not None else b''
+                        mode = (member.mode & 0o777) or 0o644
+                        if not _safe_create_new_regular(pinned, relative, content, mode=mode):
+                            return False
+            finally:
+                pinned.close()
     except (tarfile.TarError, OSError):
         return False
     return True
@@ -489,21 +615,25 @@ def validate_candidate(destination: Path) -> tuple[bool, bool]:
     return personal.returncode == 0, prompts.returncode == 0
 
 
-def _hash_file(root: Path, relative: str) -> str | None:
+def _hash_file(root: _PinnedRoot, relative: str) -> str | None:
     data = _safe_read_regular(root, relative)
     if data is None:
         return None
     return sha256(data).hexdigest()
 
 
-def _tree_manifest(root: Path) -> dict[str, str]:
+def _tree_manifest(root: _PinnedRoot) -> dict[str, str]:
     """`{relative_posix_path: content_hash}` for every regular file
-    under `root`, read via `_safe_read_regular`; a path that fails that
-    safe read (unreadable/raced/not actually regular by the time it is
-    opened) is simply omitted — never silently treated as empty or as
-    a cache-coherent value.
+    under the pinned root, read via `_safe_read_regular`. A path that
+    fails that safe read is simply omitted. If the root's own identity
+    broke during the scan, the manifest is empty outright — never a
+    partial result silently mistaken for complete — so any caller
+    comparing it against an expectation fails closed rather than
+    succeeding against the wrong directory's content.
     """
-    files, _unsafe = _scan_tree(root)
+    files, unsafe = _scan_tree(root)
+    if _ROOT_UNSAFE_MARKER in unsafe:
+        return {}
     manifest = {}
     for relative in files:
         digest = _hash_file(root, relative)
@@ -512,7 +642,7 @@ def _tree_manifest(root: Path) -> dict[str, str]:
     return manifest
 
 
-def _fingerprint_tree(root: Path) -> str:
+def _fingerprint_tree(root: _PinnedRoot) -> str:
     """A deterministic hash over the pristine tree's own
     (relative_path, content_hash) pairs, sorted — the staleness signal
     for "has the materialized pristine distribution itself changed",
@@ -529,15 +659,13 @@ def _read_text_or_empty(path: Path) -> str:
     return path.read_text(encoding='utf-8') if path.is_file() else ''
 
 
-def _safe_registry_text(root: Path) -> tuple[str, bool]:
+def _safe_registry_text(root: _PinnedRoot) -> tuple[str, bool]:
     """(`text`, `ok`) for the CURRENT installation's own registry file,
     read through the same root-anchored safe boundary as any other
     current input. A legitimately absent registry is `('', True)` — no
     customization at all. `ok=False` means the path exists but is
     unsafe (a symlink anywhere along it, or a special file) — never
-    silently treated as an empty/absent registry, which would let a
-    symlink-hidden registry's mappings simply vanish rather than
-    blocking the migration.
+    silently treated as an empty/absent registry.
     """
     kind = _safe_stat_kind(root, _REGISTRY_REL_POSIX)
     if kind == 'absent':
@@ -573,12 +701,7 @@ def _validated_target_registry(target_entries) -> tuple[dict[str, str], dict[str
     variation) are both conflicts, exactly like an outright different
     duplicate — never silently collapsed by `dict.setdefault`. A
     malformed entry (bad scope grammar, or a target outside
-    `workspace/context/`, including an unsafe/traversal-shaped one) is
-    also a conflict and excluded from the accepted maps entirely.
-    `validate_public`/`validate_v1`'s own registry check does not cover
-    every one of these ownership classes, especially target-alias
-    ownership, so this loop cannot assume pristine validation already
-    proved registry integrity.
+    `workspace/context/`) is also a conflict and excluded entirely.
     """
     scope_to_target: dict[str, str] = {}
     target_to_scope: dict[str, str] = {}
@@ -608,27 +731,32 @@ def _validated_target_registry(target_entries) -> tuple[dict[str, str], dict[str
     return scope_to_target, target_to_scope, conflicts
 
 
-def _registry_plan(current_root: Path, pristine_root: Path, candidate_paths: frozenset[str]) -> RegistryPlan:
+def _registry_plan(current_root: _PinnedRoot, pristine_root: _PinnedRoot,
+                    candidate_paths: frozenset[str]) -> RegistryPlan:
     """Read both registries exclusively with `context_registry_entries`
     (never a second parser) — the current one through the root-anchored
-    safe read boundary, since a symlink-hidden registry must block
-    migration rather than silently parse as empty; the pristine one
-    directly, since it lives inside the already-validated/fingerprinted
-    pristine tree. Keep only current mappings whose canonical target is
-    a `workspace/context/` directory actually present in the resulting
-    candidate's own file set, and fail closed on a genuine scope/target
-    ownership conflict — including an exact duplicate, and a
-    trailing-slash alias of an already-claimed target — within current
-    entries, or against a validated target registry, rather than
-    silently choosing either side.
+    safe read boundary, the pristine one directly (it lives inside the
+    already-validated, updater-owned pristine tree). Keep only current
+    mappings whose canonical target is a `workspace/context/` directory
+    that actually has at least one resulting candidate file STRICTLY
+    BENEATH it — a regular file sitting exactly at the mapped path does
+    not make that path a directory, so it does not count as preserved.
+    A current mapping that is canonically identical to one the TARGET
+    registry already provides (even spelled with a different trailing
+    slash) is simply not carried again — it is neither a conflict nor a
+    duplicate, since the target's own verbatim text already covers it.
+    A genuine scope/target ownership conflict — within current entries,
+    or against the validated target registry, using canonical
+    slash-insensitive identity throughout — fails closed.
     """
     current_text, current_registry_ok = _safe_registry_text(current_root)
-    target_text = _read_text_or_empty(pristine_root / _REGISTRY_RELATIVE)
+    target_text = _read_text_or_empty(pristine_root.path / _REGISTRY_RELATIVE)
     current_entries = context_registry_entries(current_text)
     target_entries = context_registry_entries(target_text)
 
-    accepted_scope_to_target, accepted_target_to_scope, conflicts = _validated_target_registry(target_entries)
-    provided_by_target = set(accepted_scope_to_target.items())
+    target_scope_to_target, target_target_to_scope, conflicts = _validated_target_registry(target_entries)
+    accepted_scope_to_target = dict(target_scope_to_target)
+    accepted_target_to_scope = dict(target_target_to_scope)
 
     if not current_registry_ok:
         conflicts.append('unsafe_registry')
@@ -653,15 +781,15 @@ def _registry_plan(current_root: Path, pristine_root: Path, candidate_paths: fro
             accepted_scope_to_target.pop(scope, None)
             continue
         seen_current_scopes.add(scope)
-        preserved = any(
-            path == canonical or path.startswith(canonical + '/') for path in candidate_paths)
+        preserved = any(path.startswith(canonical + '/') for path in candidate_paths)
         if not preserved:
             dropped.append(RegistryMapping(scope, dest))
             continue
-        if (scope, dest) in provided_by_target:
-            continue  # already present in the target registry verbatim
+        target_dest = target_scope_to_target.get(scope)
+        if target_dest is not None and _canonical_target(target_dest) == canonical:
+            continue  # already covered by the target registry's own verbatim text
         existing_target = accepted_scope_to_target.get(scope)
-        if existing_target is not None and existing_target != dest:
+        if existing_target is not None and _canonical_target(existing_target) != canonical:
             conflicts.append(f'scope_conflict:{scope}')
             continue
         existing_scope = accepted_target_to_scope.get(canonical)
@@ -704,19 +832,15 @@ def _write_registry(target_text: str, carried: tuple[RegistryMapping, ...]) -> s
 
 # --- classification -------------------------------------------------------
 
-def classify_workspace(current_root: Path, pristine_root: Path,
+def classify_workspace(current_root: _PinnedRoot, pristine_root: _PinnedRoot,
                         exclude: frozenset[str] = frozenset()) -> SideBySidePlan:
     """Classify the current installation against the pristine target
     tree. No Git baseline exists for this path, so classification never
     infers history/authorship: a current-only `workspace/` file is
     reported as kept-from-current, never as "user-created"; equality is
     decided by content hash only, never mtime/size, read through the
-    same root-anchored safe primitive the copy step uses, so
-    classification itself can never be tricked into following a raced
-    intermediate or final symlink either.
+    same root-anchored safe primitive the copy step uses.
     """
-    current_root = Path(current_root)
-    pristine_root = Path(pristine_root)
     current_files, current_unsafe = _scan_tree(current_root)
     pristine_files, _pristine_unsafe = _scan_tree(pristine_root)
 
@@ -760,9 +884,7 @@ def classify_workspace(current_root: Path, pristine_root: Path,
     # The resulting candidate's own file set — what a registry scope
     # directory being "preserved" actually means — is the pristine
     # target's regular files plus the current-only workspace files
-    # selected to be kept, not the kept set alone: a scope already
-    # shipped by T, or identically present on both sides, is just as
-    # preserved as one that only exists because of a kept file.
+    # selected to be kept, not the kept set alone.
     candidate_paths = frozenset(pristine_files) | frozenset(kept)
     registry = _registry_plan(current_root, pristine_root, candidate_paths)
 
@@ -816,17 +938,33 @@ def preview(current_root, destination, exclude: frozenset[str] = frozenset()) ->
         plan = SideBySidePlan(target=resolved.commit, blocked='destination_unsafe')
         return SideBySidePreview(_digest(plan), plan)
 
-    with tempfile.TemporaryDirectory(prefix='personal_sot_side_by_side_preview_') as tmp:
-        pristine_tmp = Path(tmp, 'pristine')
-        pristine_tmp.mkdir()
-        if not build_pristine(pristine_tmp, resolved.commit):
-            plan = SideBySidePlan(target=resolved.commit, blocked='target_materialization_failed')
-            return SideBySidePreview(_digest(plan), plan)
-        if not validate_pristine(pristine_tmp):
-            plan = SideBySidePlan(target=resolved.commit, blocked='pristine_validation_failed')
-            return SideBySidePreview(_digest(plan), plan)
-        plan = classify_workspace(current_root, pristine_tmp, exclude=exclude)
-        plan = replace(plan, target=resolved.commit, pristine_fingerprint=_fingerprint_tree(pristine_tmp))
+    current_pin = _pin_root(current_root)
+    if current_pin is None:
+        plan = SideBySidePlan(target=resolved.commit, blocked='unsafe_input')
+        return SideBySidePreview(_digest(plan), plan)
+    try:
+        with tempfile.TemporaryDirectory(prefix='personal_sot_side_by_side_preview_') as tmp:
+            pristine_tmp = Path(tmp, 'pristine')
+            pristine_tmp.mkdir()
+            if not build_pristine(pristine_tmp, resolved.commit):
+                plan = SideBySidePlan(target=resolved.commit, blocked='target_materialization_failed')
+                return SideBySidePreview(_digest(plan), plan)
+
+            pristine_pin = _pin_root(pristine_tmp)
+            if pristine_pin is None:
+                plan = SideBySidePlan(target=resolved.commit, blocked='unsafe_input')
+                return SideBySidePreview(_digest(plan), plan)
+            try:
+                if not _validate_pinned(pristine_pin, validate_pristine):
+                    plan = SideBySidePlan(target=resolved.commit, blocked='pristine_validation_failed')
+                    return SideBySidePreview(_digest(plan), plan)
+                plan = classify_workspace(current_pin, pristine_pin, exclude=exclude)
+                plan = replace(
+                    plan, target=resolved.commit, pristine_fingerprint=_fingerprint_tree(pristine_pin))
+            finally:
+                pristine_pin.close()
+    finally:
+        current_pin.close()
 
     return SideBySidePreview(_digest(plan), plan)
 
@@ -840,8 +978,7 @@ def _expected_final_manifest(pristine_manifest: dict[str, str], kept_hashes: tup
     intentionally rewritten), plus every kept path's preview-bound
     content hash, plus the registry's expected reconstructed hash (or
     nothing at all for that path, if the pristine tree never shipped
-    one and there is nothing to carry). Never written to disk — derived
-    fresh for this one migration.
+    one and there is nothing to carry). Never written to disk.
     """
     manifest = {path: digest for path, digest in pristine_manifest.items() if path != _REGISTRY_REL_POSIX}
     for relative, digest in kept_hashes:
@@ -851,14 +988,14 @@ def _expected_final_manifest(pristine_manifest: dict[str, str], kept_hashes: tup
     return manifest
 
 
-def _final_integrity_ok(destination: Path, expected_final_manifest: dict[str, str]) -> bool:
-    """Verify the destination's CURRENT file set exactly equals
+def _final_integrity_ok(destination: _PinnedRoot, expected_final_manifest: dict[str, str]) -> bool:
+    """Verify the pinned destination's CURRENT file set exactly equals
     `expected_final_manifest` — same paths, same content hashes,
-    nothing missing, nothing extra, no symlink/special path anywhere —
-    reading every file through the root-anchored safe primitive. Called
-    both immediately before and immediately after the final Personal
-    validators, since those validators' own (possibly non-trivial)
-    runtime is itself a window a concurrent change could land in.
+    nothing missing, nothing extra, no symlink/special path anywhere,
+    and the pinned root's own identity still intact (via `_scan_tree`).
+    Called both immediately before and immediately after the final
+    Personal validators, since those validators' own runtime is itself
+    a window a concurrent change could land in.
     """
     current_files, unsafe = _scan_tree(destination)
     if unsafe:
@@ -878,18 +1015,15 @@ def migrate(current_root, destination, plan: SideBySidePlan, digest: str,
     and revalidates the pristine distribution, and reclassifies the
     current installation before touching the real destination at all.
 
-    The REAL destination's own just-built pristine tree is itself
-    validated and fingerprint-checked before any Personal/current file
-    enters it — validating only the throwaway recheck tree is not
-    equivalent, since the real destination is a separate extraction
-    that could itself be concurrently tampered with. Every current
-    source read and every destination write (a new kept file, or the
-    registry replacement) is root-anchored through the safe primitives
-    above, so no intermediate symlink anywhere in either tree can be
-    followed. The complete exact expected final manifest is checked
-    twice — immediately before and immediately after the final Personal
-    validators — closing the window their own runtime would otherwise
-    leave open.
+    The current installation and the real destination are each pinned
+    ONCE — root-anchored, `O_DIRECTORY | O_NOFOLLOW` — and that SAME
+    pin is reused for reclassification, every kept-file read/write, the
+    registry replacement, and both integrity checks; neither root is
+    ever re-derived from its pathname mid-operation, which is what
+    actually closes a root-level substitution race, not merely adding
+    `O_NOFOLLOW` to a repeated reopen. Each candidate-own validator
+    subprocess is bracketed by a root-identity recheck, since a
+    subprocess call necessarily takes a pathname argument.
 
     `_during_copy`, when given, is a test-only seam called once per
     kept file, immediately before it is copied; production callers
@@ -913,104 +1047,136 @@ def migrate(current_root, destination, plan: SideBySidePlan, digest: str,
     if not _destination_safe(destination, current_root):
         return MigrationResult(failure='destination_unsafe')
 
+    current_pin = _pin_root(current_root)
+    if current_pin is None:
+        return MigrationResult(failure='unsafe_input')
+    try:
+        return _migrate_with_current_pin(
+            current_pin, destination, resolved.commit, exclude, digest, _during_copy)
+    finally:
+        current_pin.close()
+
+
+def _migrate_with_current_pin(current_pin: _PinnedRoot, destination: Path, target_commit: str,
+                               exclude: frozenset[str], digest: str, _during_copy) -> MigrationResult:
     with tempfile.TemporaryDirectory(prefix='personal_sot_side_by_side_recheck_') as tmp:
         recheck_pristine = Path(tmp, 'pristine')
         recheck_pristine.mkdir()
-        if not build_pristine(recheck_pristine, resolved.commit):
+        if not build_pristine(recheck_pristine, target_commit):
             return MigrationResult(failure='target_materialization_failed')
 
-        pristine_ok = validate_pristine(recheck_pristine)
-        if not pristine_ok:
+        recheck_pin = _pin_root(recheck_pristine)
+        if recheck_pin is None:
+            return MigrationResult(failure='unsafe_input')
+        try:
+            if not _validate_pinned(recheck_pin, validate_pristine):
+                return MigrationResult(
+                    pristine_validation_ran=True, pristine_validation_passed=False,
+                    failure='pristine_validation_failed')
+
+            fresh_plan = classify_workspace(current_pin, recheck_pin, exclude=exclude)
+            fresh_plan = replace(
+                fresh_plan, target=target_commit, pristine_fingerprint=_fingerprint_tree(recheck_pin))
+            fresh_digest = _digest(fresh_plan)
+
+            base_result = dict(pristine_validation_ran=True, pristine_validation_passed=True)
+
+            if fresh_digest != digest:
+                return MigrationResult(**base_result, failure='stale_state')
+            if fresh_plan.conflicts or fresh_plan.registry.conflicts:
+                return MigrationResult(**base_result, failure='conflict')
+            if fresh_plan.rejected_unsafe:
+                return MigrationResult(**base_result, failure='unsafe_input')
+
+            if not build_pristine(destination, target_commit):
+                return MigrationResult(**base_result, failure='target_materialization_failed')
+
+            destination_pin = _pin_root(destination)
+            if destination_pin is None:
+                return MigrationResult(**base_result, failure='unsafe_input')
+            try:
+                return _migrate_into_pinned_destination(
+                    current_pin, destination_pin, fresh_plan, base_result, _during_copy)
+            finally:
+                destination_pin.close()
+        finally:
+            recheck_pin.close()
+
+
+def _migrate_into_pinned_destination(current_pin: _PinnedRoot, destination_pin: _PinnedRoot,
+                                      fresh_plan: SideBySidePlan, base_result: dict,
+                                      _during_copy) -> MigrationResult:
+    if not _validate_pinned(destination_pin, validate_pristine):
+        return MigrationResult(**base_result, failure='destination_pristine_validation_failed')
+    if _fingerprint_tree(destination_pin) != fresh_plan.pristine_fingerprint:
+        return MigrationResult(**base_result, failure='stale_state')
+
+    pristine_manifest = _tree_manifest(destination_pin)
+    expected_hashes = dict(fresh_plan.kept_hashes)
+
+    migration_started = True
+    for relative in fresh_plan.kept:
+        if _during_copy is not None:
+            _during_copy(relative)
+        data = _safe_read_regular(current_pin, relative)
+        if data is None or sha256(data).hexdigest() != expected_hashes.get(relative):
             return MigrationResult(
-                pristine_validation_ran=True, pristine_validation_passed=False,
-                failure='pristine_validation_failed')
-
-        fresh_plan = classify_workspace(current_root, recheck_pristine, exclude=exclude)
-        fresh_plan = replace(
-            fresh_plan, target=resolved.commit, pristine_fingerprint=_fingerprint_tree(recheck_pristine))
-        fresh_digest = _digest(fresh_plan)
-
-        base_result = dict(pristine_validation_ran=True, pristine_validation_passed=True)
-
-        if fresh_digest != digest:
-            return MigrationResult(**base_result, failure='stale_state')
-        if fresh_plan.conflicts or fresh_plan.registry.conflicts:
-            return MigrationResult(**base_result, failure='conflict')
-        if fresh_plan.rejected_unsafe:
-            return MigrationResult(**base_result, failure='unsafe_input')
-
-        if not build_pristine(destination, resolved.commit):
-            return MigrationResult(**base_result, failure='target_materialization_failed')
-
-        # The REAL destination is itself validated and fingerprinted —
-        # a separate extraction from recheck_pristine, so validating
-        # only the throwaway tree does not prove this one is genuinely
-        # pristine (it may have been built concurrently-tampered-with,
-        # or simply differ for any other reason).
-        if not validate_pristine(destination):
+                **base_result, migration_started=migration_started, failure='concurrent_change')
+        if not _safe_create_new_regular(destination_pin, relative, data):
             return MigrationResult(
-                **base_result, failure='destination_pristine_validation_failed')
-        if _fingerprint_tree(destination) != fresh_plan.pristine_fingerprint:
-            return MigrationResult(**base_result, failure='stale_state')
-
-        pristine_manifest = _tree_manifest(destination)
-        expected_hashes = dict(fresh_plan.kept_hashes)
-
-        migration_started = True
-        for relative in fresh_plan.kept:
-            if _during_copy is not None:
-                _during_copy(relative)
-            data = _safe_read_regular(current_root, relative)
-            if data is None or sha256(data).hexdigest() != expected_hashes.get(relative):
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            if not _safe_create_new_regular(destination, relative, data):
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            if _hash_file(destination, relative) != expected_hashes.get(relative):
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-
-        pristine_registry_hash = pristine_manifest.get(_REGISTRY_REL_POSIX)
-        if fresh_plan.registry.carried:
-            if pristine_registry_hash is None:
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            target_registry_bytes = _safe_read_regular(destination, _REGISTRY_REL_POSIX)
-            if target_registry_bytes is None:
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            registry_text = _write_registry(
-                target_registry_bytes.decode('utf-8'), fresh_plan.registry.carried)
-            new_registry_bytes = registry_text.encode('utf-8')
-            if not _safe_replace_existing_regular(
-                    destination, _REGISTRY_REL_POSIX, pristine_registry_hash, new_registry_bytes):
-                return MigrationResult(
-                    **base_result, migration_started=migration_started, failure='concurrent_change')
-            expected_registry_hash = sha256(new_registry_bytes).hexdigest()
-        else:
-            expected_registry_hash = pristine_registry_hash
-
-        expected_final = _expected_final_manifest(
-            pristine_manifest, fresh_plan.kept_hashes, expected_registry_hash)
-
-        if not _final_integrity_ok(destination, expected_final):
+                **base_result, migration_started=migration_started, failure='concurrent_change')
+        if _hash_file(destination_pin, relative) != expected_hashes.get(relative):
             return MigrationResult(
                 **base_result, migration_started=migration_started, failure='concurrent_change')
 
-        personal_ok, prompts_ok = validate_candidate(destination)
-        if not (personal_ok and prompts_ok):
+    pristine_registry_hash = pristine_manifest.get(_REGISTRY_REL_POSIX)
+    if fresh_plan.registry.carried:
+        if pristine_registry_hash is None:
             return MigrationResult(
-                **base_result, migration_started=migration_started,
-                personal_validation_ran=True, personal_validation_passed=False,
-                failure='personal_validation_failed')
-
-        if not _final_integrity_ok(destination, expected_final):
+                **base_result, migration_started=migration_started, failure='concurrent_change')
+        target_registry_bytes = _safe_read_regular(destination_pin, _REGISTRY_REL_POSIX)
+        if target_registry_bytes is None:
             return MigrationResult(
-                **base_result, migration_started=migration_started,
-                personal_validation_ran=True, personal_validation_passed=True,
-                failure='concurrent_change')
+                **base_result, migration_started=migration_started, failure='concurrent_change')
+        registry_text = _write_registry(
+            target_registry_bytes.decode('utf-8'), fresh_plan.registry.carried)
+        new_registry_bytes = registry_text.encode('utf-8')
+        if not _safe_replace_existing_regular(
+                destination_pin, _REGISTRY_REL_POSIX, pristine_registry_hash, new_registry_bytes):
+            return MigrationResult(
+                **base_result, migration_started=migration_started, failure='concurrent_change')
+        expected_registry_hash = sha256(new_registry_bytes).hexdigest()
+    else:
+        expected_registry_hash = pristine_registry_hash
 
+    expected_final = _expected_final_manifest(
+        pristine_manifest, fresh_plan.kept_hashes, expected_registry_hash)
+
+    if not _final_integrity_ok(destination_pin, expected_final):
+        return MigrationResult(
+            **base_result, migration_started=migration_started, failure='concurrent_change')
+
+    if not _pinned_root_still_current(destination_pin):
+        return MigrationResult(
+            **base_result, migration_started=migration_started, failure='concurrent_change')
+    personal_ok, prompts_ok = validate_candidate(destination_pin.path)
+    if not _pinned_root_still_current(destination_pin):
         return MigrationResult(
             **base_result, migration_started=migration_started,
-            personal_validation_ran=True, personal_validation_passed=True, ready=True)
+            personal_validation_ran=True, personal_validation_passed=False,
+            failure='concurrent_change')
+    if not (personal_ok and prompts_ok):
+        return MigrationResult(
+            **base_result, migration_started=migration_started,
+            personal_validation_ran=True, personal_validation_passed=False,
+            failure='personal_validation_failed')
+
+    if not _final_integrity_ok(destination_pin, expected_final):
+        return MigrationResult(
+            **base_result, migration_started=migration_started,
+            personal_validation_ran=True, personal_validation_passed=True,
+            failure='concurrent_change')
+
+    return MigrationResult(
+        **base_result, migration_started=migration_started,
+        personal_validation_ran=True, personal_validation_passed=True, ready=True)

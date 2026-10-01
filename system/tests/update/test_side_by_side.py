@@ -473,7 +473,7 @@ class SideBySideRegistryTests(unittest.TestCase):
             })
             target_dir, target_sha = _build_target_repo(workdir, files)
             current_root = Path(workdir, 'current')
-            _write_tree(current_root, {})
+            current_root.mkdir()
             destination = Path(workdir, 'dest')
 
             result = _preview(current_root, destination, target_dir, target_sha)
@@ -524,7 +524,7 @@ class SideBySideRegistryTests(unittest.TestCase):
             })
             target_dir, target_sha = _build_target_repo(workdir, files)
             current_root = Path(workdir, 'current')
-            _write_tree(current_root, {})
+            current_root.mkdir()
             destination = Path(workdir, 'dest')
 
             result = _preview(current_root, destination, target_dir, target_sha)
@@ -549,7 +549,7 @@ class SideBySideRegistryTests(unittest.TestCase):
             })
             target_dir, target_sha = _build_target_repo(workdir, files)
             current_root = Path(workdir, 'current')
-            _write_tree(current_root, {})
+            current_root.mkdir()
             destination = Path(workdir, 'dest')
 
             result = _preview(current_root, destination, target_dir, target_sha)
@@ -1077,6 +1077,12 @@ class SideBySideSafeReadTests(unittest.TestCase):
 
             self.assertIn(self._SECRET.encode(), data)
 
+    @staticmethod
+    def _pin(path):
+        pinned = side_by_side._pin_root(path)
+        assert pinned is not None
+        return pinned
+
     def test_safe_read_regular_refuses_a_symlink_and_never_follows_it(self):
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir, 'a.md')
@@ -1084,7 +1090,11 @@ class SideBySideSafeReadTests(unittest.TestCase):
             outside.write_text(self._SECRET + '\n')
             os.symlink(outside, path)
 
-            result = side_by_side._safe_read_regular(Path(workdir), 'a.md')
+            pinned = self._pin(Path(workdir))
+            try:
+                result = side_by_side._safe_read_regular(pinned, 'a.md')
+            finally:
+                pinned.close()
 
             self.assertIsNone(result)
 
@@ -1092,11 +1102,19 @@ class SideBySideSafeReadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir, 'a.md')
             path.write_text('real content\n')
-            self.assertEqual(b'real content\n', side_by_side._safe_read_regular(Path(workdir), 'a.md'))
+            pinned = self._pin(Path(workdir))
+            try:
+                self.assertEqual(b'real content\n', side_by_side._safe_read_regular(pinned, 'a.md'))
+            finally:
+                pinned.close()
 
     def test_safe_read_regular_returns_none_for_a_missing_path(self):
         with tempfile.TemporaryDirectory() as workdir:
-            self.assertIsNone(side_by_side._safe_read_regular(Path(workdir), 'absent.md'))
+            pinned = self._pin(Path(workdir))
+            try:
+                self.assertIsNone(side_by_side._safe_read_regular(pinned, 'absent.md'))
+            finally:
+                pinned.close()
 
     def test_safe_read_regular_rejects_an_intermediate_directory_symlink(self):
         """The defect this whole correction targets: `O_NOFOLLOW` on
@@ -1116,9 +1134,51 @@ class SideBySideSafeReadTests(unittest.TestCase):
             shutil.rmtree(root / 'workspace' / 'private')
             os.symlink(outside, root / 'workspace' / 'private')
 
-            result = side_by_side._safe_read_regular(root, 'workspace/private/a.md')
+            pinned = self._pin(root)
+            try:
+                result = side_by_side._safe_read_regular(pinned, 'workspace/private/a.md')
+            finally:
+                pinned.close()
 
             self.assertIsNone(result)
+
+    def test_pin_root_refuses_a_root_that_is_itself_a_symlink(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            real = Path(workdir, 'real')
+            real.mkdir()
+            link = Path(workdir, 'link')
+            os.symlink(real, link)
+
+            self.assertIsNone(side_by_side._pin_root(link))
+
+    def test_pinned_fd_still_sees_original_directory_after_root_pathname_is_replaced(self):
+        """The property root pinning exists for: once pinned, the fd
+        keeps referring to the ORIGINAL directory even after its
+        pathname is renamed away and replaced by a symlink to an
+        outside tree — a later `_safe_read_regular` call through the
+        SAME pin must still see the original content, not the outside
+        secret.
+        """
+        import shutil
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            root.mkdir()
+            (root / 'a.md').write_text('inside\n')
+            outside = Path(workdir, 'outside')
+            outside.mkdir()
+            (outside / 'a.md').write_text(self._SECRET + '\n')
+
+            pinned = self._pin(root)
+            try:
+                shutil.move(str(root), str(Path(workdir, 'root_moved_away')))
+                os.symlink(outside, root)
+
+                result = side_by_side._safe_read_regular(pinned, 'a.md')
+            finally:
+                pinned.close()
+
+            self.assertEqual(b'inside\n', result)
+            self.assertNotIn(self._SECRET.encode(), result or b'')
 
 
 class SideBySideScopePreservationTests(unittest.TestCase):
@@ -1196,6 +1256,224 @@ class SideBySideTargetRegistryValidationTests(unittest.TestCase):
             result = _preview(current_root, destination, target_dir, target_sha)
 
             self.assertTrue(any('target_registry' in c for c in result.plan.registry.conflicts))
+
+
+class SideBySideRootSubstitutionTests(unittest.TestCase):
+    """Gap 1: the ROOT itself (not merely its descendants) must be
+    pinned once and never re-derived from its pathname — otherwise a
+    rename-away-then-symlink-in swap of the whole source or destination
+    root, between an earlier verification and a later read/write, could
+    silently redirect host-side I/O to an attacker-controlled directory
+    even though every individual descendant check stays "safe".
+    """
+    _SECRET = 'OUTSIDE-ROOT-SUBSTITUTION-SECRET'
+
+    def test_source_root_replaced_by_symlink_during_migrate_is_never_followed(self):
+        """`current_root` is renamed away and replaced by a symlink to
+        an outside tree (containing the same relative path, with a
+        distinctive sentinel) between preview and the second kept
+        file's copy. The pinned root fd must keep referring to the
+        ORIGINAL directory: the outside secret must never reach the
+        destination, and whatever is copied must be the original
+        content, not the outside substitute.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'workspace/a.md': 'kept a\n',
+                'workspace/b.md': 'kept b\n',
+            })
+            destination = Path(workdir, 'dest')
+            outside = Path(workdir, 'outside_current')
+            (outside / 'workspace').mkdir(parents=True)
+            (outside / 'workspace' / 'b.md').write_text(self._SECRET + '\n')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md', 'workspace/b.md'), result.plan.kept)
+
+            def swap_current_root(relative):
+                if relative == 'workspace/b.md':
+                    import shutil
+                    shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                    os.symlink(outside, current_root)
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=swap_current_root)
+
+            blob = repr(migrate_result)
+            self.assertNotIn(self._SECRET, blob)
+            copied_b = Path(destination, 'workspace', 'b.md')
+            if copied_b.exists():
+                self.assertEqual('kept b\n', copied_b.read_text())
+                self.assertNotIn(self._SECRET, copied_b.read_text())
+
+    def test_destination_root_replaced_by_symlink_during_migrate_never_receives_writes(self):
+        """After the real pristine destination is built and validated,
+        `destination` is renamed away and replaced by a symlink to an
+        outside directory right before a kept file's write. The pinned
+        destination fd must keep referring to the ORIGINAL directory:
+        the outside directory must never receive the write.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+            outside = Path(workdir, 'outside_dest')
+            outside.mkdir()
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md',), result.plan.kept)
+
+            def swap_destination_root(relative):
+                if relative == 'workspace/a.md':
+                    import shutil
+                    shutil.move(str(destination), str(Path(workdir, 'dest_moved_away')))
+                    os.symlink(outside, destination)
+
+            self.assertEqual([], list(outside.iterdir()))
+            _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest,
+                _during_copy=swap_destination_root)
+
+            self.assertEqual([], list(outside.iterdir()))
+
+    def test_pristine_extraction_refuses_destination_root_replaced_by_symlink(self):
+        """`destination` is valid/empty, then replaced by a symlink to
+        an outside directory immediately before extraction — member-
+        shape validation alone does not protect the destination ROOT
+        itself. A synthetic safe regular tar member (`guides/a.md`)
+        must never land in the outside directory; extraction must fail
+        closed instead.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            destination = Path(workdir, 'dest')
+            destination.mkdir()
+            outside = Path(workdir, 'outside')
+            outside.mkdir()
+            os.rmdir(destination)
+            os.symlink(outside, destination)
+
+            buf = BytesIO()
+            with tarfile.open(fileobj=buf, mode='w') as tf:
+                data = b'x\n'
+                info = tarfile.TarInfo(name='guides/a.md')
+                info.size = len(data)
+                info.mode = 0o644
+                tf.addfile(info, BytesIO(data))
+
+            ok = side_by_side._extract_pristine_archive(buf.getvalue(), destination)
+
+            self.assertFalse(ok)
+            self.assertEqual([], list(outside.iterdir()))
+
+    def test_pristine_extraction_preserves_executable_mode_bit(self):
+        """A tracked executable file's mode bit must survive the
+        root-anchored extractor, not be silently collapsed to a fixed
+        mode.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            destination = Path(workdir, 'dest')
+            destination.mkdir()
+
+            buf = BytesIO()
+            with tarfile.open(fileobj=buf, mode='w') as tf:
+                data = b'#!/bin/sh\necho hi\n'
+                info = tarfile.TarInfo(name='run.sh')
+                info.size = len(data)
+                info.mode = 0o755
+                tf.addfile(info, BytesIO(data))
+
+            ok = side_by_side._extract_pristine_archive(buf.getvalue(), destination)
+
+            self.assertTrue(ok)
+            mode = (destination / 'run.sh').stat().st_mode
+            self.assertTrue(mode & 0o111, 'executable bit should survive extraction')
+
+
+class SideBySideCanonicalRegistryIdentityTests(unittest.TestCase):
+    """Gap 2: cross-side (target vs. current) registry comparisons must
+    use canonical, trailing-slash-insensitive target identity, and a
+    registry target denotes an actual DIRECTORY, not a path that merely
+    happens to have a regular file sitting exactly at that name.
+    """
+
+    def test_target_trailing_slash_current_no_slash_same_mapping_is_not_a_conflict(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('alpha', 'workspace/context/a/')]),
+                'workspace/context/a/existing.md': 'x\n',
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('alpha', 'workspace/context/a')]),
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertEqual((), result.plan.registry.conflicts)
+            self.assertEqual((), result.plan.registry.carried)
+
+            migrate_result = _migrate(
+                current_root, destination, target_dir, target_sha, result.plan, result.digest)
+            self.assertTrue(migrate_result.ready)
+            registry_text = Path(destination, 'system', 'routing', 'context_registry.md').read_text()
+            self.assertEqual(1, registry_text.count('alpha'))
+
+    def test_target_no_slash_current_trailing_slash_same_mapping_is_not_a_conflict(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('alpha', 'workspace/context/a')]),
+                'workspace/context/a/existing.md': 'x\n',
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('alpha', 'workspace/context/a/')]),
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertEqual((), result.plan.registry.conflicts)
+            self.assertEqual((), result.plan.registry.carried)
+
+    def test_regular_file_at_exact_scope_path_does_not_count_as_preserved_directory(self):
+        """The candidate contains a regular file at EXACTLY
+        `workspace/context/foo` (not a directory). The current registry
+        maps `foo → workspace/context/foo`. Since no resulting candidate
+        path exists STRICTLY BENEATH `workspace/context/foo/`, the
+        mapping is not preserved/carriable — it must be dropped, never
+        silently carried on the assumption a file-shaped path implies
+        the directory it is named after.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            files = _base_target_files({
+                'system/routing/context_registry.md': SideBySideRegistryTests._registry_text([]),
+                'workspace/context/foo': 'this is a FILE, not a directory\n',
+            })
+            target_dir, target_sha = _build_target_repo(workdir, files)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {
+                'system/routing/context_registry.md':
+                    SideBySideRegistryTests._registry_text([('foo', 'workspace/context/foo')]),
+            })
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+
+            self.assertIn(
+                side_by_side.RegistryMapping('foo', 'workspace/context/foo'), result.plan.registry.dropped)
+            self.assertEqual((), result.plan.registry.carried)
+            self.assertEqual((), result.plan.registry.conflicts)
 
 
 if __name__ == '__main__':

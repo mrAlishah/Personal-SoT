@@ -465,6 +465,23 @@ the pristine/target registry read is exempt, since it lives inside the
 already-validated, updater-owned pristine tree, and keeps using a plain
 read.
 
+The selected ROOT itself — `current_root` and the real `destination`
+alike — is pinned exactly once per logical operation (a classification,
+a copy loop, a candidate's whole build-through-ready lifecycle) via
+`_pin_root`, which opens it `O_DIRECTORY | O_NOFOLLOW` and records its
+`(st_dev, st_ino)` identity in a `_PinnedRoot`. Every descendant
+read/write for that operation goes through that SAME fd via
+`dir_fd`-relative `openat()` calls, never by re-deriving the root from
+its pathname again partway through: an already-open fd keeps referring
+to the original directory even if its pathname is later renamed away,
+replaced by a symlink, or replaced by an entirely different real
+directory at the same name, none of which repeated `O_NOFOLLOW`
+reopens-by-pathname alone could resist. The one remaining pathname-based
+operation, a tree scan via `os.walk` (`_scan_tree`), re-verifies the
+pinned root's identity immediately before and immediately after the
+walk, since `followlinks=False` protects only the subdirectories
+encountered while walking, never the walk's own top-level argument.
+
 Every destination write (a new kept file, or the registry replacement)
 is root-anchored through the symmetric write-side primitives
 (`_safe_create_new_regular`, `_safe_replace_existing_regular`): each
@@ -478,6 +495,29 @@ bytes still hash to the expected pristine value before truncating and
 rewriting that same descriptor — never a separate write-mode reopen,
 which would leave its own TOCTOU gap. No destination write ever follows
 a symlink, intermediate or final, planted or swapped in at any point.
+
+Pristine extraction (`_extract_pristine_archive`) is root-anchored the
+same way, not merely archive-member-normalized: tar-member shape
+validation (no absolute/traversal/symlink/hardlink member) happens
+first, but that alone does not protect the destination ROOT from being
+replaced by a symlink between the caller's earlier `_destination_safe`
+check and the extraction itself, so the destination is pinned
+(`_pin_root`, creating it first via a plain `mkdir` if it does not yet
+exist — `mkdir` never follows anything, it simply fails if any node
+already sits there) before a single member is written, and every
+member — including a directory member's own final component — is
+created through that one pin via the same `_safe_mkdir_p`/
+`_safe_create_new_regular` primitives, preserving each member's
+ordinary mode bits (masked to plain `rwx`) rather than collapsing them.
+
+Each candidate-own validator subprocess (`validate_pristine`,
+`validate_candidate`) necessarily takes a pathname, not an fd, so it is
+bracketed by a pinned-root identity recheck (`_pinned_root_still_current`)
+immediately before and immediately after the call: a validator run
+against a pathname that no longer identifies the pinned directory is
+never treated as having validated that candidate, and the migration
+fails closed as a concurrent change rather than trusting a result that
+may have examined a substituted directory.
 
 The one Personal-written state outside `workspace/` is the scope
 mappings in `system/routing/context_registry.md`. Both the current and
@@ -500,14 +540,22 @@ dict-stored value, so a scope appearing a second time is always a
 conflict even when its target is byte-identical to the first
 occurrence — an identical duplicate registration is a conflict exactly
 like a contradictory one, never carried once or twice by accident. A current mapping is kept only if its target
-is a `workspace/context/` directory actually present in the *resulting
-candidate's own file set* — the pristine target's regular files plus
-the selected current-only kept files, not the kept set alone, since a
-scope already shipped by `T` or identically present on both sides is
-just as preserved as one that exists only because of a kept file — and
-a genuine scope/target conflict, within current entries or against the
-validated target registry, fails closed rather than silently choosing
-either side. The target registry's own text is written back verbatim,
+is a `workspace/context/` directory that has at least one resulting
+candidate regular path *strictly beneath it* (`path.startswith(canonical
++ '/')`) — the pristine target's regular files plus the selected
+current-only kept files, not the kept set alone, since a scope already
+shipped by `T` or identically present on both sides is just as
+preserved as one that exists only because of a kept file. A regular
+file sitting exactly AT the mapped path never counts as that path being
+a populated directory — the registry target denotes a directory, and a
+same-named file is not one. A current mapping canonically identical to
+one the target registry already provides (even spelled with a
+different trailing slash) is simply not carried again — compared via
+the same canonical target identity, never the target's raw text — since
+it is neither a conflict nor a duplicate, the target's own verbatim text
+already covers it. A genuine scope/target conflict, within current
+entries or against the validated target registry, fails closed rather
+than silently choosing either side. The target registry's own text is written back verbatim,
 with carried mappings inserted as an additional fenced `scope`/`→ target`
 block — the same two-line shape the parser already understands, not a
 new schema — so the migrated file round-trips through the identical
