@@ -49,11 +49,18 @@ classify yet, the Assistant will tell you to save them first:
 
 ## 6. Web clients and other no-write hosts
 
-ChatGPT, Claude Web, and similar clients can check your installation and
-build a preview, but if they cannot write files or run local commands, they
-will say plainly that nothing was written and that validation was not run
-there. Use an authorized local agent (Claude Code, Codex) to apply a
-confirmed preview and actually validate it.
+A host that can read your installation and run local commands, but cannot
+write or validate, still builds the real preview and shows it to you — on
+the very first check, not only once you try to confirm — but adds plainly
+that nothing was written and that validation was not run there.
+
+ChatGPT, Claude Web, and similar clients typically cannot run local commands
+at all, so they cannot actually check your installation or build that
+preview themselves. They can explain the workflow in plain language and hand
+off to a local agent, but they must not claim to have checked or previewed
+your actual installation when they have not. Use an authorized local agent
+(Claude Code, Codex) to build a real preview, apply a confirmed one, and
+actually validate it.
 
 ## 7. What success means
 

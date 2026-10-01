@@ -4,8 +4,8 @@ from pathlib import Path
 
 from system.assistant import update_reporting
 from system.assistant.update_reporting import (
-    BeginnerReport, DeploymentBinding, disclosed_paths, git_beginner_report,
-    no_write_report, scope_candidates, zip_beginner_report,
+    BeginnerReport, DeploymentBinding, advanced_report, git_beginner_report,
+    no_write_report, zip_beginner_report,
 )
 from system.tests.update import test_side_by_side as _sbs_tests
 from system.update import git_update, side_by_side
@@ -70,55 +70,72 @@ class BeginnerReportPrivacyTests(unittest.TestCase):
 
 
 class AdvancedAuthorizationTests(unittest.TestCase):
-    _ALLOW_HEADER = '---\nai_access: allow\n---\n' + _SECRET + '\n'
-    _RESTRICTED_HEADER = '---\nai_access: restricted\n---\n' + _SECRET + '\n'
-    _DENY_HEADER = '---\nai_access: deny\n---\n' + _SECRET + '\n'
+    """Exercises the real `advanced_report` production boundary end to
+    end (real files on disk, the canonical registry read from `root`
+    itself) rather than any raw pre-authorization candidate transport —
+    there is no longer one to call directly.
+    """
+
+    def _fixture(self, workdir, scope='personal'):
+        root = Path(workdir)
+        _write_tree(root, {
+            'workspace/context/personal/allow_module.md':
+                '---\nai_access: allow\n---\n' + _SECRET + '\n',
+            'workspace/context/personal/restricted_module.md':
+                '---\nai_access: restricted\n---\n' + _SECRET + '\n',
+            'workspace/context/personal/deny_module.md':
+                '---\nai_access: deny\n---\n' + _SECRET + '\n',
+            'system/routing/context_registry.md':
+                _registry_text([(scope, 'workspace/context/personal')]),
+        })
+        return root
+
+    _CANDIDATES = (
+        'workspace/context/personal/allow_module.md',
+        'workspace/context/personal/restricted_module.md',
+        'workspace/context/personal/deny_module.md',
+    )
 
     def test_advanced_alone_never_exposes_a_path(self):
-        """`advanced=True`-equivalent (calling `disclosed_paths` at
-        all) with NO proven authorization input must disclose nothing,
-        for allow, restricted, deny, a non-context workspace file, and
-        an unclassifiable directory-like path alike.
+        """Calling `advanced_report` at all, with NO proven
+        authorization input, must disclose nothing, for allow,
+        restricted, and deny alike.
         """
-        candidates = (
-            ('workspace/context/personal/allow_module.md', self._ALLOW_HEADER,
-             'workspace/context/personal'),
-            ('workspace/context/personal/restricted_module.md', self._RESTRICTED_HEADER,
-             'workspace/context/personal'),
-            ('workspace/context/personal/deny_module.md', self._DENY_HEADER,
-             'workspace/context/personal'),
-        )
-        # No proven host_read, no trusted deployment binding at all.
-        result = disclosed_paths(candidates, host_read=False)
-        self.assertEqual((), result)
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            report = advanced_report('zip', None, root=root, candidate_paths=self._CANDIDATES,
+                                      host_read=False)
+            self.assertEqual((), report.personal_paths)
+            self.assertNotIn(_SECRET, repr(report))
 
     def test_permitted_allow_path_named_in_advanced_with_proven_host_read(self):
-        candidates = (
-            ('workspace/context/personal/allow_module.md', self._ALLOW_HEADER,
-             'workspace/context/personal'),
-        )
-        result = disclosed_paths(candidates, host_read=True)
-        self.assertEqual(('workspace/context/personal/allow_module.md',), result)
-        self.assertNotIn(_SECRET, ' '.join(result))
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow_module.md',), host_read=True)
+            self.assertEqual(('workspace/context/personal/allow_module.md',), report.personal_paths)
+            self.assertNotIn(_SECRET, repr(report))
 
     def test_permitted_allow_path_withheld_without_proven_host_read(self):
-        candidates = (
-            ('workspace/context/personal/allow_module.md', self._ALLOW_HEADER,
-             'workspace/context/personal'),
-        )
-        result = disclosed_paths(candidates, host_read=False)
-        self.assertEqual((), result)
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow_module.md',), host_read=False)
+            self.assertEqual((), report.personal_paths)
 
     def test_permitted_restricted_path_withheld_without_deployment_binding(self):
-        candidates = (
-            ('workspace/context/personal/restricted_module.md', self._RESTRICTED_HEADER,
-             'workspace/context/personal'),
-        )
-        result = disclosed_paths(candidates, host_read=True)
-        self.assertEqual((), result)
-        result = disclosed_paths(candidates, host_read=True,
-                                  deployment=DeploymentBinding(personal_owner=True))
-        self.assertEqual((), result, 'personal_owner alone, without private_instance, is insufficient')
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            candidates = ('workspace/context/personal/restricted_module.md',)
+            report = advanced_report('zip', None, root=root, candidate_paths=candidates, host_read=True)
+            self.assertEqual((), report.personal_paths)
+            report = advanced_report(
+                'zip', None, root=root, candidate_paths=candidates, host_read=True,
+                deployment=DeploymentBinding(personal_owner=True))
+            self.assertEqual((), report.personal_paths,
+                              'personal_owner alone, without private_instance, is insufficient')
 
     def test_permitted_restricted_path_named_with_full_trusted_deployment_binding(self):
         """Positive restricted case: a genuinely trusted
@@ -127,54 +144,44 @@ class AdvancedAuthorizationTests(unittest.TestCase):
         authority, just the same trusted-input shape a real private
         Personal deployment's own adapter would supply).
         """
-        candidates = (
-            ('workspace/context/personal/restricted_module.md', self._RESTRICTED_HEADER,
-             'workspace/context/personal'),
-        )
-        result = disclosed_paths(candidates, host_read=True,
-                                  deployment=DeploymentBinding(personal_owner=True, private_instance=True))
-        self.assertEqual(('workspace/context/personal/restricted_module.md',), result)
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/restricted_module.md',), host_read=True,
+                deployment=DeploymentBinding(personal_owner=True, private_instance=True))
+            self.assertEqual(('workspace/context/personal/restricted_module.md',), report.personal_paths)
 
     def test_permitted_deny_path_always_withheld(self):
-        candidates = (
-            ('workspace/context/personal/deny_module.md', self._DENY_HEADER,
-             'workspace/context/personal'),
-        )
-        result = disclosed_paths(candidates, host_read=True,
-                                  deployment=DeploymentBinding(personal_owner=True, private_instance=True))
-        self.assertEqual((), result)
+        with tempfile.TemporaryDirectory() as workdir:
+            root = self._fixture(workdir)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/deny_module.md',), host_read=True,
+                deployment=DeploymentBinding(personal_owner=True, private_instance=True))
+            self.assertEqual((), report.personal_paths)
 
     def test_unclassifiable_path_fails_closed_in_advanced(self):
         """A non-context workspace file and a directory-like path
-        never resolve to a registry scope at all, so `scope_candidates`
-        never even includes them as candidates — and if one were
-        force-fed to `disclosed_paths` directly with an empty/malformed
-        header, `permitted()` itself fails closed on it.
+        never resolve to a registered scope at all, so they are simply
+        never disclosed, with or without authorization inputs.
         """
         with tempfile.TemporaryDirectory() as workdir:
             root = Path(workdir)
             _write_tree(root, {
                 'workspace/plain_note.md': f'no frontmatter at all {_SECRET}\n',
+                'system/routing/context_registry.md':
+                    _registry_text([('personal', 'workspace/context/personal')]),
             })
-            registry_text = _registry_text(
-                [('personal', 'workspace/context/personal')])
-            candidates = scope_candidates(
-                root, registry_text, ['workspace/plain_note.md', 'workspace/some_dir'])
-            self.assertEqual((), candidates)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/plain_note.md', 'workspace/some_dir'), host_read=True,
+                deployment=DeploymentBinding(personal_owner=True, private_instance=True))
+            self.assertEqual((), report.personal_paths)
 
-            forced = (('workspace/some_dir', '', 'workspace/context/personal'),)
-            result = disclosed_paths(forced, host_read=True,
-                                      deployment=DeploymentBinding(personal_owner=True, private_instance=True))
-            self.assertEqual((), result)
-
-    def test_scope_candidates_bounded_header_never_pulls_full_body_into_memory_as_output(self):
-        """Even though `scope_candidates` reads a header, the returned
-        header text must not somehow carry the secret into anything
-        that later gets rendered without going through `permitted`.
-        This test only confirms the header read is bounded in size and
-        that `repr` of the whole candidate tuple is never itself
-        treated as output — `disclosed_paths` is the only thing that
-        may use it, and only for allowed paths.
+    def test_body_secret_never_survives_in_advanced_report_repr(self):
+        """A 1MB body secret under an allow-authorized path must never
+        appear anywhere in the returned report, authorized or not.
         """
         with tempfile.TemporaryDirectory() as workdir:
             root = Path(workdir)
@@ -182,14 +189,15 @@ class AdvancedAuthorizationTests(unittest.TestCase):
             _write_tree(root, {
                 'workspace/context/personal/allow_module.md':
                     '---\nai_access: allow\n---\n' + _SECRET + '\n' + big_body,
+                'system/routing/context_registry.md':
+                    _registry_text([('personal', 'workspace/context/personal')]),
             })
-            registry_text = _registry_text(
-                [('personal', 'workspace/context/personal')])
-            candidates = scope_candidates(
-                root, registry_text, ['workspace/context/personal/allow_module.md'])
-            self.assertEqual(1, len(candidates))
-            _path, header, _scope = candidates[0]
-            self.assertLessEqual(len(header), update_reporting._HEADER_READ_LIMIT)
+            report = advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow_module.md',), host_read=True)
+            self.assertEqual(('workspace/context/personal/allow_module.md',), report.personal_paths)
+            self.assertNotIn(_SECRET, repr(report))
+            self.assertNotIn(big_body, repr(report))
 
 
 if __name__ == '__main__':

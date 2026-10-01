@@ -6,7 +6,7 @@ from unittest import mock
 
 from system.assistant import update_reporting
 from system.assistant.update_reporting import HostCapability, run_update_workflow
-from system.tests.update.test_git_apply import _base_files as _git_base_files
+from system.tests.update.test_git_apply import _base_files as _git_base_files_raw
 from system.tests.update.test_git_classification import (
     _apply as _apply_files, _commit, _diverging_repos, _init_repo, _run,
 )
@@ -18,6 +18,16 @@ from system.update.target import TargetSnapshot
 _READ_ONLY = HostCapability(can_read=True, can_write=False, can_run_local_commands=False)
 _FULL = HostCapability(can_read=True, can_write=True, can_run_local_commands=True)
 _SECRET = 'LOOP5-E2E-SENTINEL-DO-NOT-LEAK'
+
+
+def _git_base_files(extra=None):
+    """`_base_files` plus the Personal-SoT install-type marker every
+    Git fixture in this file needs at its root now that routing
+    requires it, not merely a `.git` directory.
+    """
+    files = _git_base_files_raw(extra)
+    files.setdefault('workspace/adapters/runtime_entrypoint.md', 'x\n')
+    return files
 
 
 def _git_run(root, target_dir, target_sha, **kwargs):
@@ -39,9 +49,67 @@ class InstallTypeRoutingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
             _init_repo(root)
-            _apply_files(root, {'a.md': 'x\n'})
+            _apply_files(root, _git_base_files({'a.md': 'x\n'}))
             _commit(root, 'initial')
             self.assertEqual('git', update_reporting.detect_install_type(root, _FULL))
+
+    def test_arbitrary_git_repository_is_not_personal_sot_installation(self):
+        """A real, committed Git repository at its own top level, with
+        no Personal-SoT markers at all — a single unrelated `.git`
+        directory must never be enough to route as this installation.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'random_repo'))
+            _init_repo(root)
+            _apply_files(root, {'README.md': 'just some other repo\n'})
+            _commit(root, 'initial')
+            self.assertEqual('unknown', update_reporting.detect_install_type(root, _FULL))
+
+            real_classify, real_preview, real_apply = (
+                git_update.classify, git_update.preview, git_update.apply)
+            with mock.patch.object(git_update, 'classify') as spy_classify, \
+                 mock.patch.object(git_update, 'preview') as spy_preview, \
+                 mock.patch.object(git_update, 'apply') as spy_apply:
+                spy_classify.side_effect = real_classify
+                spy_preview.side_effect = real_preview
+                spy_apply.side_effect = real_apply
+                result = run_update_workflow(root, capability=_FULL)
+                spy_classify.assert_not_called()
+                spy_preview.assert_not_called()
+                spy_apply.assert_not_called()
+            self.assertEqual('unknown', result.install_type)
+            self.assertEqual('unknown_install_type', result.failure)
+
+    def test_git_personal_sot_root_requires_markers(self):
+        """A real Git repository that is missing just ONE of the two
+        required markers must still route as `unknown`, not `git`.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _apply_files(root, {'workspace/adapters/runtime_entrypoint.md': 'x\n'})
+            _commit(root, 'initial')
+            self.assertEqual('unknown', update_reporting.detect_install_type(root, _FULL))
+
+    def test_archive_marker_symlinks_do_not_prove_installation(self):
+        """Both marker paths exist, but as symlinks to files outside
+        the selected directory — never a genuine regular file at that
+        exact path, so this must never prove the installation is real.
+        """
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'fake_archive')
+            root.mkdir()
+            outside = Path(workdir, 'outside')
+            outside.mkdir()
+            (outside / 'runtime_entrypoint.md').write_text('x\n')
+            (outside / 'validate_v1.py').write_text('x\n')
+            (root / 'workspace' / 'adapters').mkdir(parents=True)
+            (root / 'system' / 'validation').mkdir(parents=True)
+            os.symlink(outside / 'runtime_entrypoint.md', root / 'workspace' / 'adapters' / 'runtime_entrypoint.md')
+            os.symlink(outside / 'validate_v1.py', root / 'system' / 'validation' / 'validate_v1.py')
+
+            self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
 
     def test_workflow_routes_to_zip_path_for_archive(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -106,8 +174,67 @@ class InstallTypeRoutingTests(unittest.TestCase):
             no_read = HostCapability(can_read=False, can_write=True, can_run_local_commands=True)
             self.assertEqual('unknown', update_reporting.detect_install_type(root, no_read))
 
+    def test_no_command_no_write_does_not_claim_preview_available(self):
+        """Capability lacks local-command execution entirely, so no
+        preview could even be attempted — the report must not claim
+        one is available (unlike the "built a real preview, just can't
+        write" case), while still truthfully stating the two required
+        no-write literals.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _apply_files(root, _git_base_files({'a.md': 'x\n'}))
+            _commit(root, 'initial')
+            no_commands = HostCapability(can_read=True, can_write=False, can_run_local_commands=False)
+
+            result = run_update_workflow(root, capability=no_commands)
+
+            self.assertIsNone(result.digest)
+            blob = result.beginner.headline + ' '.join(result.beginner.details)
+            self.assertNotIn('A preview is available', blob)
+            self.assertIn('nothing was written', blob)
+            self.assertIn('validation was not run here', blob)
+
+    def test_no_read_no_write_states_nothing_written(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            result = run_update_workflow(root, capability=_NO_READ_NO_WRITE)
+            blob = result.beginner.headline + ' '.join(result.beginner.details)
+            self.assertIn('nothing was written', blob)
+            self.assertIn('validation was not run here', blob)
+
+
+_NO_WRITE_WITH_COMMANDS = HostCapability(can_read=True, can_write=False, can_run_local_commands=True)
+_NO_READ_NO_WRITE = HostCapability(can_read=False, can_write=False, can_run_local_commands=False)
+
 
 class GitWorkflowE2ETests(unittest.TestCase):
+    def test_git_initial_no_write_preview_states_capability_limit(self):
+        """The VERY FIRST call, with no `confirm_digest` at all, from
+        a client that can read/run local commands but cannot write —
+        the real preview must still be built (a digest is returned and
+        the normal area/count information is present), AND the
+        required no-write literals must already be present, without
+        the caller needing to "confirm" first to learn that.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _git_base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, _base_sha, _current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+
+            real_apply = git_update.apply
+            with mock.patch.object(git_update, 'apply') as spy_apply:
+                spy_apply.side_effect = real_apply
+                result = _git_run(root, target_dir, target_sha, capability=_NO_WRITE_WITH_COMMANDS)
+                spy_apply.assert_not_called()
+
+            self.assertIsNotNone(result.digest)
+            self.assertFalse(result.applied)
+            blob = result.beginner.headline + ' '.join(result.beginner.details)
+            self.assertIn('nothing was written', blob)
+            self.assertIn('validation was not run here', blob)
+
     def test_git_e2e_full_update_success(self):
         with tempfile.TemporaryDirectory() as workdir:
             base = _git_base_files({'system/a.md': 'shipped\n', 'workspace/note.md': f'{_SECRET}\n'})
@@ -237,7 +364,7 @@ class GitWorkflowE2ETests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
             _init_repo(root)
-            _apply_files(root, {'workspace/a.md': 'x\n'})
+            _apply_files(root, _git_base_files({'workspace/a.md': 'x\n'}))
             _commit(root, 'initial')
             Path(root, 'workspace', f'{_SECRET}.md').write_text('untracked\n')
 
@@ -253,7 +380,7 @@ class GitWorkflowE2ETests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
             _init_repo(root)
-            _apply_files(root, {'workspace/a.md': 'x\n'})
+            _apply_files(root, _git_base_files({'workspace/a.md': 'x\n'}))
             _commit(root, 'initial')
             Path(root, 'workspace', 'untracked.md').write_text('untracked\n')
 
@@ -281,6 +408,30 @@ _ARCHIVE_MARKER_FILES = {
 
 
 class ZipWorkflowE2ETests(unittest.TestCase):
+    def test_zip_initial_no_write_preview_states_capability_limit(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
+                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+            }))
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {**_ARCHIVE_MARKER_FILES, 'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+
+            real_migrate = side_by_side.migrate
+            with mock.patch.object(side_by_side, 'migrate') as spy_migrate:
+                spy_migrate.side_effect = real_migrate
+                result = _zip_run(
+                    current_root, destination, target_dir, target_sha,
+                    capability=_NO_WRITE_WITH_COMMANDS)
+                spy_migrate.assert_not_called()
+
+            self.assertIsNotNone(result.digest)
+            self.assertFalse(result.applied)
+            blob = result.beginner.headline + ' '.join(result.beginner.details)
+            self.assertIn('nothing was written', blob)
+            self.assertIn('validation was not run here', blob)
+            self.assertIn('to preserve', blob)
+
     def test_zip_e2e_full_migration_success(self):
         with tempfile.TemporaryDirectory() as workdir:
             files = _base_target_files({
@@ -562,23 +713,113 @@ class AdvancedReportTests(unittest.TestCase):
                     '---\nai_access: restricted\n---\n' + self._BODY_SECRET + '\n',
                 'workspace/context/personal/deny.md':
                     '---\nai_access: deny\n---\n' + self._BODY_SECRET + '\n',
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text(
+                        [('personal', 'workspace/context/personal')]),
             })
-            registry_text = _sbs_tests.SideBySideRegistryTests._registry_text(
-                [('personal', 'workspace/context/personal')])
             paths = ('workspace/context/personal/allow.md', 'workspace/context/personal/restricted.md',
                      'workspace/context/personal/deny.md')
 
             no_auth = update_reporting.advanced_report(
-                'zip', None, root=root, registry_text=registry_text, candidate_paths=paths, host_read=False)
+                'zip', None, root=root, candidate_paths=paths, host_read=False)
             self.assertEqual((), no_auth.personal_paths)
             self.assertNotIn(self._BODY_SECRET, repr(no_auth))
 
             with_auth = update_reporting.advanced_report(
-                'zip', None, root=root, registry_text=registry_text, candidate_paths=paths, host_read=True)
+                'zip', None, root=root, candidate_paths=paths, host_read=True)
             self.assertEqual(('workspace/context/personal/allow.md',), with_auth.personal_paths)
             self.assertNotIn('restricted.md', with_auth.personal_paths)
             self.assertNotIn('deny.md', with_auth.personal_paths)
             self.assertNotIn(self._BODY_SECRET, repr(with_auth))
+
+    def test_advanced_report_uses_real_registry_not_caller_text(self):
+        """Even if the installation's own registry does NOT register
+        `workspace/context/unregistered`, the path under it must never
+        be disclosed — `advanced_report` no longer accepts a caller-
+        supplied registry string at all; only the canonical file at
+        `root` can ever grant scope authority.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir)
+            _write_tree(root, {
+                'workspace/context/unregistered/allow.md':
+                    '---\nai_access: allow\n---\n' + self._BODY_SECRET + '\n',
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text([]),
+            })
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/unregistered/allow.md',), host_read=True)
+            self.assertEqual((), report.personal_paths)
+
+    def test_unregistered_allow_path_not_disclosed(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir)
+            _write_tree(root, {
+                'workspace/context/unregistered/allow.md': '---\nai_access: allow\n---\nbody\n',
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text([]),
+            })
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/unregistered/allow.md',), host_read=True)
+            self.assertEqual((), report.personal_paths)
+
+    def test_registered_allow_path_disclosed_with_host_read(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir)
+            _write_tree(root, {
+                'workspace/context/personal/allow.md': '---\nai_access: allow\n---\nbody\n',
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text(
+                        [('personal', 'workspace/context/personal')]),
+            })
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
+            self.assertEqual(('workspace/context/personal/allow.md',), report.personal_paths)
+
+    def test_registry_symlink_fails_closed_for_personal_disclosure(self):
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            root.mkdir()
+            _write_tree(root, {
+                'workspace/context/personal/allow.md': '---\nai_access: allow\n---\nbody\n',
+            })
+            outside_registry = Path(workdir, 'outside_registry.md')
+            outside_registry.write_text(
+                _sbs_tests.SideBySideRegistryTests._registry_text(
+                    [('personal', 'workspace/context/personal')]))
+            (root / 'system' / 'routing').mkdir(parents=True)
+            os.symlink(outside_registry, root / 'system' / 'routing' / 'context_registry.md')
+
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
+            self.assertEqual((), report.personal_paths)
+
+    def test_traversal_candidate_rejected_before_header_read(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir)
+            _write_tree(root, {
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text(
+                        [('personal', 'workspace/context/personal')]),
+            })
+            real_reader = update_reporting._read_frontmatter_only
+            with mock.patch.object(update_reporting, '_read_frontmatter_only') as spy_reader:
+                spy_reader.side_effect = real_reader
+                report = update_reporting.advanced_report(
+                    'zip', None, root=root,
+                    candidate_paths=('../../etc/passwd.md', '/etc/passwd.md'), host_read=True)
+                spy_reader.assert_not_called()
+            self.assertEqual((), report.personal_paths)
+
+    def test_advanced_report_object_contains_no_raw_header_or_unauthorized_path(self):
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(update_reporting.AdvancedReport)}
+        self.assertEqual({'lines', 'personal_paths'}, field_names)
 
     def test_advanced_report_product_result_lines_are_truthful(self):
         succeeded = git_update.ApplyResult(

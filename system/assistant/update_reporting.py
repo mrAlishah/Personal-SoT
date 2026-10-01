@@ -7,8 +7,9 @@ that. It aggregates their already-produced Plan/Preview/Result objects
 into a truthful beginner report (area/count only, never a Personal path
 or filename) and an Advanced detail view (Personal
 `workspace/context/*.md` paths named only when `access.permitted`
-returns True; product/implementation detail such as commit SHAs may
-appear freely).
+returns True against the CANONICAL registry at the selected
+installation — never caller-supplied registry text; product/
+implementation detail such as commit SHAs may appear freely).
 
 See `system/assistant/update_workflow.md` for the user-facing contract
 this module implements.
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import stat
 
 from system.context.access import permitted
 from system.update import git_update, side_by_side
@@ -25,10 +27,14 @@ from system.validation.validate_v1 import context_registry_entries
 
 _KNOWN_AREAS = frozenset({'workspace', 'system', 'guides'})
 _HEADER_READ_LIMIT = 4096
+_REGISTRY_RELATIVE = Path('system', 'routing', 'context_registry.md')
 # Stable, repository-owned markers a real Personal-SoT installation has
 # regardless of whether it is a Git clone or a downloaded archive — the
-# smallest evidence that distinguishes one from an arbitrary directory,
-# never a guess from user wording.
+# smallest evidence that distinguishes one from an arbitrary directory
+# (including an arbitrary, unrelated Git repository), never a guess
+# from user wording. Each must be a genuine REGULAR file at that exact
+# path — a symlink standing in for one proves nothing about the
+# installation actually being there.
 _ARCHIVE_MARKERS = (
     Path('workspace', 'adapters', 'runtime_entrypoint.md'),
     Path('system', 'validation', 'validate_v1.py'),
@@ -78,7 +84,8 @@ class AdvancedReport:
     facts that were never Personal (a commit SHA, recovery flags, a
     ready/failure literal) and `personal_paths` are ONLY the
     `workspace/context/*.md` paths `access.permitted` actually
-    authorized — never a raw frontmatter header, module body, or an
+    authorized against the CANONICAL registry at the selected
+    installation — never a raw frontmatter header, module body, or an
     unauthorized Personal path. Calling this function, or any
     `advanced=True`-style flag, authorizes nothing by itself.
     """
@@ -133,26 +140,42 @@ def _is_git_installation(root) -> bool:
 
 def _is_personal_sot_archive(root) -> bool:
     """Whether `root` carries the smallest stable, repository-owned
-    evidence of being an actual Personal-SoT installation (Git or not)
-    — never true for an arbitrary directory that merely exists.
+    evidence of actually being a Personal-SoT installation — Git or
+    not. Each marker must be a genuine regular file at that EXACT path
+    (`lstat`, never a followed symlink): a symlink standing in for a
+    marker proves nothing about the real installation being there, and
+    an arbitrary directory or an unrelated Git repository has no reason
+    to carry either marker at all.
     """
     root = Path(root)
-    return all((root / marker).is_file() for marker in _ARCHIVE_MARKERS)
+    for marker in _ARCHIVE_MARKERS:
+        try:
+            st = (root / marker).lstat()
+        except OSError:
+            return False
+        if not stat.S_ISREG(st.st_mode):
+            return False
+    return True
 
 
 def detect_install_type(root, capability: HostCapability) -> str:
     """`'git'`, `'zip'`, or `'unknown'` — from actual host/repository
     evidence only, never from how the user describes their install.
-    Fails closed to `'unknown'` without proven read AND local-command
+    One installation-evidence rule covers both routes: the selected
+    root must carry Personal-SoT's own stable markers before either
+    route is even considered, so neither an arbitrary directory nor an
+    arbitrary, unrelated top-level Git repository can route as this
+    installation merely by existing or by being *some* Git repo. Fails
+    closed to `'unknown'` without proven read AND local-command
     capability (every check here is itself a local-command operation).
     """
     if capability.can_read is not True or capability.can_run_local_commands is not True:
         return 'unknown'
+    if not _is_personal_sot_archive(root):
+        return 'unknown'
     if _is_git_installation(root):
         return 'git'
-    if _is_personal_sot_archive(root):
-        return 'zip'
-    return 'unknown'
+    return 'zip'
 
 
 # --- display-only area/count aggregation ----------------------------------
@@ -176,6 +199,16 @@ def _area_counts(paths) -> dict[str, int]:
 
 def _count_lines(counts: dict[str, int], suffix: str) -> tuple[str, ...]:
     return tuple(f'{area}: {count} item(s) {suffix}' for area, count in sorted(counts.items()))
+
+
+def _with_no_write_notice(report: BeginnerReport) -> BeginnerReport:
+    """The SAME real, informative beginner report, with the two
+    required no-write literals appended — never a generic placeholder
+    substituted in their place. A client without write capability
+    learns both what the real preview found AND that it cannot write
+    or validate, on the very first call, not only after it "confirms".
+    """
+    return BeginnerReport(report.headline, report.details + ('nothing was written', 'validation was not run here'))
 
 
 # --- Git beginner report ---------------------------------------------------
@@ -285,6 +318,11 @@ def no_write_report() -> BeginnerReport:
 
 
 def _no_local_command_report() -> BeginnerReport:
+    """Case B: no preview could even be attempted, because the local
+    command/read capability a preview needs was never available —
+    never worded as if a preview exists, unlike case A
+    (`_with_no_write_notice`, where one genuinely was built).
+    """
     return BeginnerReport(
         'This client cannot run the local commands needed to check or preview an update here.',
         ('nothing was written', 'validation was not run here'))
@@ -321,46 +359,59 @@ def _read_frontmatter_only(root, path: str) -> str:
     return ''
 
 
-def scope_candidates(root, registry_text: str, paths) -> tuple[tuple[str, str, str], ...]:
-    """Of `paths` (candidate `workspace/context/*.md` paths already
-    produced by an existing Plan), the ones that fall under a scope the
-    registry actually names — resolved exclusively via
-    `context_registry_entries` (no second parser) — paired with a
-    bounded, frontmatter-only host-side header read of each. An
-    unclassifiable path (no `.md` suffix, not under any registered
-    scope) is simply never included, which is what later makes
-    `access.permitted` fail closed for it on its own.
+def _canonical_registry_text(root) -> str | None:
+    """The CANONICAL registry text at `root/system/routing/
+    context_registry.md`, read host-side — NEVER caller-supplied text,
+    which could otherwise fabricate scope ownership for a path the
+    installation's own registry never actually registers. `None`
+    (fail closed, meaning "no scope can be proven" — never "empty
+    registry") if the path is missing, unreadable, or its final
+    component is a symlink.
     """
-    entries = context_registry_entries(registry_text)
-    candidates = []
-    for path in paths:
-        if not path.endswith('.md'):
-            continue
-        for _scope, target in entries:
-            canonical = side_by_side.normalize_relative(target.rstrip('/'))
-            if canonical is None:
-                continue
-            if path == canonical or path.startswith(canonical + '/'):
-                header = _read_frontmatter_only(root, path)
-                candidates.append((path, header, canonical))
-                break
-    return tuple(candidates)
+    full = Path(root, _REGISTRY_RELATIVE)
+    try:
+        if full.is_symlink() or not full.is_file():
+            return None
+        return full.read_text(encoding='utf-8')
+    except OSError:
+        return None
 
 
-def disclosed_paths(candidates: tuple[tuple[str, str, str], ...], *, host_read: bool,
-                     deployment: DeploymentBinding = DeploymentBinding()) -> tuple[str, ...]:
-    """Of `candidates` (`(path, header, scope_path)` triples), only the
-    ones `access.permitted` actually authorizes — called directly, per
-    path, never reimplemented. `deployment` defaults to the fail-closed
-    binding, so a caller with no trusted deployment state discloses
-    nothing restricted.
+def _authorized_personal_paths(root, candidate_paths, *, host_read: bool,
+                                deployment: DeploymentBinding) -> tuple[str, ...]:
+    """The ONE internal host-side authorization pass, never exposed as
+    a public raw-candidate transport: for each candidate, validate it
+    is a safe relative `.md` path (rejecting absolute/`..`/non-`.md`
+    paths BEFORE any file is opened), resolve whether it falls under a
+    scope the CANONICAL registry at `root` actually names, read ONLY
+    its frontmatter, call `access.permitted` directly, and keep the
+    path only if that call returns `True`. The frontmatter is discarded
+    immediately after the call — it never survives in any returned
+    value.
     """
+    registry_text = _canonical_registry_text(root)
+    if registry_text is None:
+        return ()
+    scopes = []
+    for _scope, target in context_registry_entries(registry_text):
+        canonical = side_by_side.normalize_relative(target.rstrip('/'))
+        if canonical is not None:
+            scopes.append(canonical)
+
     allowed = []
-    for path, header, scope_path in candidates:
-        if permitted(header, path=path, scope_path=scope_path, host_read=host_read,
+    for path in candidate_paths:
+        normalized = side_by_side.normalize_relative(path)
+        if normalized is None or not normalized.endswith('.md'):
+            continue
+        scope_path = next(
+            (scope for scope in scopes if normalized == scope or normalized.startswith(scope + '/')), None)
+        if scope_path is None:
+            continue
+        header = _read_frontmatter_only(root, normalized)
+        if permitted(header, path=normalized, scope_path=scope_path, host_read=host_read,
                      required=True, personal_owner=deployment.personal_owner,
                      private_instance=deployment.private_instance):
-            allowed.append(path)
+            allowed.append(normalized)
     return tuple(allowed)
 
 
@@ -379,22 +430,24 @@ def _advanced_result_lines(install_type: str, result) -> tuple[str, ...]:
     return ()
 
 
-def advanced_report(install_type: str, result=None, *, root=None, registry_text: str | None = None,
-                     candidate_paths=(), host_read: bool = False,
+def advanced_report(install_type: str, result=None, *, root=None, candidate_paths=(),
+                     host_read: bool = False,
                      deployment: DeploymentBinding = DeploymentBinding()) -> AdvancedReport:
     """The one Advanced-tier view: safe product/result facts plus ONLY
-    the `candidate_paths` that `access.permitted` actually authorizes
-    for the given, honestly-sourced `host_read`/`deployment` inputs.
-    Calling this (or an `advanced=True`-style flag anywhere upstream)
-    authorizes nothing by itself — every Personal path still passes
-    through a real `permitted()` call, and no raw header or module body
-    ever reaches the returned object.
+    the `candidate_paths` that `access.permitted` actually authorizes,
+    checked against the CANONICAL registry read directly from `root` —
+    never a caller-supplied registry string, which would otherwise let
+    a caller fabricate scope ownership for an unregistered path. Calling
+    this (or an `advanced=True`-style flag anywhere upstream) authorizes
+    nothing by itself — every Personal path still passes through a real
+    `permitted()` call, and no raw header, module body, or unauthorized
+    path ever reaches the returned object.
     """
     lines = _advanced_result_lines(install_type, result)
     personal_paths: tuple[str, ...] = ()
-    if root is not None and registry_text is not None and candidate_paths:
-        candidates = scope_candidates(root, registry_text, candidate_paths)
-        personal_paths = disclosed_paths(candidates, host_read=host_read, deployment=deployment)
+    if root is not None and candidate_paths:
+        personal_paths = _authorized_personal_paths(
+            root, candidate_paths, host_read=host_read, deployment=deployment)
     return AdvancedReport(lines=lines, personal_paths=personal_paths)
 
 
@@ -406,13 +459,13 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) 
     fresh_digest = preview.digest
     confirmed = confirm_digest is not None and confirm_digest == fresh_digest
 
-    if not (capability.can_write and capability.can_run_local_commands):
-        if confirmed:
-            # An explicit confirmation never upgrades a no-write client's
-            # actual capability — apply is never called here.
-            return WorkflowResult('git', fresh_digest, False, False, no_write_report())
-        return WorkflowResult('git', fresh_digest, False, False,
-                               git_beginner_report(plan, preview.summary, None))
+    if not capability.can_write:
+        # Preview genuinely was built (local-command capability is
+        # already guaranteed by the caller) — the real, informative
+        # report is shown, with the no-write notice attached, on the
+        # very first call, not only once the client "confirms".
+        base_report = git_beginner_report(plan, preview.summary, None)
+        return WorkflowResult('git', fresh_digest, False, False, _with_no_write_notice(base_report))
 
     if confirm_digest is None:
         return WorkflowResult('git', fresh_digest, False, False,
@@ -448,10 +501,9 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
     fresh_digest = sbs_preview.digest
     confirmed = confirm_digest is not None and confirm_digest == fresh_digest
 
-    if not (capability.can_write and capability.can_run_local_commands):
-        if confirmed:
-            return WorkflowResult('zip', fresh_digest, False, False, no_write_report())
-        return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
+    if not capability.can_write:
+        base_report = zip_beginner_report(plan, None)
+        return WorkflowResult('zip', fresh_digest, False, False, _with_no_write_notice(base_report))
 
     if confirm_digest is None:
         return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
@@ -484,8 +536,10 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
     (never trusts a caller-held plan object); `confirm_digest` must
     match THAT fresh digest for apply/migrate to even be considered —
     a stale or absent `confirm_digest` always stays preview-only, and a
-    client lacking write/local-command capability can never cause
-    apply/migrate to run no matter what it passes as `confirm_digest`.
+    client lacking write capability can never cause apply/migrate to
+    run no matter what it passes as `confirm_digest`, and is told so
+    plainly on its very first call, alongside whatever real preview
+    information was actually built.
 
     Without proven local-command capability, NOTHING in this module
     runs at all — install-type detection, classification, and preview
