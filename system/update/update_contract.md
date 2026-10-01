@@ -502,7 +502,21 @@ read, and once more right after `classify_workspace` returns (in both
 `preview` and `migrate`'s own reclassification) before its Plan is
 trusted at all, since classification's own hash/registry reads happen
 after `_scan_tree`'s own before/after check and are not otherwise
-covered. A detected mismatch is always a concurrent/stale-state
+covered.
+
+The pre-read checks above bound the window BEFORE a kept file's byte
+snapshot is captured; they do not, by themselves, prove the pathname
+still names the selected installation AT THE MOMENT the read actually
+happened, since the pinned fd's own containment guarantee means the
+read itself always succeeds and returns the old directory's bytes
+regardless of a pathname swap landing during it. `current_root`'s
+identity is therefore rechecked a THIRD time, immediately after
+`_safe_read_regular` returns and before the content-hash check or the
+destination write — a mismatch there means the just-captured bytes
+came from an already-orphaned directory and must never be written,
+even though they are "valid" bytes whose hash could otherwise still
+match the preview-bound expectation. A detected mismatch is always a
+concurrent/stale-state
 failure — `blocked='stale_state'` from `preview`,
 `failure='concurrent_change'` or `'stale_state'` from `migrate`, never
 a successful `ready` candidate — and is never "fixed" by reopening the

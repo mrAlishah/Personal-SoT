@@ -1491,6 +1491,89 @@ class SideBySideRootSubstitutionTests(unittest.TestCase):
             self.assertEqual('stale_state', migrate_result.failure)
             self.assertFalse(Path(destination, 'workspace', 'a.md').exists())
 
+    def test_source_root_replaced_during_the_read_itself_is_detected_before_write(self):
+        """`current_root` is renamed away and replaced by a symlink to
+        an outside tree, injected immediately before the REAL
+        `_safe_read_regular` delegate call for the copy loop's own
+        read (not classification's earlier read of the same file) —
+        proving the pinned fd still returns the OLD directory's bytes
+        (containment holds), but that read must never be trusted and
+        written once the pathname no longer identifies the selected
+        installation.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+            outside = Path(workdir, 'outside_current')
+            (outside / 'workspace').mkdir(parents=True)
+            (outside / 'workspace' / 'a.md').write_text(self._SECRET + '\n')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md',), result.plan.kept)
+
+            real_safe_read_regular = side_by_side._safe_read_regular
+            calls = {'count': 0}
+
+            def racing_safe_read_regular(root, relative):
+                if relative == 'workspace/a.md' and root.path == current_root:
+                    calls['count'] += 1
+                    if calls['count'] == 2:  # 1st = classification hash, 2nd = copy-loop read
+                        import shutil
+                        shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                        os.symlink(outside, current_root)
+                return real_safe_read_regular(root, relative)
+
+            with mock.patch.object(side_by_side, '_safe_read_regular', racing_safe_read_regular):
+                migrate_result = _migrate(
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+
+            self.assertEqual(2, calls['count'])
+            self.assertFalse(migrate_result.ready)
+            self.assertIn(migrate_result.failure, ('concurrent_change', 'stale_state'))
+            self.assertNotIn(self._SECRET, repr(migrate_result))
+            self.assertFalse(Path(destination, 'workspace', 'a.md').exists())
+
+    def test_source_root_replaced_by_a_new_real_directory_during_the_read_itself_is_detected(self):
+        """Same read-window race, but the replacement is an entirely
+        different REAL directory with BYTE-IDENTICAL content at the
+        same relative path — never a symlink — proving the post-read
+        check is inode/device identity, not content comparison or
+        symlink rejection: the hash check alone would pass.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            target_dir, target_sha = _build_target_repo(workdir, _base_target_files())
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/a.md': 'kept a\n'})
+            destination = Path(workdir, 'dest')
+
+            result = _preview(current_root, destination, target_dir, target_sha)
+            self.assertEqual(('workspace/a.md',), result.plan.kept)
+
+            real_safe_read_regular = side_by_side._safe_read_regular
+            calls = {'count': 0}
+
+            def racing_safe_read_regular(root, relative):
+                if relative == 'workspace/a.md' and root.path == current_root:
+                    calls['count'] += 1
+                    if calls['count'] == 2:
+                        import shutil
+                        shutil.move(str(current_root), str(Path(workdir, 'current_moved_away')))
+                        current_root.mkdir()
+                        (current_root / 'workspace').mkdir()
+                        (current_root / 'workspace' / 'a.md').write_text('kept a\n')
+                return real_safe_read_regular(root, relative)
+
+            with mock.patch.object(side_by_side, '_safe_read_regular', racing_safe_read_regular):
+                migrate_result = _migrate(
+                    current_root, destination, target_dir, target_sha, result.plan, result.digest)
+
+            self.assertEqual(2, calls['count'])
+            self.assertFalse(migrate_result.ready)
+            self.assertIn(migrate_result.failure, ('concurrent_change', 'stale_state'))
+            self.assertFalse(Path(destination, 'workspace', 'a.md').exists())
+
 
 class SideBySideCanonicalRegistryIdentityTests(unittest.TestCase):
     """Gap 2: cross-side (target vs. current) registry comparisons must

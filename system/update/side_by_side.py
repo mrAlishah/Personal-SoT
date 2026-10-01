@@ -1152,6 +1152,18 @@ def _migrate_into_pinned_destination(current_pin: _PinnedRoot, destination_pin: 
             return MigrationResult(
                 **base_result, migration_started=migration_started, failure='concurrent_change')
         data = _safe_read_regular(current_pin, relative)
+        # A root replacement landing after the check above but
+        # before/during this read would still succeed through the
+        # pinned fd (containment, not staleness, is what the fd
+        # guarantees) — this recheck is what proves the pathname STILL
+        # names the selected installation once the byte snapshot has
+        # been captured. A mismatch here means the just-read bytes
+        # came from an already-orphaned directory and must never be
+        # written, even though they are "valid" bytes whose hash could
+        # otherwise match.
+        if not _pinned_root_still_current(current_pin):
+            return MigrationResult(
+                **base_result, migration_started=migration_started, failure='concurrent_change')
         if data is None or sha256(data).hexdigest() != expected_hashes.get(relative):
             return MigrationResult(
                 **base_result, migration_started=migration_started, failure='concurrent_change')
