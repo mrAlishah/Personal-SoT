@@ -793,6 +793,17 @@ def _post_mutation_integrity_ok(root, ephemeral, candidate_tree_sha, touched_pat
     as the dirty/untracked preflight does, so this gate itself can never
     need to execute a configured helper to decide anything. Content
     identity only — never a text comparison.
+
+    That one status call passes `--no-renames`: Git's own rename/copy
+    detection can otherwise present "delete an untouched path, create a
+    touched path with identical content" as a single porcelain-v2 type-2
+    record whose reported current path is the touched one — exactly the
+    shape `_porcelain_v2_paths` (correct for Loop 2's coarse area/count
+    semantics, which this function does not touch) reports as only that
+    one current path, silently hiding the untouched path's deletion.
+    `--no-renames` is a command-level flag, so this is deterministic
+    regardless of the repository's own `status.renames`/`diff.renames`
+    configuration.
     """
     configured = _configured_drivers(root)
     if configured is None or _attribute_safety_blocked(root):
@@ -805,8 +816,8 @@ def _post_mutation_integrity_ok(root, ephemeral, candidate_tree_sha, touched_pat
                 or _identify_index_entry(root, path, extra_env) != written_entry):
             return False
     status = controlled_git(
-        '--no-optional-locks', 'status', '--porcelain=v2', '-z', '--untracked-files=all',
-        cwd=root, extra_env=extra_env)
+        '--no-optional-locks', 'status', '--porcelain=v2', '-z', '--no-renames',
+        '--untracked-files=all', cwd=root, extra_env=extra_env)
     if status.returncode != 0:
         return False
     changed = set(_porcelain_v2_paths(status.stdout or ''))
@@ -1003,7 +1014,14 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                             concurrent_change=per_path_concurrent,
                             failure='concurrent_change_pre_mutation' if per_path_concurrent
                             else 'mutation_failed')
-                    rollback_completed = _attempt_recovery(ephemeral, root, record, extra_env)
+                    recovered = _attempt_recovery(ephemeral, root, record, extra_env)
+                    # An integrity-gate failure means something outside
+                    # the narrow touched-path bookkeeping `record` covers
+                    # has drifted (that is exactly what this gate exists
+                    # to catch) — `_attempt_recovery` has no way to see
+                    # that, so "complete" can never be truthfully claimed
+                    # here regardless of its own return value.
+                    rollback_completed = recovered and not integrity_failed
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,

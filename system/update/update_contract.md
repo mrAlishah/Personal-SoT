@@ -334,15 +334,27 @@ against the validated candidate: configured drivers and attribute safety
 are re-read first (so this gate itself can never need to execute a
 configured helper), then every touched path's current worktree AND
 index identity is compared against what the updater wrote, and a
-`git status --porcelain=v2 -z --untracked-files=all` confirms every
-reported changed path is one of the updater's own touched paths — no
-untouched tracked path and no new untracked path. This closes the
-window a concurrent external event in that exact spot would otherwise
-leave open: such an event need not raise an exception to be dangerous,
-and an exception is not the only thing this gate must catch. The gate
-never resets, cleans, or deletes an external path it finds; failing it
-aborts before the ref advances and routes into the same recovery
-behavior as any other post-mutation failure.
+`git status --porcelain=v2 -z --no-renames --untracked-files=all`
+confirms every reported changed path is one of the updater's own
+touched paths — no untouched tracked path and no new untracked path.
+`--no-renames` is required here specifically: Git's own rename/copy
+detection can otherwise present "delete an untouched path, create a
+touched path with identical content" as a single porcelain-v2 type-2
+record whose reported current path is the touched one, silently hiding
+the untouched path's deletion from a parser (correct for Loop 2's
+coarse dirty area/count semantics, which this does not change) that
+reports only the current path. Being a command-level flag, this is
+deterministic regardless of the repository's own
+`status.renames`/`diff.renames` configuration. This closes the window a
+concurrent external event in that exact spot would otherwise leave
+open: such an event need not raise an exception to be dangerous, and an
+exception is not the only thing this gate must catch. The gate never
+resets, cleans, or deletes an external path it finds; failing it aborts
+before the ref advances and routes into the same recovery behavior as
+any other post-mutation failure — and `rollback_completed` is always
+false for this specific kind of failure, since the gate catching
+something outside the touched-path bookkeeping is precisely what the
+narrower recovery attempt has no way to see for itself.
 
 Only once that gate passes does the ref advance, last, `git update-ref
 HEAD <new> <old=C>`, a compare-and-swap that fails closed if `C` moved

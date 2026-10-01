@@ -1042,6 +1042,7 @@ class ApplyFinalIntegrityGateTests(unittest.TestCase):
             after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
             self.assertEqual(current_sha, after_head)
             self.assertTrue(result.concurrent_change)
+            self.assertFalse(result.rollback_completed)
             self.assertEqual('changed by someone else\n', Path(root, 'system', 'untouched.md').read_text())
 
     def test_untracked_path_created_during_mutation_window_never_succeeds(self):
@@ -1061,8 +1062,70 @@ class ApplyFinalIntegrityGateTests(unittest.TestCase):
             after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
             self.assertEqual(current_sha, after_head)
             self.assertTrue(result.concurrent_change)
+            self.assertFalse(result.rollback_completed)
             # Never deleted/reset; the surprise file is left exactly as-is.
             self.assertTrue(Path(root, 'system', 'surprise.md').exists())
+
+
+    def test_rename_detection_cannot_hide_an_externally_deleted_untouched_path(self):
+        """A touched (new, upstream_only) path and an untouched tracked
+        path with IDENTICAL content let Git's own rename detection
+        present "delete untouched.md, create touched.md" as a SINGLE
+        porcelain-v2 type-2 rename record whose reported current path
+        is the touched one — the untouched path's deletion would be
+        completely invisible to a parser that only reports the current
+        path and skips origPath. The final integrity gate must not be
+        fooled by this.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/untouched.md': 'same content\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/touched.md': 'same content\n'})
+            _run(['git', '-C', root, 'config', 'status.renames', 'true'])
+            plan, digest = _confirm(root, target_dir, target_sha)
+            self.assertEqual(('system/touched.md',), plan.upstream_only)
+
+            def delete_untouched_externally():
+                # Sanity-check the fixture itself actually produces a
+                # type-2 rename record with the touched path as current
+                # and the untouched path as origPath, before relying on
+                # apply() to handle it correctly.
+                before = subprocess.run(
+                    ['git', '-C', root, 'status', '--porcelain=v2', '-z'],
+                    capture_output=True, text=True).stdout
+                assert before.startswith('1 A. '), before  # touched.md freshly staged, not yet a rename pair
+
+                Path(root, 'system', 'untouched.md').unlink()
+                _run(['git', '-C', root, 'rm', '-q', '--cached', 'system/untouched.md'])
+
+                after = subprocess.run(
+                    ['git', '-C', root, 'status', '--porcelain=v2', '-z'],
+                    capture_output=True, text=True).stdout
+                assert after.startswith('2 R'), after
+                assert 'system/touched.md' in after and 'system/untouched.md' in after, after
+
+                # The exact command _post_mutation_integrity_ok issues
+                # must never reduce this to a single type-2 record, no
+                # matter the repository's own status.renames setting.
+                no_renames = subprocess.run(
+                    ['git', '-C', root, '--no-optional-locks', 'status', '--porcelain=v2', '-z',
+                     '--no-renames', '--untracked-files=all'],
+                    capture_output=True, text=True).stdout
+                assert not any(chunk.startswith('2 ') for chunk in no_renames.split('\0') if chunk), no_renames
+                assert 'system/untouched.md' in no_renames, no_renames
+
+            result = _do_apply(
+                root, target_dir, target_sha, plan, digest,
+                _after_mutation=delete_untouched_externally)
+
+            self.assertIsNone(result.commit)
+            after_head = _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip()
+            self.assertEqual(current_sha, after_head)
+            self.assertTrue(result.concurrent_change)
+            self.assertTrue(result.rollback_attempted)
+            self.assertFalse(result.rollback_completed)
+            # The external deletion is never undone by the updater.
+            self.assertFalse(Path(root, 'system', 'untouched.md').exists())
 
 
 if __name__ == '__main__':
