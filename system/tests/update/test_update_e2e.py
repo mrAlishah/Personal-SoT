@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 import unittest
@@ -275,12 +276,15 @@ class InstallTypeRoutingTests(unittest.TestCase):
 
     def test_root_change_during_git_install_probe_fails_closed(self):
         """The selected root passes marker proof as a real Git repo,
-        but is replaced by a DIFFERENT real directory (never a
-        symlink) between the marker check and the Git top-level
-        probe. The probe would resolve correctly against whatever is
-        at the pathname at THAT moment, but the pinned root's identity
-        has already drifted, so the overall proof must still fail
-        closed.
+        but the pathname is replaced by a DIFFERENT real directory
+        (never a symlink) between the marker check and the final
+        identity recheck. All routing evidence (markers, `.git`) is
+        read through the pin and so is entirely unaffected by the
+        pathname swap, but the pinned root's pathname identity has
+        drifted by the time `detect_install_type` rechecks it right
+        before returning, so the overall proof must still fail closed
+        rather than return a route for a pathname that no longer names
+        the pinned installation at all.
         """
         import shutil
         with tempfile.TemporaryDirectory() as workdir:
@@ -304,6 +308,116 @@ class InstallTypeRoutingTests(unittest.TestCase):
             with mock.patch.object(update_reporting, '_is_personal_sot_archive', swap_after_markers):
                 result = update_reporting.detect_install_type(str(selected), _FULL)
             self.assertEqual('unknown', result)
+
+    def test_git_route_probe_cannot_be_fooled_by_aba_root_swap(self):
+        """Physical root A has valid Personal-SoT markers and is NOT a
+        Git repository; physical root B has valid markers and IS a
+        real Git repository. The selected pathname is pinned while it
+        names A. A genuine ABA swap — rename A away, move B onto the
+        selected pathname, run whatever Git evidence check exists,
+        move B away again, restore A (the SAME physical directory,
+        via `os.rename`, preserving its inode) — surrounds the check.
+        Even though every pathname-based identity check before and
+        after the swap sees A correctly restored, the check itself
+        must never have been influenced by B: A is genuinely not
+        Git-managed, so the route must never be `'git'`.
+        """
+        import subprocess
+        with tempfile.TemporaryDirectory() as workdir:
+            selected = Path(workdir, 'selected')
+            root_a_parked = Path(workdir, 'root_a_parked')
+            root_b_parked = Path(workdir, 'root_b_parked')
+
+            _write_tree(selected, {
+                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'system/validation/validate_v1.py': 'x\n',
+            })
+            _write_tree(root_b_parked, {
+                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'system/validation/validate_v1.py': 'x\n',
+            })
+            subprocess.run(['git', 'init', '-q', str(root_b_parked)], check=True)
+            subprocess.run(['git', '-C', str(root_b_parked), 'config', 'user.email', 'x@example.com'],
+                            check=True)
+            subprocess.run(['git', '-C', str(root_b_parked), 'config', 'user.name', 'x'], check=True)
+            subprocess.run(['git', '-C', str(root_b_parked), 'add', '-A'], check=True)
+            subprocess.run(['git', '-C', str(root_b_parked), 'commit', '-q', '-m', 'init'], check=True)
+
+            pin = update_reporting._pin_read_root(selected)
+            try:
+                real_controlled_git = update_reporting.controlled_git
+
+                def aba_controlled_git(*args, **kwargs):
+                    os.rename(selected, root_a_parked)
+                    os.rename(root_b_parked, selected)
+                    result = real_controlled_git(*args, **kwargs)
+                    os.rename(selected, root_b_parked)
+                    os.rename(root_a_parked, selected)
+                    return result
+
+                with mock.patch.object(update_reporting, 'controlled_git', aba_controlled_git):
+                    is_git = update_reporting._is_git_installation(pin)
+                self.assertFalse(is_git)
+            finally:
+                pin.close()
+
+            result = update_reporting.detect_install_type(str(selected), _FULL)
+            self.assertEqual('zip', result)
+
+    def test_normal_clone_detected_from_pinned_git_metadata(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = str(Path(workdir, 'root'))
+            _init_repo(root)
+            _apply_files(root, _git_base_files({'a.md': 'x\n'}))
+            _commit(root, 'initial')
+            self.assertEqual('git', update_reporting.detect_install_type(root, _FULL))
+
+    def test_linked_worktree_detected_from_pinned_gitfile_metadata(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            main_repo = str(Path(workdir, 'main'))
+            _init_repo(main_repo)
+            _apply_files(main_repo, _git_base_files({'a.md': 'x\n'}))
+            _commit(main_repo, 'initial')
+            worktree = str(Path(workdir, 'wt'))
+            _run(['git', '-C', main_repo, 'worktree', 'add', '-q', '--detach', worktree, 'main'])
+
+            self.assertTrue(Path(worktree, '.git').is_file())
+            self.assertEqual('git', update_reporting.detect_install_type(worktree, _FULL))
+
+    def test_git_symlink_metadata_fails_closed(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            _write_tree(root, {
+                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'system/validation/validate_v1.py': 'x\n',
+            })
+            outside_git = Path(workdir, 'outside_dotgit')
+            outside_git.mkdir()
+            os.symlink(outside_git, root / '.git')
+
+            pin = update_reporting._pin_read_root(root)
+            try:
+                self.assertFalse(update_reporting._is_git_installation(pin))
+            finally:
+                pin.close()
+            self.assertEqual('zip', update_reporting.detect_install_type(str(root), _FULL))
+
+    def test_malformed_gitfile_does_not_prove_git_route(self):
+        for content in ('', 'not a gitdir line\n', 'gitdir:\n', 'gitdir:   \n'):
+            with self.subTest(content=repr(content)):
+                with tempfile.TemporaryDirectory() as workdir:
+                    root = Path(workdir, 'root')
+                    _write_tree(root, {
+                        'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                        'system/validation/validate_v1.py': 'x\n',
+                        '.git': content,
+                    })
+                    pin = update_reporting._pin_read_root(root)
+                    try:
+                        self.assertFalse(update_reporting._is_git_installation(pin))
+                    finally:
+                        pin.close()
+                    self.assertEqual('zip', update_reporting.detect_install_type(str(root), _FULL))
 
     def test_root_anchored_reader_rejects_absolute_path_before_open(self):
         """`_root_anchored_parts` itself must reject an absolute path

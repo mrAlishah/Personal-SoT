@@ -42,14 +42,26 @@ inside an unrelated parent repository is never misidentified as the
 installation, and a linked worktree — whose `.git` is a file, not a
 directory — is still correctly recognized as its own root).
 
-Installation proof pins the selected root to ONE physical directory for
-the whole transaction — both markers and the Git top-level identity check
-are evaluated against that same pin, never re-derived from the pathname in
-between, and the pathname's identity is reverified around the Git probe
-(which, like the canonical-registry and frontmatter reads below, still
-needs a pathname, not the pin itself). Root identity drift anywhere in that
-transaction fails closed to `unknown` rather than combining evidence from
-two different physical directories.
+Installation proof pins the selected root to ONE physical directory for the
+whole transaction. Both the markers and the Git-vs-archive determination are
+read entirely through that pin — including Git routing evidence itself: the
+pinned root's own `.git` metadata (a real directory for a normal clone, or a
+linked worktree's `gitdir:` pointer file, bounded-read through the same
+pin), never a Git subprocess run against a pathname. A subprocess necessarily
+operates on whatever physical directory the pathname names at the moment it
+runs, and a pathname that is temporarily replaced, probed, and then restored
+before any pathname-based identity check (an "ABA" swap) would pass every
+such check while the probe itself ran against something else entirely — no
+amount of additional before/after pathname checking closes that, since the
+swap-and-restore happens strictly between them. Reading `.git` through the
+pin instead removes that pathname step altogether. The pathname's identity
+is reverified once more immediately before the route is returned, so later
+drift (for an unrelated reason) still fails closed to `unknown`. Actual Git
+validity, current commit, merge base, dirty/clean classification, candidate
+safety, and apply all remain entirely owned by `system.update.git_update`,
+which independently re-verifies everything it needs against the real
+checkout — this routing step decides only whether the pinned directory looks
+Git-managed, nothing more.
 
 - Git clone/worktree → routes to `system.update.git_update`.
 - No-Git archive → routes to `system.update.side_by_side`.

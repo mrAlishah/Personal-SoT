@@ -115,33 +115,84 @@ class WorkflowResult:
 
 # --- install-type routing -------------------------------------------------
 
-def _is_git_installation(pin: _PinnedReadRoot) -> bool:
-    """Whether the PINNED selected root itself — not merely some
-    directory inside a repository — is the top level of a real Git
-    clone/worktree. `git rev-parse --show-toplevel` returns the
-    WORKING TREE root (correct for a linked worktree too, where
-    `.git` is a file, not a directory: it resolves to the worktree's
-    own root, never the main repository's), and that reported top
-    level must identify the SAME physical directory as the pinned
-    root — by `(st_dev, st_ino)`, never merely `Path.resolve()` string
-    equality — otherwise an arbitrary subdirectory nested inside some
-    unrelated parent repository would be misidentified as the selected
-    installation, even though Git itself would resolve it to that
-    parent. The subprocess itself necessarily takes a pathname, not
-    the pinned fd, so the caller is expected to bracket this with
-    `_pinned_root_still_current` checks.
+def _pinned_dotgit_kind(pin: _PinnedReadRoot) -> str:
+    """`'directory'`, `'regular'`, or `'none'` for `.git` directly
+    under the PINNED root — root-anchored, `O_NOFOLLOW`, read entirely
+    through the pinned fd, never a pathname open. `.git` has no
+    intermediate components, so this opens it in one step from
+    `pin.fd`; a symlink or special file there is `'none'`, never
+    treated as evidence of anything.
     """
-    result = controlled_git('rev-parse', '--show-toplevel', cwd=str(pin.path))
-    if result.returncode != 0:
+    try:
+        fd = os.open('.git', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=pin.fd)
+    except OSError:
+        return 'none'
+    try:
+        st = os.fstat(fd)
+    except OSError:
+        return 'none'
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    if stat.S_ISDIR(st.st_mode):
+        return 'directory'
+    if stat.S_ISREG(st.st_mode):
+        return 'regular'
+    return 'none'
+
+
+def _pinned_git_evidence(pin: _PinnedReadRoot) -> bool:
+    """Whether the PINNED root carries valid `.git` ROUTING evidence —
+    read entirely through the pinned, component-safe filesystem
+    boundary, never a Git subprocess against a pathname. A subprocess
+    necessarily runs against whatever physical directory the pathname
+    names AT THAT MOMENT, which an ABA swap (temporarily replacing the
+    selected pathname with a different real directory, running the
+    probe, then restoring the original before any pathname-based
+    identity recheck) can redirect to a different physical directory
+    entirely while every before/after pathname check still shows the
+    original restored — no amount of additional pathname checking
+    closes that, since the swap-and-restore happens strictly between
+    them. Reading `.git` through the already-pinned fd instead means
+    there is no pathname step for an ABA swap to intercept at all.
+
+    This is ROUTING evidence ONLY — a real directory (normal clone), or
+    a linked worktree's `.git` regular file whose bounded-read content
+    has the shape `gitdir: <non-empty value>`. Actual Git validity,
+    current commit, merge base, dirty/clean classification, candidate
+    safety, and apply all remain entirely owned by
+    `system.update.git_update`, which independently re-verifies
+    everything it needs against the real checkout; this function
+    decides nothing beyond "does this look like a Git-managed
+    directory, for routing purposes".
+    """
+    kind = _pinned_dotgit_kind(pin)
+    if kind == 'directory':
+        return True
+    if kind != 'regular':
         return False
-    toplevel = (result.stdout or '').strip()
-    if not toplevel:
+    data = _safe_read_pinned(pin, '.git', limit=4096)
+    if data is None:
         return False
     try:
-        st = os.stat(toplevel, follow_symlinks=False)
-    except OSError:
+        text = data.decode('utf-8')
+    except UnicodeDecodeError:
         return False
-    return stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) == (pin.dev, pin.ino)
+    lines = text.splitlines()
+    first_line = lines[0] if lines else ''
+    if not first_line.startswith('gitdir:'):
+        return False
+    return bool(first_line[len('gitdir:'):].strip())
+
+
+def _is_git_installation(pin: _PinnedReadRoot) -> bool:
+    """Whether the PINNED selected root is Git-managed, for routing
+    purposes only — see `_pinned_git_evidence`, which this delegates
+    to entirely. No Git subprocess runs against any pathname here.
+    """
+    return _pinned_git_evidence(pin)
 
 
 def _root_anchored_parts(relative: str) -> list[str] | None:
@@ -383,15 +434,21 @@ def detect_install_type(root, capability: HostCapability) -> str:
     closed to `'unknown'` without proven read AND local-command
     capability (every check here is itself a local-command operation).
 
-    The selected root is pinned ONCE for this entire proof — both
-    markers and the Git top-level probe are evaluated against that
-    SAME physical directory, never re-derived from the pathname in
-    between, which is what actually prevents the proof from combining
-    evidence from two different physical directories (one marker from
-    each) if the pathname were replaced mid-check. The Git probe's own
-    subprocess necessarily takes a pathname, so the pinned root's
-    identity is reverified immediately before and immediately after
-    it; any drift fails this closed to `'unknown'`.
+    The selected root is pinned ONCE for this entire proof — markers
+    AND the Git-vs-no-Git determination are both evaluated against
+    that SAME physical directory, by reading through the pinned fd
+    exclusively, never re-deriving evidence from the pathname at any
+    point. This is deliberately not "one more pathname check before
+    and after": a Git subprocess necessarily runs against whatever the
+    pathname names at the moment it runs, and an ABA swap — replace,
+    probe, restore — leaves every pathname-based identity check before
+    or after it looking at the correctly-restored original, while the
+    probe itself ran against something else entirely. Reading `.git`
+    through the pin instead removes that pathname step altogether, so
+    there is nothing for an ABA swap to intercept. The pathname's
+    identity is reverified once more immediately before returning the
+    route, in case the caller's own pathname has since drifted for an
+    unrelated reason; any drift fails this closed to `'unknown'`.
     """
     if capability.can_read is not True or capability.can_run_local_commands is not True:
         return 'unknown'
@@ -400,8 +457,6 @@ def detect_install_type(root, capability: HostCapability) -> str:
         return 'unknown'
     try:
         if not _is_personal_sot_archive(pin):
-            return 'unknown'
-        if not _pinned_root_still_current(pin):
             return 'unknown'
         is_git = _is_git_installation(pin)
         if not _pinned_root_still_current(pin):
