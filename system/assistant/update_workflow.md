@@ -42,6 +42,15 @@ inside an unrelated parent repository is never misidentified as the
 installation, and a linked worktree — whose `.git` is a file, not a
 directory — is still correctly recognized as its own root).
 
+Installation proof pins the selected root to ONE physical directory for
+the whole transaction — both markers and the Git top-level identity check
+are evaluated against that same pin, never re-derived from the pathname in
+between, and the pathname's identity is reverified around the Git probe
+(which, like the canonical-registry and frontmatter reads below, still
+needs a pathname, not the pin itself). Root identity drift anywhere in that
+transaction fails closed to `unknown` rather than combining evidence from
+two different physical directories.
+
 - Git clone/worktree → routes to `system.update.git_update`.
 - No-Git archive → routes to `system.update.side_by_side`.
 - Neither provable → the route fails closed and the workflow explains what
@@ -154,6 +163,14 @@ intermediate directory, not only the final component, must be a real
 directory with no symlink anywhere along the path (and the selected root
 itself must not be a symlink either), so a symlinked `workspace`, `system`,
 or scope directory can redirect none of them outside the selected root.
+
+The canonical registry read and every candidate's frontmatter read within
+one Advanced authorization pass are evaluated against that SAME pinned
+physical installation, never two different ones — a registry proving one
+scope is registered can never be combined with a different physical
+directory's module content for that scope. Root identity drift anywhere
+in that pass returns no Personal paths at all, never a partially-combined
+result.
 
 ## Dirty Git clone guidance
 

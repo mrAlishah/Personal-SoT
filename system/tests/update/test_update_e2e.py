@@ -44,6 +44,33 @@ def _zip_run(current_root, destination, target_dir, target_sha, **kwargs):
         return run_update_workflow(current_root, destination, **kwargs)
 
 
+def _is_personal_sot_archive(root) -> bool:
+    """Test convenience: pin `root` and check it, exactly as
+    `detect_install_type` itself now does, closing the pin afterward.
+    """
+    pin = update_reporting._pin_read_root(root)
+    if pin is None:
+        return False
+    try:
+        return update_reporting._is_personal_sot_archive(pin)
+    finally:
+        pin.close()
+
+
+def _read_frontmatter_only(root, path) -> str:
+    """Test convenience: pin `root` and read, exactly as
+    `_authorized_personal_paths` itself now does, closing the pin
+    afterward.
+    """
+    pin = update_reporting._pin_read_root(root)
+    if pin is None:
+        return ''
+    try:
+        return update_reporting._read_frontmatter_only(pin, path)
+    finally:
+        pin.close()
+
+
 class InstallTypeRoutingTests(unittest.TestCase):
     def test_workflow_routes_to_git_path_for_clone(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -130,7 +157,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
             (root / 'system' / 'validation').mkdir(parents=True)
             (root / 'system' / 'validation' / 'validate_v1.py').write_text('x\n')
 
-            self.assertFalse(update_reporting._is_personal_sot_archive(str(root)))
+            self.assertFalse(_is_personal_sot_archive(str(root)))
             self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
 
             real_classify, real_preview, real_apply = (
@@ -163,7 +190,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
             (outside / 'validation' / 'validate_v1.py').write_text('x\n')
             os.symlink(outside, root / 'system')
 
-            self.assertFalse(update_reporting._is_personal_sot_archive(str(root)))
+            self.assertFalse(_is_personal_sot_archive(str(root)))
             self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
 
     def test_symlink_selected_root_fails_installation_proof(self):
@@ -182,8 +209,124 @@ class InstallTypeRoutingTests(unittest.TestCase):
             selected = Path(workdir, 'selected_link')
             os.symlink(real_root, selected)
 
-            self.assertFalse(update_reporting._is_personal_sot_archive(str(selected)))
+            self.assertFalse(_is_personal_sot_archive(str(selected)))
             self.assertEqual('unknown', update_reporting.detect_install_type(str(selected), _FULL))
+
+    def test_marker_proof_cannot_mix_two_physical_roots(self):
+        """Physical root A contains ONLY the first marker; physical
+        root B contains ONLY the second. The selected pathname points
+        to A when the first marker check runs, then is replaced by B
+        (a real rename, not a symlink) before the second marker check
+        runs. Even though each INDIVIDUAL check is component-safe, a
+        single logical installation-proof transaction must never
+        combine evidence from two different physical directories —
+        no single real installation ever contained both markers.
+        """
+        import shutil
+        with tempfile.TemporaryDirectory() as workdir:
+            selected = Path(workdir, 'selected')
+            root_a = Path(workdir, 'root_a')
+            root_b = Path(workdir, 'root_b')
+            marker1, marker2 = update_reporting._ARCHIVE_MARKERS
+            (root_a / marker1).parent.mkdir(parents=True)
+            (root_a / marker1).write_text('x\n')
+            (root_b / marker2).parent.mkdir(parents=True)
+            (root_b / marker2).write_text('x\n')
+            shutil.copytree(root_a, selected)
+
+            real_safe_is_regular = update_reporting._safe_is_regular_file
+            calls = {'n': 0}
+
+            def swap_after_first_marker(pin, relative):
+                calls['n'] += 1
+                if calls['n'] == 2:
+                    shutil.rmtree(selected)
+                    shutil.copytree(root_b, selected)
+                return real_safe_is_regular(pin, relative)
+
+            with mock.patch.object(update_reporting, '_safe_is_regular_file', swap_after_first_marker):
+                result = _is_personal_sot_archive(str(selected))
+            self.assertFalse(result)
+
+            real_classify, real_preview, real_apply = (
+                git_update.classify, git_update.preview, git_update.apply)
+            real_sbs_preview, real_sbs_migrate = side_by_side.preview, side_by_side.migrate
+            calls['n'] = 0
+            shutil.rmtree(selected)
+            shutil.copytree(root_a, selected)
+            with mock.patch.object(update_reporting, '_safe_is_regular_file', swap_after_first_marker), \
+                 mock.patch.object(git_update, 'classify') as spy_classify, \
+                 mock.patch.object(git_update, 'preview') as spy_preview, \
+                 mock.patch.object(git_update, 'apply') as spy_apply, \
+                 mock.patch.object(side_by_side, 'preview') as spy_sbs_preview, \
+                 mock.patch.object(side_by_side, 'migrate') as spy_sbs_migrate:
+                spy_classify.side_effect = real_classify
+                spy_preview.side_effect = real_preview
+                spy_apply.side_effect = real_apply
+                spy_sbs_preview.side_effect = real_sbs_preview
+                spy_sbs_migrate.side_effect = real_sbs_migrate
+                workflow_result = run_update_workflow(str(selected), capability=_FULL)
+                spy_classify.assert_not_called()
+                spy_preview.assert_not_called()
+                spy_apply.assert_not_called()
+                spy_sbs_preview.assert_not_called()
+                spy_sbs_migrate.assert_not_called()
+            self.assertEqual('unknown', workflow_result.install_type)
+
+    def test_root_change_during_git_install_probe_fails_closed(self):
+        """The selected root passes marker proof as a real Git repo,
+        but is replaced by a DIFFERENT real directory (never a
+        symlink) between the marker check and the Git top-level
+        probe. The probe would resolve correctly against whatever is
+        at the pathname at THAT moment, but the pinned root's identity
+        has already drifted, so the overall proof must still fail
+        closed.
+        """
+        import shutil
+        with tempfile.TemporaryDirectory() as workdir:
+            selected = Path(workdir, 'selected')
+            replacement = Path(workdir, 'replacement')
+            _init_repo(str(selected))
+            _apply_files(str(selected), _git_base_files({'a.md': 'x\n'}))
+            _commit(str(selected), 'initial')
+            _init_repo(str(replacement))
+            _apply_files(str(replacement), _git_base_files({'a.md': 'x\n'}))
+            _commit(str(replacement), 'initial')
+
+            real_is_archive = update_reporting._is_personal_sot_archive
+
+            def swap_after_markers(pin):
+                ok = real_is_archive(pin)
+                shutil.rmtree(selected)
+                shutil.copytree(replacement, selected)
+                return ok
+
+            with mock.patch.object(update_reporting, '_is_personal_sot_archive', swap_after_markers):
+                result = update_reporting.detect_install_type(str(selected), _FULL)
+            self.assertEqual('unknown', result)
+
+    def test_root_anchored_reader_rejects_absolute_path_before_open(self):
+        """`_root_anchored_parts` itself must reject an absolute path
+        before any `os.open` happens — an absolute first component
+        reaching `openat(..., dir_fd=...)` is interpreted by POSIX as
+        an absolute path and silently IGNORES `dir_fd`, escaping
+        containment outright.
+        """
+        self.assertIsNone(update_reporting._root_anchored_parts('/etc/passwd'))
+
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            root.mkdir()
+            pin = update_reporting._pin_read_root(root)
+            try:
+                real_os_open = update_reporting.os.open
+                with mock.patch.object(update_reporting.os, 'open') as spy_open:
+                    spy_open.side_effect = real_os_open
+                    result = update_reporting._open_pinned_relative(pin, '/etc/passwd')
+                    spy_open.assert_not_called()
+                self.assertIsNone(result)
+            finally:
+                pin.close()
 
     def test_workflow_routes_to_zip_path_for_archive(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -752,7 +895,7 @@ class AdvancedReportTests(unittest.TestCase):
                 'workspace/context/personal/allow.md':
                     '---\nai_access: allow\n---\n' + self._BODY_SECRET + '\n' + big_body,
             })
-            header = update_reporting._read_frontmatter_only(root, 'workspace/context/personal/allow.md')
+            header = _read_frontmatter_only(root, 'workspace/context/personal/allow.md')
             self.assertNotIn(self._BODY_SECRET, header)
             self.assertNotIn(big_body, header)
             self.assertIn('ai_access: allow', header)
@@ -768,7 +911,7 @@ class AdvancedReportTests(unittest.TestCase):
             link.mkdir(parents=True)
             os.symlink(outside, link / 'linked.md')
 
-            header = update_reporting._read_frontmatter_only(
+            header = _read_frontmatter_only(
                 root, 'workspace/context/personal/linked.md')
             self.assertEqual('', header)
 
@@ -928,6 +1071,53 @@ class AdvancedReportTests(unittest.TestCase):
                 candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
             self.assertEqual((), report.personal_paths)
             self.assertNotIn(body_secret, repr(report))
+
+    def test_advanced_authorization_cannot_mix_registry_and_frontmatter_from_different_roots(self):
+        """Physical root A's registry registers the scope but has no
+        authorizing module; physical root B has the authorizing module
+        but its OWN registry does not register that scope. The
+        selected pathname points to A when the canonical registry is
+        read, then is replaced by B (first as a REAL directory, then
+        as a SYMLINK, in two separate sub-cases) before the
+        frontmatter read runs. Neither replacement may let the
+        authorization decision combine A's registry with B's module.
+        """
+        import shutil
+        for use_symlink in (False, True):
+            with self.subTest(use_symlink=use_symlink):
+                with tempfile.TemporaryDirectory() as workdir:
+                    selected = Path(workdir, 'selected')
+                    root_a = Path(workdir, f'root_a_{use_symlink}')
+                    root_b = Path(workdir, f'root_b_{use_symlink}')
+                    _write_tree(root_a, {
+                        'system/routing/context_registry.md':
+                            _sbs_tests.SideBySideRegistryTests._registry_text(
+                                [('personal', 'workspace/context/personal')]),
+                    })
+                    _write_tree(root_b, {
+                        'workspace/context/personal/allow.md': '---\nai_access: allow\n---\nbody\n',
+                        'system/routing/context_registry.md':
+                            _sbs_tests.SideBySideRegistryTests._registry_text([]),
+                    })
+                    shutil.copytree(root_a, selected)
+
+                    real_read_frontmatter = update_reporting._read_frontmatter_only
+
+                    def swap_before_frontmatter(pin, path):
+                        shutil.rmtree(selected)
+                        if use_symlink:
+                            import os
+                            os.symlink(root_b, selected)
+                        else:
+                            shutil.copytree(root_b, selected)
+                        return real_read_frontmatter(pin, path)
+
+                    with mock.patch.object(update_reporting, '_read_frontmatter_only',
+                                            swap_before_frontmatter):
+                        report = update_reporting.advanced_report(
+                            'zip', None, root=selected,
+                            candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
+                    self.assertEqual((), report.personal_paths)
 
     def test_traversal_candidate_rejected_before_header_read(self):
         with tempfile.TemporaryDirectory() as workdir:

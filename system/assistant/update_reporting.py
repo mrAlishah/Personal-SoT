@@ -115,28 +115,33 @@ class WorkflowResult:
 
 # --- install-type routing -------------------------------------------------
 
-def _is_git_installation(root) -> bool:
-    """Whether `root` itself — not merely some directory inside a
-    repository — is the top level of a real Git clone/worktree.
-    `git rev-parse --show-toplevel` returns the WORKING TREE root
-    (correct for a linked worktree too, where `.git` is a file, not a
-    directory: it resolves to the worktree's own root, never the main
-    repository's), and that must be the exact same physical directory
-    as `root` — otherwise an arbitrary subdirectory nested inside some
+def _is_git_installation(pin: _PinnedReadRoot) -> bool:
+    """Whether the PINNED selected root itself — not merely some
+    directory inside a repository — is the top level of a real Git
+    clone/worktree. `git rev-parse --show-toplevel` returns the
+    WORKING TREE root (correct for a linked worktree too, where
+    `.git` is a file, not a directory: it resolves to the worktree's
+    own root, never the main repository's), and that reported top
+    level must identify the SAME physical directory as the pinned
+    root — by `(st_dev, st_ino)`, never merely `Path.resolve()` string
+    equality — otherwise an arbitrary subdirectory nested inside some
     unrelated parent repository would be misidentified as the selected
     installation, even though Git itself would resolve it to that
-    parent.
+    parent. The subprocess itself necessarily takes a pathname, not
+    the pinned fd, so the caller is expected to bracket this with
+    `_pinned_root_still_current` checks.
     """
-    result = controlled_git('rev-parse', '--show-toplevel', cwd=str(root))
+    result = controlled_git('rev-parse', '--show-toplevel', cwd=str(pin.path))
     if result.returncode != 0:
         return False
     toplevel = (result.stdout or '').strip()
     if not toplevel:
         return False
     try:
-        return Path(toplevel).resolve() == Path(root).resolve()
+        st = os.stat(toplevel, follow_symlinks=False)
     except OSError:
         return False
+    return stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) == (pin.dev, pin.ino)
 
 
 def _root_anchored_parts(relative: str) -> list[str] | None:
@@ -144,12 +149,26 @@ def _root_anchored_parts(relative: str) -> list[str] | None:
     one-component-at-a-time `openat()` walk, or `None` if it is not a
     simple, safe, relative path (empty, absolute, containing `.`/`..`,
     or any component itself containing a `/`).
+
+    An absolute path is rejected by `is_absolute()` explicitly, not
+    merely by scanning `.parts` for `.`/`..`: `PurePosixPath('/etc/
+    passwd').parts` is `('/', 'etc', 'passwd')`, whose first element
+    is neither `.` nor `..` nor empty, so it would otherwise slip
+    through this check — and a leading `/` component reaching
+    `os.open(..., dir_fd=...)` is interpreted as an ABSOLUTE path by
+    POSIX `openat()`, which silently IGNORES `dir_fd` entirely and
+    escapes containment outright. This primitive enforces its own
+    security contract rather than relying on every caller to have
+    already normalized/rejected an absolute path first.
     """
-    parts = PurePosixPath(relative).parts
+    posix = PurePosixPath(relative)
+    if posix.is_absolute():
+        return None
+    parts = posix.parts
     if not parts:
         return None
     for part in parts:
-        if part in ('.', '..') or not part:
+        if part in ('.', '..') or not part or '/' in part:
             return None
     return list(parts)
 
@@ -174,32 +193,90 @@ def _open_root_fd(root):
     except OSError:
         return None
 
+@dataclass
+class _PinnedReadRoot:
+    """A read-only root authority pin for ONE logical operation
+    (installation proof, or one Advanced authorization pass): opened
+    ONCE, identified by `(st_dev, st_ino)`, and reused for every
+    descendant root-relative read. Re-deriving the root from its
+    pathname separately for each read is what let an authority
+    decision (two installation markers; a canonical registry read
+    plus a module frontmatter read) silently combine evidence from
+    two different physical directories if the pathname was replaced
+    in between — pinning once and reusing the same fd closes that,
+    the same way Loop 4's root pinning closes the equivalent gap for
+    migration reads/writes.
+    """
+    fd: int
+    path: Path
+    dev: int
+    ino: int
 
-def _open_root_relative(root, relative):
-    """Open `relative` under `root`, root-anchored through EVERY path
-    component — the root itself and every intermediate directory with
-    `O_DIRECTORY | O_NOFOLLOW`, the final component with `O_NOFOLLOW`.
-    Returns the final open fd (owned by the caller, who must close it)
-    or `None` if any component is missing, a symlink, or not a real
-    directory where one is required — never a plain pathname open and
-    never `Path.resolve()`, either of which an intermediate symlink
-    (e.g. `workspace` or `system` itself swapped for one) could follow
-    right past.
+    def close(self) -> None:
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+
+
+def _pin_read_root(root) -> _PinnedReadRoot | None:
+    """Pin `root` once, root-anchored (`O_DIRECTORY | O_NOFOLLOW` —
+    the root pathname must not itself be a symlink), for the duration
+    of one authority transaction.
+    """
+    fd = _open_root_fd(root)
+    if fd is None:
+        return None
+    try:
+        st = os.fstat(fd)
+    except OSError:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+    return _PinnedReadRoot(fd=fd, path=Path(root), dev=st.st_dev, ino=st.st_ino)
+
+
+def _pinned_root_still_current(pin: _PinnedReadRoot) -> bool:
+    """Whether `pin.path` still names the SAME physical directory the
+    pinned fd was opened from — required before/after any operation
+    that still needs a pathname (a Git subprocess probe) rather than
+    the fd itself; a pathname that disappeared, became a symlink,
+    points to a different directory, or whose device/inode changed
+    all fail this closed.
+    """
+    try:
+        st = os.stat(pin.path, follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) == (pin.dev, pin.ino)
+
+
+def _open_pinned_relative(pin: _PinnedReadRoot, relative: str):
+    """Open `relative` under the PINNED root's fd, root-anchored
+    through EVERY intermediate path component (`O_DIRECTORY |
+    O_NOFOLLOW`) and the final component (`O_NOFOLLOW`) — never by
+    re-deriving the root from its pathname. Returns the final open fd
+    (owned by the caller, who must close it) or `None` if any
+    component is missing, a symlink, or not a real directory where
+    one is required — never a plain pathname open and never
+    `Path.resolve()`, either of which an intermediate symlink (e.g.
+    `workspace` or `system` itself swapped for one) could follow right
+    past.
 
     This is the ONE path-walk this module performs for an authority
     boundary; installation-marker proof, the canonical registry read,
-    and Personal module frontmatter reads all build on it rather than
-    repeating it.
+    and Personal module frontmatter reads all build on it, from the
+    SAME pin for one logical operation, rather than repeating it or
+    re-opening the root for each read.
     """
     parts = _root_anchored_parts(relative)
     if not parts:
         return None
-    root_fd = _open_root_fd(root)
-    if root_fd is None:
-        return None
     intermediate = []
     try:
-        parent = root_fd
+        parent = pin.fd
         for part in parts[:-1]:
             try:
                 fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
@@ -217,19 +294,15 @@ def _open_root_relative(root, relative):
                 os.close(fd)
             except OSError:
                 pass
-        try:
-            os.close(root_fd)
-        except OSError:
-            pass
 
 
-def _safe_is_regular_file(root, relative: str) -> bool:
-    """Whether `relative` under `root` is a genuine regular file,
-    root-anchored through every path component — used for installation
-    marker proof, which only needs to confirm the file exists as a
-    real regular file, never its content.
+def _safe_is_regular_file(pin: _PinnedReadRoot, relative: str) -> bool:
+    """Whether `relative` under the PINNED root is a genuine regular
+    file, root-anchored through every path component — used for
+    installation marker proof, which only needs to confirm the file
+    exists as a real regular file, never its content.
     """
-    fd = _open_root_relative(root, relative)
+    fd = _open_pinned_relative(pin, relative)
     if fd is None:
         return False
     try:
@@ -243,17 +316,18 @@ def _safe_is_regular_file(root, relative: str) -> bool:
             pass
 
 
-def _safe_read_root_relative(root, relative: str, limit: int | None = None) -> bytes | None:
-    """Read the bytes of `relative` under `root`, root-anchored
-    through every path component — the shared primitive behind the
-    canonical registry read and Personal module frontmatter reads
-    alike. `None` for anything other than a genuine regular file
+def _safe_read_pinned(pin: _PinnedReadRoot, relative: str, limit: int | None = None) -> bytes | None:
+    """Read the bytes of `relative` under the PINNED root, root-
+    anchored through every path component — the shared primitive
+    behind the canonical registry read and Personal module frontmatter
+    reads alike, both drawing from the SAME pin for one authority
+    transaction. `None` for anything other than a genuine regular file
     reachable without following any symlink, intermediate or final.
     `limit`, when given, reads at most that many bytes (used for a
     bounded frontmatter read, so a large module body is never pulled
     fully into memory just to look for its closing `---`).
     """
-    fd = _open_root_relative(root, relative)
+    fd = _open_pinned_relative(pin, relative)
     if fd is None:
         return None
     try:
@@ -277,21 +351,23 @@ def _safe_read_root_relative(root, relative: str, limit: int | None = None) -> b
             pass
 
 
-def _is_personal_sot_archive(root) -> bool:
-    """Whether `root` carries the smallest stable, repository-owned
-    evidence of actually being a Personal-SoT installation — Git or
-    not. Each marker must be a genuine regular file at that EXACT
-    path, root-anchored through EVERY path component (not merely the
-    final one — an intermediate component such as `workspace` or
-    `system` itself swapped for a symlink would otherwise still let
-    the final lookup resolve to an outside regular file): a symlink
-    standing in for a marker, anywhere along its path, proves nothing
-    about the real installation being there, and an arbitrary
-    directory or an unrelated Git repository has no reason to carry
-    either marker at all.
+def _is_personal_sot_archive(pin: _PinnedReadRoot) -> bool:
+    """Whether the PINNED root carries the smallest stable,
+    repository-owned evidence of actually being a Personal-SoT
+    installation — Git or not. Each marker must be a genuine regular
+    file at that EXACT path, root-anchored through EVERY path
+    component (not merely the final one — an intermediate component
+    such as `workspace` or `system` itself swapped for a symlink would
+    otherwise still let the final lookup resolve to an outside regular
+    file): a symlink standing in for a marker, anywhere along its
+    path, proves nothing about the real installation being there.
+    Both markers are checked through the SAME pin, so they can never
+    be satisfied by two different physical directories swapped in
+    between the two checks — an arbitrary directory or an unrelated
+    Git repository has no reason to carry either marker at all.
     """
     for marker in _ARCHIVE_MARKERS:
-        if not _safe_is_regular_file(root, marker.as_posix()):
+        if not _safe_is_regular_file(pin, marker.as_posix()):
             return False
     return True
 
@@ -306,14 +382,33 @@ def detect_install_type(root, capability: HostCapability) -> str:
     installation merely by existing or by being *some* Git repo. Fails
     closed to `'unknown'` without proven read AND local-command
     capability (every check here is itself a local-command operation).
+
+    The selected root is pinned ONCE for this entire proof — both
+    markers and the Git top-level probe are evaluated against that
+    SAME physical directory, never re-derived from the pathname in
+    between, which is what actually prevents the proof from combining
+    evidence from two different physical directories (one marker from
+    each) if the pathname were replaced mid-check. The Git probe's own
+    subprocess necessarily takes a pathname, so the pinned root's
+    identity is reverified immediately before and immediately after
+    it; any drift fails this closed to `'unknown'`.
     """
     if capability.can_read is not True or capability.can_run_local_commands is not True:
         return 'unknown'
-    if not _is_personal_sot_archive(root):
+    pin = _pin_read_root(root)
+    if pin is None:
         return 'unknown'
-    if _is_git_installation(root):
-        return 'git'
-    return 'zip'
+    try:
+        if not _is_personal_sot_archive(pin):
+            return 'unknown'
+        if not _pinned_root_still_current(pin):
+            return 'unknown'
+        is_git = _is_git_installation(pin)
+        if not _pinned_root_still_current(pin):
+            return 'unknown'
+        return 'git' if is_git else 'zip'
+    finally:
+        pin.close()
 
 
 # --- display-only area/count aggregation ----------------------------------
@@ -468,19 +563,19 @@ def _no_local_command_report() -> BeginnerReport:
 
 # --- Advanced authorization -------------------------------------------------
 
-def _read_frontmatter_only(root, path: str) -> str:
+def _read_frontmatter_only(pin: _PinnedReadRoot, path: str) -> str:
     """ONLY the bounded `---`-delimited frontmatter block of `path`
-    under `root`, read through the root-anchored safe primitive
-    (every path component, not merely the final one — an intermediate
-    `workspace`/`context`/scope directory swapped for a symlink must
-    fail this closed too) — never module body bytes, even if they
-    would fit within `_HEADER_READ_LIMIT`: the text must open with
-    `---` on its own line and a matching closing `---` must appear
-    within that bound, or this returns `''`. `access.permitted`
+    under the PINNED root, read through the root-anchored safe
+    primitive (every path component, not merely the final one — an
+    intermediate `workspace`/`context`/scope directory swapped for a
+    symlink must fail this closed too) — never module body bytes,
+    even if they would fit within `_HEADER_READ_LIMIT`: the text must
+    open with `---` on its own line and a matching closing `---` must
+    appear within that bound, or this returns `''`. `access.permitted`
     remains the sole policy owner; this only bounds what text
     physically reaches it.
     """
-    raw = _safe_read_root_relative(root, path, limit=_HEADER_READ_LIMIT)
+    raw = _safe_read_pinned(pin, path, limit=_HEADER_READ_LIMIT)
     if raw is None:
         return ''
     text = raw.decode('utf-8', errors='replace')
@@ -493,19 +588,19 @@ def _read_frontmatter_only(root, path: str) -> str:
     return ''
 
 
-def _canonical_registry_text(root) -> str | None:
-    """The CANONICAL registry text at `root/system/routing/
-    context_registry.md`, read host-side through the root-anchored
-    safe primitive (every path component, not merely the final one —
-    an intermediate `system`/`routing` swapped for a symlink must fail
-    this closed too) — NEVER caller-supplied text, which could
-    otherwise fabricate scope ownership for a path the installation's
-    own registry never actually registers. `None` (fail closed,
-    meaning "no scope can be proven" — never "empty registry") if the
-    path is missing, unreadable, or any component along it, including
-    the final one, is a symlink.
+def _canonical_registry_text(pin: _PinnedReadRoot) -> str | None:
+    """The CANONICAL registry text at `system/routing/
+    context_registry.md` under the PINNED root, read host-side through
+    the root-anchored safe primitive (every path component, not
+    merely the final one — an intermediate `system`/`routing` swapped
+    for a symlink must fail this closed too) — NEVER caller-supplied
+    text, which could otherwise fabricate scope ownership for a path
+    the installation's own registry never actually registers. `None`
+    (fail closed, meaning "no scope can be proven" — never "empty
+    registry") if the path is missing, unreadable, or any component
+    along it, including the final one, is a symlink.
     """
-    data = _safe_read_root_relative(root, _REGISTRY_RELATIVE.as_posix())
+    data = _safe_read_pinned(pin, _REGISTRY_RELATIVE.as_posix())
     if data is None:
         return None
     try:
@@ -525,31 +620,53 @@ def _authorized_personal_paths(root, candidate_paths, *, host_read: bool,
     path only if that call returns `True`. The frontmatter is discarded
     immediately after the call — it never survives in any returned
     value.
-    """
-    registry_text = _canonical_registry_text(root)
-    if registry_text is None:
-        return ()
-    scopes = []
-    for _scope, target in context_registry_entries(registry_text):
-        canonical = side_by_side.normalize_relative(target.rstrip('/'))
-        if canonical is not None:
-            scopes.append(canonical)
 
-    allowed = []
-    for path in candidate_paths:
-        normalized = side_by_side.normalize_relative(path)
-        if normalized is None or not normalized.endswith('.md'):
-            continue
-        scope_path = next(
-            (scope for scope in scopes if normalized == scope or normalized.startswith(scope + '/')), None)
-        if scope_path is None:
-            continue
-        header = _read_frontmatter_only(root, normalized)
-        if permitted(header, path=normalized, scope_path=scope_path, host_read=host_read,
-                     required=True, personal_owner=deployment.personal_owner,
-                     private_instance=deployment.private_instance):
-            allowed.append(normalized)
-    return tuple(allowed)
+    `root` is pinned ONCE for this entire pass: the canonical registry
+    read and every candidate's frontmatter read all draw from that
+    SAME physical directory, never re-derived from the pathname in
+    between — otherwise an authorization decision could combine a
+    registry from one physical directory with a module's frontmatter
+    from a different one, swapped in between the two reads. The
+    pinned root's identity is reverified after the registry read and
+    again before returning; any drift returns no Personal paths at
+    all, never a partially-combined result.
+    """
+    pin = _pin_read_root(root)
+    if pin is None:
+        return ()
+    try:
+        registry_text = _canonical_registry_text(pin)
+        if registry_text is None:
+            return ()
+        if not _pinned_root_still_current(pin):
+            return ()
+        scopes = []
+        for _scope, target in context_registry_entries(registry_text):
+            canonical = side_by_side.normalize_relative(target.rstrip('/'))
+            if canonical is not None:
+                scopes.append(canonical)
+
+        allowed = []
+        for path in candidate_paths:
+            normalized = side_by_side.normalize_relative(path)
+            if normalized is None or not normalized.endswith('.md'):
+                continue
+            scope_path = next(
+                (scope for scope in scopes
+                 if normalized == scope or normalized.startswith(scope + '/')), None)
+            if scope_path is None:
+                continue
+            header = _read_frontmatter_only(pin, normalized)
+            if permitted(header, path=normalized, scope_path=scope_path, host_read=host_read,
+                         required=True, personal_owner=deployment.personal_owner,
+                         private_instance=deployment.private_instance):
+                allowed.append(normalized)
+
+        if not _pinned_root_still_current(pin):
+            return ()
+        return tuple(allowed)
+    finally:
+        pin.close()
 
 
 def _advanced_result_lines(install_type: str, result) -> tuple[str, ...]:
