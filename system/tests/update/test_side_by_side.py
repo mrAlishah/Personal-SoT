@@ -331,6 +331,48 @@ class SideBySideUnsafePathTests(unittest.TestCase):
         self.assertEqual('workspace/ok.md', side_by_side.normalize_relative('workspace/ok.md'))
 
 
+    def test_root_anchored_parts_rejects_absolute_path(self):
+        """`PurePosixPath('/etc/passwd').parts` is `('/', 'etc',
+        'passwd')` — the leading `/` component is itself neither `.`,
+        `..`, nor empty, so a component scan alone would never reject
+        it. `_root_anchored_parts` must refuse it explicitly, before
+        any caller's `openat()` walk ever sees that component.
+        """
+        self.assertIsNone(side_by_side._root_anchored_parts('/etc/passwd'))
+        self.assertIsNone(side_by_side._root_anchored_parts('/'))
+        self.assertEqual(['workspace', 'ok.md'], side_by_side._root_anchored_parts('workspace/ok.md'))
+
+    def test_absolute_path_cannot_reach_os_open_through_a_root_anchored_primitive(self):
+        """Real low-level proof, independent of any platform's own
+        symlink layout (e.g. macOS's `/etc` -> `/private/etc`, which
+        would otherwise accidentally mask this): a path entirely made
+        of real, non-symlink directories this test controls, reached
+        through the shared `_safe_stat_kind`/`_safe_read_regular`
+        primitives via an absolute `relative` argument, must never
+        escape the pinned root and read content that lives outside
+        it. `PurePosixPath('/x').parts[0]` is `'/'`, and POSIX
+        `openat()` treats an absolute pathname component as absolute
+        in its own right, silently IGNORING `dir_fd` — so a caller
+        that reached `os.open('/', ..., dir_fd=pinned_root_fd)` would
+        genuinely reopen the real filesystem root, not anything
+        rooted under the pinned directory.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            workdir = os.path.realpath(workdir)
+            root = Path(workdir, 'root')
+            root.mkdir()
+            secret_dir = Path(workdir, 'secret')
+            secret_dir.mkdir()
+            secret_file = secret_dir / 'file.txt'
+            secret_file.write_text('outside-root-secret\n')
+            pin = side_by_side._pin_root(root)
+            try:
+                self.assertEqual('unsafe', side_by_side._safe_stat_kind(pin, str(secret_file)))
+                self.assertIsNone(side_by_side._safe_read_regular(pin, str(secret_file)))
+            finally:
+                pin.close()
+
+
 class SideBySideOriginalUntouchedTests(unittest.TestCase):
     def test_original_installation_untouched_on_success_and_failure(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -1573,6 +1615,164 @@ class SideBySideRootSubstitutionTests(unittest.TestCase):
             self.assertFalse(migrate_result.ready)
             self.assertIn(migrate_result.failure, ('concurrent_change', 'stale_state'))
             self.assertFalse(Path(destination, 'workspace', 'a.md').exists())
+
+
+class SideBySideScanTreeTests(unittest.TestCase):
+    """`_scan_tree` enumerates entirely through the pinned root's own
+    fd (and `dir_fd`-relative descendants), never a pathname-based
+    `os.walk`/`rglob`/`iterdir` — these tests prove that directly,
+    including the specific ABA swap-and-restore sequence a pathname-
+    based walk could not have resisted.
+    """
+
+    def test_scan_tree_pathname_aba_swap_cannot_omit_a_pinned_file(self):
+        """Reproduces the exact race: root A is pinned (it contains
+        `workspace/keep.md`); while the walk is in progress the
+        SELECTED PATHNAME is renamed away, a different real directory
+        B (which does NOT contain `keep.md`) is renamed to that exact
+        pathname, the walk proceeds, then B is renamed away and the
+        SAME physical A (same inode, via `os.rename`, never a fresh
+        `mkdir`) is restored before any post-check runs. Against the
+        pre-fix `os.walk(pinned.path)` implementation this silently
+        omitted `keep.md` from BOTH `files` and `unsafe` (confirmed
+        directly against that implementation before this fix existed).
+        The fix removes the pathname step entirely, so patching
+        `os.walk` — which the current implementation never calls — has
+        no effect at all: the mock's return value is simply never
+        consulted.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            workdir = os.path.realpath(workdir)
+            root_a = Path(workdir, 'selected')
+            _write_tree(root_a, {'workspace/keep.md': 'keep me\n'})
+            root_b_parked = Path(workdir, 'root_b_parked')
+            _write_tree(root_b_parked, {'workspace/placeholder.md': 'no keep.md here\n'})
+            root_a_parked = Path(workdir, 'root_a_parked')
+
+            pin = side_by_side._pin_root(root_a)
+            try:
+                real_walk = os.walk
+
+                def aba_walk(path, **kwargs):
+                    os.rename(str(root_a), str(root_a_parked))
+                    os.rename(str(root_b_parked), str(root_a))
+                    materialized = list(real_walk(path, **kwargs))
+                    os.rename(str(root_a), str(root_b_parked))
+                    os.rename(str(root_a_parked), str(root_a))
+                    return iter(materialized)
+
+                with mock.patch('os.walk', aba_walk):
+                    files, unsafe = side_by_side._scan_tree(pin)
+            finally:
+                pin.close()
+
+            self.assertIn('workspace/keep.md', files)
+            self.assertEqual((), unsafe)
+
+    def test_scan_tree_never_calls_pathname_based_os_walk(self):
+        """`os.walk` must never even be invoked; also doubles as a
+        nested-regular-file sanity check.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            _write_tree(root, {'workspace/a.md': 'x\n', 'workspace/sub/b.md': 'y\n'})
+            pin = side_by_side._pin_root(root)
+            try:
+                with mock.patch('os.walk',
+                                 side_effect=AssertionError('os.walk must never be called')):
+                    files, unsafe = side_by_side._scan_tree(pin)
+            finally:
+                pin.close()
+            self.assertEqual({'workspace/a.md', 'workspace/sub/b.md'}, set(files))
+            self.assertEqual((), unsafe)
+
+    def test_scan_tree_symlinked_directory_is_unsafe_and_never_descended(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            root.mkdir()
+            outside = Path(workdir, 'outside')
+            _write_tree(outside, {'secret.md': 'should never be reached\n'})
+            os.symlink(outside, Path(root, 'workspace'))
+            pin = side_by_side._pin_root(root)
+            try:
+                files, unsafe = side_by_side._scan_tree(pin)
+            finally:
+                pin.close()
+            self.assertEqual({}, files)
+            self.assertIn('workspace', unsafe)
+
+    def test_scan_tree_entry_that_vanishes_between_listing_and_open_is_marked_unsafe(self):
+        """A name `os.scandir` just listed but that fails to open
+        moments later (deleted, permission revoked, or otherwise) must
+        be reported unsafe, never silently treated as though it had
+        never existed — a silently 'absent' path would be
+        indistinguishable from one that legitimately never existed,
+        which is exactly the hazard the old pathname-walk's own
+        before/after bracketing could not prevent mid-walk.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            _write_tree(root, {'workspace/a.md': 'x\n', 'workspace/b.md': 'y\n'})
+            pin = side_by_side._pin_root(root)
+            try:
+                real_open = os.open
+
+                def flaky_open(name, flags, dir_fd=None, **kwargs):
+                    if name == 'b.md':
+                        raise FileNotFoundError('simulated disappearance between listing and open')
+                    return real_open(name, flags, dir_fd=dir_fd, **kwargs)
+
+                with mock.patch('os.open', side_effect=flaky_open):
+                    files, unsafe = side_by_side._scan_tree(pin)
+            finally:
+                pin.close()
+            self.assertEqual({'workspace/a.md'}, set(files))
+            self.assertIn('workspace/b.md', unsafe)
+
+    def test_classify_workspace_preserves_current_only_file_despite_pathname_aba_during_scan(self):
+        """Same ABA sequence, exercised through the real production
+        `classify_workspace` entry point (one level above `_scan_tree`)
+        rather than the private helper directly: the swap is gated to
+        fire only for the exact pinned root fd `classify_workspace`
+        already holds, so it affects nothing else `os.scandir` touches
+        during the same call (notably the separate pristine-root scan).
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            workdir = os.path.realpath(workdir)
+            current_root = Path(workdir, 'current')
+            _write_tree(current_root, {'workspace/keep.md': 'keep me\n'})
+            pristine_root = Path(workdir, 'pristine')
+            _write_tree(pristine_root, {'system/placeholder.txt': 'x\n'})
+            root_b_parked = Path(workdir, 'root_b_parked')
+            _write_tree(root_b_parked, {'workspace/placeholder.md': 'no keep.md here\n'})
+            root_a_parked = Path(workdir, 'root_a_parked')
+
+            current_pin = side_by_side._pin_root(current_root)
+            pristine_pin = side_by_side._pin_root(pristine_root)
+            try:
+                real_scandir = os.scandir
+                target_fd = current_pin.fd
+                state = {'swapped': False}
+
+                def aba_scandir(arg):
+                    if arg == target_fd and not state['swapped']:
+                        state['swapped'] = True
+                        os.rename(str(current_root), str(root_a_parked))
+                        os.rename(str(root_b_parked), str(current_root))
+                        try:
+                            return real_scandir(arg)
+                        finally:
+                            os.rename(str(current_root), str(root_b_parked))
+                            os.rename(str(root_a_parked), str(current_root))
+                    return real_scandir(arg)
+
+                with mock.patch('os.scandir', aba_scandir):
+                    plan = side_by_side.classify_workspace(current_pin, pristine_pin)
+            finally:
+                current_pin.close()
+                pristine_pin.close()
+
+            self.assertIn('workspace/keep.md', plan.kept)
 
 
 class SideBySideCanonicalRegistryIdentityTests(unittest.TestCase):

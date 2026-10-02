@@ -100,8 +100,22 @@ def _root_anchored_parts(relative: str) -> list[str] | None:
     one-component-at-a-time `openat()` walk, or `None` if it is not a
     simple, safe, relative path (empty, absolute, containing `.`/`..`,
     or any component itself containing a `/`).
+
+    The absolute check is explicit and comes first: `PurePosixPath`
+    parses an absolute path's leading `/` as its own component (e.g.
+    `PurePosixPath('/etc/passwd').parts == ('/', 'etc', 'passwd')`),
+    and that `'/'` component is itself neither `.`, `..`, nor empty, so
+    the component loop alone would never reject it. A leading `/`
+    component that reached `os.open(part, ..., dir_fd=parent)` would
+    be interpreted by POSIX `openat()` as an absolute path in its own
+    right, which silently IGNORES `dir_fd` and escapes containment
+    entirely — this primitive must independently refuse that, rather
+    than relying on every caller to have already pre-filtered it.
     """
-    parts = PurePosixPath(relative).parts
+    posix = PurePosixPath(relative)
+    if posix.is_absolute():
+        return None
+    parts = posix.parts
     if not parts:
         return None
     for part in parts:
@@ -132,9 +146,10 @@ class _PinnedRoot:
     directory at the same name — none of which a repeated
     "reopen-by-pathname" strategy could detect or resist. `path` is
     kept only for identity rechecks (`_pinned_root_still_current`) and
-    for the few operations (a scan via `os.walk`, a validator
-    subprocess argument) that inherently require a pathname rather
-    than an fd.
+    for the few operations (a validator subprocess argument) that
+    inherently require a pathname rather than an fd; a tree scan
+    (`_scan_tree`) is NOT one of those — it enumerates through `fd`
+    alone, never `path`.
     """
     fd: int
     path: Path
@@ -172,10 +187,12 @@ def _pin_root(path: Path) -> _PinnedRoot | None:
 def _pinned_root_still_current(pinned: _PinnedRoot) -> bool:
     """Whether `pinned.path` still names the SAME physical directory
     the pinned fd was opened from. Required before and after any
-    operation that must still take a pathname (an `os.walk` scan, a
-    validator subprocess argument) rather than the fd itself — the
-    closest available guarantee that such an operation examined the
-    pinned candidate and not a directory substituted at the same name.
+    operation that must still take a pathname (a validator subprocess
+    argument) rather than the fd itself, and around `_scan_tree`'s own
+    fd-based enumeration as a semantic-currentness check — not because
+    the scan itself needs a pathname, but to detect that the SELECTED
+    installation moved for an unrelated reason during an operation
+    that spans real time.
     """
     try:
         st = os.stat(pinned.path, follow_symlinks=False)
@@ -427,41 +444,88 @@ def _safe_replace_existing_regular(root: _PinnedRoot, relative: str, expected_be
 
 
 def _scan_tree(pinned: _PinnedRoot) -> tuple[dict[str, Path], tuple[str, ...]]:
-    """One bounded host-side walk of the pinned root. Returns
-    (`{relative_posix_path: absolute_path}` for every REGULAR file,
-    sorted unsafe relative paths). A symlink (file or directory) or any
-    other special file type is never followed or read — only reported
-    as unsafe. `os.walk` is pathname-based, so the pinned root's
-    identity is reverified immediately before and immediately after
-    the walk; a mismatch on either side reports a single `'<root>'`
-    sentinel rather than any file content, and the caller must treat
-    that as a hard failure, not an ordinary unsafe path to skip —
-    `followlinks=False` alone does not protect the WALK'S OWN top-level
-    argument from being a symlink or a substituted directory, only the
-    subdirectories encountered while walking it.
+    """One bounded enumeration of the pinned root, started and
+    continued entirely through `dir_fd`-relative `openat()` calls —
+    never a pathname-based `os.walk`/`rglob`/`iterdir` of `pinned.path`
+    itself or of any descendant. Returns (`{relative_posix_path:
+    absolute_path}` for every REGULAR file, sorted unsafe relative
+    paths). A symlink (file or directory), a special file, or any path
+    an inspection error touches is never followed or silently treated
+    as absent — only reported as unsafe, so a filesystem anomaly mid-
+    enumeration cannot cause a real file to be silently omitted from
+    either the file set OR the unsafe set.
+
+    Because every directory, including the root, is enumerated via
+    `os.scandir`/`os.open(..., dir_fd=...)` against an already-open
+    descriptor rather than by re-opening `pinned.path`'s NAME, a
+    pathname ABA swap (replace the selected path with a different
+    real directory, let an operation observe it, then restore the
+    original) has nothing to intercept: the walk simply never reopens
+    the pathname once started. The pre/post `_pinned_root_still_current`
+    checks that remain here are for semantic currentness only (did the
+    SELECTED installation move since the caller last checked, for an
+    unrelated reason) — not the containment or enumeration mechanism.
     """
+    if not _NOFOLLOW_SUPPORTED:
+        return {}, (_ROOT_UNSAFE_MARKER,)
     if not _pinned_root_still_current(pinned):
         return {}, (_ROOT_UNSAFE_MARKER,)
-    root = pinned.path
     files: dict[str, Path] = {}
     unsafe: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        safe_dirnames = []
-        for name in dirnames:
-            full = Path(dirpath, name)
-            if os.path.islink(full):
-                unsafe.append(full.relative_to(root).as_posix())
-            else:
-                safe_dirnames.append(name)
-        dirnames[:] = safe_dirnames
-        for name in filenames:
-            full = Path(dirpath, name)
-            relative = full.relative_to(root).as_posix()
-            st = full.lstat()
-            if stat.S_ISREG(st.st_mode):
-                files[relative] = full
-            else:
+    # (directory_fd, relative_prefix, owns_fd); the root's own fd is
+    # borrowed from `pinned`, never closed here.
+    stack: list[tuple[int, str, bool]] = [(pinned.fd, '', False)]
+    while stack:
+        dir_fd, prefix, owns_fd = stack.pop()
+        try:
+            with os.scandir(dir_fd) as entries:
+                names = sorted(entry.name for entry in entries)
+        except OSError:
+            unsafe.append(prefix if prefix else _ROOT_UNSAFE_MARKER)
+            names = []
+        for name in names:
+            relative = f'{prefix}/{name}' if prefix else name
+            try:
+                # O_NONBLOCK matters only for a FIFO: without it, an
+                # `open()` purely to classify/close a pipe with no
+                # writer on the other end would block indefinitely —
+                # a special file must be classified unsafe, never hang
+                # the scan. It has no effect on a regular file or
+                # directory open.
+                child_fd = os.open(
+                    name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+            except OSError:
+                # Includes a symlink (ELOOP) and a path that vanished
+                # or changed between listing and opening it (ENOENT or
+                # otherwise) — every case fails closed as unsafe,
+                # never silently treated as though it never existed.
                 unsafe.append(relative)
+                continue
+            try:
+                child_stat = os.fstat(child_fd)
+            except OSError:
+                unsafe.append(relative)
+                try:
+                    os.close(child_fd)
+                except OSError:
+                    pass
+                continue
+            if stat.S_ISDIR(child_stat.st_mode):
+                stack.append((child_fd, relative, True))
+            else:
+                if stat.S_ISREG(child_stat.st_mode):
+                    files[relative] = Path(pinned.path, relative)
+                else:
+                    unsafe.append(relative)
+                try:
+                    os.close(child_fd)
+                except OSError:
+                    pass
+        if owns_fd:
+            try:
+                os.close(dir_fd)
+            except OSError:
+                pass
     if not _pinned_root_still_current(pinned):
         return {}, (_ROOT_UNSAFE_MARKER,)
     return files, tuple(sorted(unsafe))

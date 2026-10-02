@@ -476,11 +476,21 @@ its pathname again partway through: an already-open fd keeps referring
 to the original directory even if its pathname is later renamed away,
 replaced by a symlink, or replaced by an entirely different real
 directory at the same name, none of which repeated `O_NOFOLLOW`
-reopens-by-pathname alone could resist. The one remaining pathname-based
-operation, a tree scan via `os.walk` (`_scan_tree`), re-verifies the
-pinned root's identity immediately before and immediately after the
-walk, since `followlinks=False` protects only the subdirectories
-encountered while walking, never the walk's own top-level argument.
+reopens-by-pathname alone could resist. A tree scan (`_scan_tree`) is NOT a pathname-based operation either: it
+enumerates starting from the pinned root's own fd and descends into each
+subdirectory via a `dir_fd`-relative, `O_NOFOLLOW` `openat()` of that SAME
+fd's children, never by reopening `pinned.path`'s name at any depth. A
+symlink or special file encountered anywhere in that walk is reported
+unsafe, never followed and never silently treated as absent. Because
+nothing in the walk ever re-derives a directory from a pathname, a root
+pathname ABA swap (replace the selected pathname with a different real
+directory, let an operation run, then restore the original pathname
+before anything rechecks it) has no window to land in: the enumeration
+simply cannot observe anything other than the physical tree that was
+pinned. The pre/post `_pinned_root_still_current` checks `_scan_tree`
+still performs are for semantic currentness only — did the selected
+installation move since the caller last checked, for an unrelated
+reason — not the containment or enumeration mechanism itself.
 
 The pinned fd and a pathname identity recheck guarantee two DIFFERENT
 things, and both are required. The pinned fd guarantees containment —
