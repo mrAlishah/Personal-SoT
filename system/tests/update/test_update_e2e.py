@@ -111,6 +111,80 @@ class InstallTypeRoutingTests(unittest.TestCase):
 
             self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
 
+    def test_intermediate_workspace_symlink_cannot_prove_installation_marker(self):
+        """`workspace` ITSELF — an intermediate component of the first
+        marker's path — is a symlink to an outside directory that
+        genuinely contains `adapters/runtime_entrypoint.md`. The final
+        lookup would resolve to a real outside regular file through a
+        plain pathname open, but the root-anchored check must refuse
+        the intermediate symlink and never prove the installation.
+        """
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'fake_archive')
+            root.mkdir()
+            outside = Path(workdir, 'outside_workspace')
+            (outside / 'adapters').mkdir(parents=True)
+            (outside / 'adapters' / 'runtime_entrypoint.md').write_text('x\n')
+            os.symlink(outside, root / 'workspace')
+            (root / 'system' / 'validation').mkdir(parents=True)
+            (root / 'system' / 'validation' / 'validate_v1.py').write_text('x\n')
+
+            self.assertFalse(update_reporting._is_personal_sot_archive(str(root)))
+            self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
+
+            real_classify, real_preview, real_apply = (
+                git_update.classify, git_update.preview, git_update.apply)
+            with mock.patch.object(git_update, 'classify') as spy_classify, \
+                 mock.patch.object(git_update, 'preview') as spy_preview, \
+                 mock.patch.object(git_update, 'apply') as spy_apply:
+                spy_classify.side_effect = real_classify
+                spy_preview.side_effect = real_preview
+                spy_apply.side_effect = real_apply
+                result = run_update_workflow(str(root), capability=_FULL)
+                spy_classify.assert_not_called()
+                spy_preview.assert_not_called()
+                spy_apply.assert_not_called()
+            self.assertEqual('unknown', result.install_type)
+
+    def test_intermediate_system_symlink_cannot_prove_installation_marker(self):
+        """Same race, but the SECOND marker's intermediate component
+        (`system`) is the symlink this time — proving the check is
+        symmetric across both required markers.
+        """
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'fake_archive')
+            root.mkdir()
+            (root / 'workspace' / 'adapters').mkdir(parents=True)
+            (root / 'workspace' / 'adapters' / 'runtime_entrypoint.md').write_text('x\n')
+            outside = Path(workdir, 'outside_system')
+            (outside / 'validation').mkdir(parents=True)
+            (outside / 'validation' / 'validate_v1.py').write_text('x\n')
+            os.symlink(outside, root / 'system')
+
+            self.assertFalse(update_reporting._is_personal_sot_archive(str(root)))
+            self.assertEqual('unknown', update_reporting.detect_install_type(str(root), _FULL))
+
+    def test_symlink_selected_root_fails_installation_proof(self):
+        """The selected root pathname ITSELF is a symlink to a
+        directory that genuinely carries both markers — the authority
+        boundary must refuse to follow it rather than "helpfully"
+        resolving to the real target.
+        """
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            real_root = Path(workdir, 'real_archive')
+            _write_tree(real_root, {
+                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'system/validation/validate_v1.py': 'x\n',
+            })
+            selected = Path(workdir, 'selected_link')
+            os.symlink(real_root, selected)
+
+            self.assertFalse(update_reporting._is_personal_sot_archive(str(selected)))
+            self.assertEqual('unknown', update_reporting.detect_install_type(str(selected), _FULL))
+
     def test_workflow_routes_to_zip_path_for_archive(self):
         with tempfile.TemporaryDirectory() as workdir:
             root = Path(workdir, 'archive')
@@ -798,6 +872,62 @@ class AdvancedReportTests(unittest.TestCase):
                 'zip', None, root=root,
                 candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
             self.assertEqual((), report.personal_paths)
+
+    def test_intermediate_registry_symlink_fails_closed_for_advanced_disclosure(self):
+        """`system` ITSELF — an intermediate component of the
+        canonical registry's own path — is a symlink to an outside
+        directory carrying a FORGED registry that registers the
+        otherwise-unregistered scope. The outside registry must never
+        become authorization authority merely because the final
+        lookup would resolve through it.
+        """
+        import os
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            _write_tree(root, {
+                'workspace/context/personal/allow.md': '---\nai_access: allow\n---\nbody\n',
+            })
+            outside_system = Path(workdir, 'outside_system')
+            (outside_system / 'routing').mkdir(parents=True)
+            (outside_system / 'routing' / 'context_registry.md').write_text(
+                _sbs_tests.SideBySideRegistryTests._registry_text(
+                    [('personal', 'workspace/context/personal')]))
+            os.symlink(outside_system, root / 'system')
+
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
+            self.assertEqual((), report.personal_paths)
+
+    def test_intermediate_context_symlink_never_reads_outside_frontmatter(self):
+        """`workspace/context/personal` — an intermediate component of
+        the candidate's own path — is a symlink to an outside
+        directory carrying a DIFFERENT `allow.md` with a distinctive
+        body secret. The outside module must never be read for
+        authorization, the path must not be disclosed, and the secret
+        must appear nowhere in the returned report.
+        """
+        import os
+        body_secret = 'LOOP5-INTERMEDIATE-SYMLINK-OUTSIDE-BODY-SECRET'
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            _write_tree(root, {
+                'system/routing/context_registry.md':
+                    _sbs_tests.SideBySideRegistryTests._registry_text(
+                        [('personal', 'workspace/context/personal')]),
+            })
+            outside_personal = Path(workdir, 'outside_personal')
+            outside_personal.mkdir()
+            (outside_personal / 'allow.md').write_text(
+                '---\nai_access: allow\n---\n' + body_secret + '\n')
+            (root / 'workspace' / 'context').mkdir(parents=True)
+            os.symlink(outside_personal, root / 'workspace' / 'context' / 'personal')
+
+            report = update_reporting.advanced_report(
+                'zip', None, root=root,
+                candidate_paths=('workspace/context/personal/allow.md',), host_read=True)
+            self.assertEqual((), report.personal_paths)
+            self.assertNotIn(body_secret, repr(report))
 
     def test_traversal_candidate_rejected_before_header_read(self):
         with tempfile.TemporaryDirectory() as workdir:

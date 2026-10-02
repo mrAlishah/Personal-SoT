@@ -17,7 +17,8 @@ this module implements.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+import os
+from pathlib import Path, PurePosixPath
 import stat
 
 from system.context.access import permitted
@@ -138,22 +139,159 @@ def _is_git_installation(root) -> bool:
         return False
 
 
+def _root_anchored_parts(relative: str) -> list[str] | None:
+    """The path components of `relative` for a root-anchored,
+    one-component-at-a-time `openat()` walk, or `None` if it is not a
+    simple, safe, relative path (empty, absolute, containing `.`/`..`,
+    or any component itself containing a `/`).
+    """
+    parts = PurePosixPath(relative).parts
+    if not parts:
+        return None
+    for part in parts:
+        if part in ('.', '..') or not part:
+            return None
+    return list(parts)
+
+
+_NOFOLLOW_SUPPORTED = (
+    getattr(os, 'O_NOFOLLOW', None) is not None
+    and getattr(os, 'O_DIRECTORY', None) is not None
+    and os.open in os.supports_dir_fd
+)
+
+
+def _open_root_fd(root):
+    """Open the selected root itself, root-anchored
+    (`O_DIRECTORY | O_NOFOLLOW`) — the root pathname must not itself
+    be a symlink; this authority boundary never follows one to "help"
+    the caller, and never falls back to `Path.resolve()`.
+    """
+    if not _NOFOLLOW_SUPPORTED:
+        return None
+    try:
+        return os.open(str(root), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+
+
+def _open_root_relative(root, relative):
+    """Open `relative` under `root`, root-anchored through EVERY path
+    component — the root itself and every intermediate directory with
+    `O_DIRECTORY | O_NOFOLLOW`, the final component with `O_NOFOLLOW`.
+    Returns the final open fd (owned by the caller, who must close it)
+    or `None` if any component is missing, a symlink, or not a real
+    directory where one is required — never a plain pathname open and
+    never `Path.resolve()`, either of which an intermediate symlink
+    (e.g. `workspace` or `system` itself swapped for one) could follow
+    right past.
+
+    This is the ONE path-walk this module performs for an authority
+    boundary; installation-marker proof, the canonical registry read,
+    and Personal module frontmatter reads all build on it rather than
+    repeating it.
+    """
+    parts = _root_anchored_parts(relative)
+    if not parts:
+        return None
+    root_fd = _open_root_fd(root)
+    if root_fd is None:
+        return None
+    intermediate = []
+    try:
+        parent = root_fd
+        for part in parts[:-1]:
+            try:
+                fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            except OSError:
+                return None
+            intermediate.append(fd)
+            parent = fd
+        try:
+            return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        except OSError:
+            return None
+    finally:
+        for fd in intermediate:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        try:
+            os.close(root_fd)
+        except OSError:
+            pass
+
+
+def _safe_is_regular_file(root, relative: str) -> bool:
+    """Whether `relative` under `root` is a genuine regular file,
+    root-anchored through every path component — used for installation
+    marker proof, which only needs to confirm the file exists as a
+    real regular file, never its content.
+    """
+    fd = _open_root_relative(root, relative)
+    if fd is None:
+        return False
+    try:
+        return stat.S_ISREG(os.fstat(fd).st_mode)
+    except OSError:
+        return False
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+
+def _safe_read_root_relative(root, relative: str, limit: int | None = None) -> bytes | None:
+    """Read the bytes of `relative` under `root`, root-anchored
+    through every path component — the shared primitive behind the
+    canonical registry read and Personal module frontmatter reads
+    alike. `None` for anything other than a genuine regular file
+    reachable without following any symlink, intermediate or final.
+    `limit`, when given, reads at most that many bytes (used for a
+    bounded frontmatter read, so a large module body is never pulled
+    fully into memory just to look for its closing `---`).
+    """
+    fd = _open_root_relative(root, relative)
+    if fd is None:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        if limit is not None:
+            return os.read(fd, limit)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b''.join(chunks)
+    except OSError:
+        return None
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+
 def _is_personal_sot_archive(root) -> bool:
     """Whether `root` carries the smallest stable, repository-owned
     evidence of actually being a Personal-SoT installation — Git or
-    not. Each marker must be a genuine regular file at that EXACT path
-    (`lstat`, never a followed symlink): a symlink standing in for a
-    marker proves nothing about the real installation being there, and
-    an arbitrary directory or an unrelated Git repository has no reason
-    to carry either marker at all.
+    not. Each marker must be a genuine regular file at that EXACT
+    path, root-anchored through EVERY path component (not merely the
+    final one — an intermediate component such as `workspace` or
+    `system` itself swapped for a symlink would otherwise still let
+    the final lookup resolve to an outside regular file): a symlink
+    standing in for a marker, anywhere along its path, proves nothing
+    about the real installation being there, and an arbitrary
+    directory or an unrelated Git repository has no reason to carry
+    either marker at all.
     """
-    root = Path(root)
     for marker in _ARCHIVE_MARKERS:
-        try:
-            st = (root / marker).lstat()
-        except OSError:
-            return False
-        if not stat.S_ISREG(st.st_mode):
+        if not _safe_is_regular_file(root, marker.as_posix()):
             return False
     return True
 
@@ -332,22 +470,18 @@ def _no_local_command_report() -> BeginnerReport:
 
 def _read_frontmatter_only(root, path: str) -> str:
     """ONLY the bounded `---`-delimited frontmatter block of `path`
-    under `root` — never module body bytes, even if they would fit
-    within `_HEADER_READ_LIMIT`: the text must open with `---` on its
-    own line and a matching closing `---` must appear within that
-    bound, or this returns `''`. The final path component is refused
-    if it is itself a symlink, so an obvious final-component symlink
-    cannot redirect this read outside the selected root.
-    `access.permitted` remains the sole policy owner; this only bounds
-    what text physically reaches it.
+    under `root`, read through the root-anchored safe primitive
+    (every path component, not merely the final one — an intermediate
+    `workspace`/`context`/scope directory swapped for a symlink must
+    fail this closed too) — never module body bytes, even if they
+    would fit within `_HEADER_READ_LIMIT`: the text must open with
+    `---` on its own line and a matching closing `---` must appear
+    within that bound, or this returns `''`. `access.permitted`
+    remains the sole policy owner; this only bounds what text
+    physically reaches it.
     """
-    full = Path(root, path)
-    try:
-        if full.is_symlink():
-            return ''
-        with open(full, 'rb') as handle:
-            raw = handle.read(_HEADER_READ_LIMIT)
-    except OSError:
+    raw = _safe_read_root_relative(root, path, limit=_HEADER_READ_LIMIT)
+    if raw is None:
         return ''
     text = raw.decode('utf-8', errors='replace')
     lines = text.splitlines(keepends=True)
@@ -361,19 +495,22 @@ def _read_frontmatter_only(root, path: str) -> str:
 
 def _canonical_registry_text(root) -> str | None:
     """The CANONICAL registry text at `root/system/routing/
-    context_registry.md`, read host-side — NEVER caller-supplied text,
-    which could otherwise fabricate scope ownership for a path the
-    installation's own registry never actually registers. `None`
-    (fail closed, meaning "no scope can be proven" — never "empty
-    registry") if the path is missing, unreadable, or its final
-    component is a symlink.
+    context_registry.md`, read host-side through the root-anchored
+    safe primitive (every path component, not merely the final one —
+    an intermediate `system`/`routing` swapped for a symlink must fail
+    this closed too) — NEVER caller-supplied text, which could
+    otherwise fabricate scope ownership for a path the installation's
+    own registry never actually registers. `None` (fail closed,
+    meaning "no scope can be proven" — never "empty registry") if the
+    path is missing, unreadable, or any component along it, including
+    the final one, is a symlink.
     """
-    full = Path(root, _REGISTRY_RELATIVE)
+    data = _safe_read_root_relative(root, _REGISTRY_RELATIVE.as_posix())
+    if data is None:
+        return None
     try:
-        if full.is_symlink() or not full.is_file():
-            return None
-        return full.read_text(encoding='utf-8')
-    except OSError:
+        return data.decode('utf-8')
+    except UnicodeDecodeError:
         return None
 
 

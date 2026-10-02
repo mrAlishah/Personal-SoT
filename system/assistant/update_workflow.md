@@ -147,9 +147,13 @@ raw frontmatter header, a module body, or an unauthorized Personal path, and
 nothing resembling a raw header ever survives as hidden state on the result
 object the workflow returns. The header read itself is bounded to the
 frontmatter block alone (stops at the matching closing `---`, never returns
-body bytes even if they would fit within the read limit) and refuses an
-obvious final-component symlink, so it cannot be redirected outside the
-selected root.
+body bytes even if they would fit within the read limit). This read, the
+canonical registry read, and installation-marker proof all share one
+root-anchored primitive that is component-safe throughout — every
+intermediate directory, not only the final component, must be a real
+directory with no symlink anywhere along the path (and the selected root
+itself must not be a symlink either), so a symlinked `workspace`, `system`,
+or scope directory can redirect none of them outside the selected root.
 
 ## Dirty Git clone guidance
 
