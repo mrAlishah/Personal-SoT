@@ -66,13 +66,26 @@ class BeginnerGuidanceTests(unittest.TestCase):
         self.assertNotIn('Builder', result.next_action or '')
 
     def test_behavior_without_usable_profile_is_not_presented_as_trial_ready(self):
-        for behavior in ('planning', 'decision_support'):
-            with self.subTest(behavior=behavior):
-                result = guide(ROOT, personalization=PersonalizationIntent(behaviors=(behavior,)))
-                self.assertEqual((), result.composition.profiles)
-                self.assertIsNotNone(result.question)
-                self.assertNotIn('Try this combination', result.next_action or '')
-                self.assertNotIn('can provide', result.message)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / 'workspace/profiles'
+            behaviors = root / 'system/behavior'
+            profiles.mkdir(parents=True)
+            behaviors.mkdir(parents=True)
+            (behaviors / 'module_catalog.md').write_text(
+                '# modules\n\n## planning.md\n\n## decision_support.md\n',
+                encoding='utf-8',
+            )
+            for behavior in ('planning', 'decision_support'):
+                (behaviors / f'{behavior}.md').write_text(f'# {behavior}\n', encoding='utf-8')
+
+            for behavior in ('planning', 'decision_support'):
+                with self.subTest(behavior=behavior):
+                    result = guide(root, personalization=PersonalizationIntent(behaviors=(behavior,)))
+                    self.assertEqual((), result.composition.profiles)
+                    self.assertIsNotNone(result.question)
+                    self.assertNotIn('Try this combination', result.next_action or '')
+                    self.assertNotIn('can provide', result.message)
 
     def test_missing_capability_does_not_invent_identity_or_workflow(self):
         result = guide(ROOT, personalization=PersonalizationIntent(tone='imaginary'))
