@@ -88,7 +88,7 @@ Expected: current level/tool use stays in current_state; target outcomes stay in
 
 ## case_15_language_state_vs_presentation
 
-Language current state instructs the AI to use the `g/lang/german` profile or German+English+Persian rendering.
+Language current state instructs the AI to use the `lang/german` profile or German+English+Persian rendering.
 
 Expected: factual context does not own presentation/profile configuration.
 

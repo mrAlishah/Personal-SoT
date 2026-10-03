@@ -45,22 +45,22 @@ Expected project soft policy.
 Input:
 
 ```text
-@profile:g/tech/learn
-@profile:g/research
+@profile:tech/learn
+@profile:research/deep
 ```
 
 Expected:
 
 ```text
 additive profile components → compose
-tone/depth profile defaults → `g/research` wins if conflicting
+tone/depth profile defaults → `research/deep` wins if conflicting
 ```
 
 ## case_07_explicit_profile_over_default_profile
 
-Given `default_profile = g/coding` and explicit `@profile:g/research`.
+Given `default_profile = code/review` and explicit `@profile:research/deep`.
 
-Expected selected profile: `g/research`; do not compose `g/coding`.
+Expected selected profile: `research/deep`; do not compose `code/review`.
 
 ## case_08_prompt_depth_over_profile_and_adapter
 

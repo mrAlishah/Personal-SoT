@@ -9,7 +9,7 @@ from pathlib import Path
 from secrets import token_hex
 import stat
 
-from system.routing.runtime_naming import profile_identity_kind
+from system.routing.runtime_naming import is_profile_identity
 from system.validation import validate_prompts, validate_public, validate_v1
 
 
@@ -53,11 +53,7 @@ def choose_profile_action(assessment: ProfileAssessment) -> tuple[str, str | Non
         return "reuse_profile", assessment.exact_identity
     if assessment.direct_composition_sufficient:
         return "compose", None
-    if (
-        assessment.edit_identity
-        and assessment.same_semantic_owner
-        and profile_identity_kind(assessment.edit_identity) == "custom"
-    ):
+    if assessment.edit_identity and assessment.same_semantic_owner:
         return "edit", assessment.edit_identity
     if assessment.reusable:
         return "create", None
@@ -69,10 +65,7 @@ def _digest(value: str) -> str:
 
 
 def _target(root: Path, identity: str) -> tuple[str, Path]:
-    kind = profile_identity_kind(identity)
-    if kind == "built_in":
-        raise ValueError("The g/* Profile namespace is reserved for shipped built-ins")
-    if kind != "custom":
+    if not is_profile_identity(identity):
         raise ValueError("Profile identity must use lowercase [a-z0-9]+ segment grammar")
     relative = f"workspace/profiles/{identity}.md"
     profile_root = root / "workspace" / "profiles"
@@ -82,6 +75,12 @@ def _target(root: Path, identity: str) -> tuple[str, Path]:
     if target.is_symlink() or target.resolve() != target:
         raise ValueError("Profile target must not contain a symbolic link")
     return relative, target
+
+
+def _declares_product_ownership(source: str | None) -> bool:
+    if source is None:
+        return False
+    return validate_v1.simple_frontmatter(source).get("owner") == "product"
 
 
 def _confirmation_digest(
@@ -135,6 +134,10 @@ def preview_change(
         raise ValueError("edit target does not exist")
 
     before = target.read_text(encoding="utf-8") if operation == "edit" else None
+    if operation == "edit" and _declares_product_ownership(before):
+        raise ValueError("Profile is product-owned and reserved for shipped content")
+    if operation == "create" and _declares_product_ownership(content):
+        raise ValueError("User-guided creation cannot declare product-owned content")
     before_digest = _digest(before) if before is not None else None
     diff = _preview_diff(relative, before, content)
     errors = tuple(validate_v1.validate_profile_source(root, target, content))

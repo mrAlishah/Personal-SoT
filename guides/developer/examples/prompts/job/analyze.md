@@ -4,7 +4,7 @@ prompt_tags:
   - job_search
   - job_analysis
 prompt_profiles:
-  - g/research
+  - research/deep
 prompt_formats:
   - md
   - concept

@@ -5,8 +5,8 @@ prompt_tags:
   - comparison
   - tools
 prompt_profiles:
-  - g/research
-  - g/obsidian/note
+  - research/deep
+  - obsidian/note
 prompt_formats:
   - concept
 prompt_tone: professional

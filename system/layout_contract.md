@@ -60,7 +60,7 @@ Examples:
 
 ```text
 @ctx:personal
-@profile:g/tech/learn
+@profile:tech/learn
 @fmt:yaml
 @tone:human
 @depth:short

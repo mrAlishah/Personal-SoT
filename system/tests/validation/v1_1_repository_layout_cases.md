@@ -45,7 +45,7 @@ workspace/prompts/chat/recap.md
 ### Case 4 - presentation mapping
 
 ```text
-@profile:g/tech/learn → workspace/profiles/g/tech/learn.md
+@profile:tech/learn → workspace/profiles/tech/learn.md
 @fmt:yaml                  → workspace/presentation/formats/yaml.md
 @tone:human                → workspace/presentation/tones/human.md
 @depth:short               → workspace/presentation/depth/short.md

@@ -31,14 +31,14 @@ Profile solely for this invocation.
 User wants a guided learning flow one step at a time.
 
 Expected: recommend an evidence-backed composition such as the existing
-`g/tech/learn` Profile with registered `learning=on` and
+`tech/learn` Profile with registered `learning=on` and
 `steps=on`, while preserving behavior/control ownership.
 
 ## Deep professional research
 
 User requests deep professional research.
 
-Expected: reuse the existing `g/research` Profile before proposing anything new.
+Expected: reuse the existing `research/deep` Profile before proposing anything new.
 
 ## Unknown friendly label
 

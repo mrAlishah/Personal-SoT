@@ -115,7 +115,7 @@ class SystemActionTests(unittest.TestCase):
 
     def test_help_and_assist_reject_selector_and_control_companions(self):
         for text in (
-            "@do:help\n@profile:g/coding",
+            "@do:help\n@profile:code/review",
             "@do:assist\n@ctx:personal",
             "@do:help\n@control:learning=on",
         ):
@@ -138,11 +138,11 @@ class SystemActionTests(unittest.TestCase):
         """A system action must not become invisible merely because another
         directive precedes it in the control block."""
         for text in (
-            "@profile:g/coding\n@do:help",
+            "@profile:code/review\n@do:help",
             "@ctx:personal\n@do:assist",
             "@run:ai/recap\n@do:help",
             "@recap:2\n@do:assist",
-            "@profile:g/coding\n@do:sot",
+            "@profile:code/review\n@do:sot",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
@@ -201,13 +201,13 @@ class PromptActionTests(unittest.TestCase):
             classify_prompt_action("@edit:workspace/prompts/ai/recap")
 
     def test_run_preserves_allowed_parameter_and_selector_composition(self):
-        text = "@ctx:personal\n@profile:g/coding\n@run:chat/snapshot\n@param:focus=[architecture]"
+        text = "@ctx:personal\n@profile:code/review\n@run:chat/snapshot\n@param:focus=[architecture]"
         result = classify_prompt_action(text)
         self.assertEqual(RUN_ACTION, result.keyword)
         self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_edit_preserves_currently_allowed_composition(self):
-        text = "@profile:g/coding\n@edit:chat/snapshot"
+        text = "@profile:code/review\n@edit:chat/snapshot"
         result = classify_prompt_action(text)
         self.assertEqual("chat/snapshot", result.prompt_id)
 

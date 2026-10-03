@@ -52,13 +52,13 @@ class ProfileBuilderTests(unittest.TestCase):
     def test_exact_profile_reuse_wins(self):
         action = choose_profile_action(
             ProfileAssessment(
-                exact_identity="g/research",
+                exact_identity="research/deep",
                 direct_composition_sufficient=True,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("reuse_profile", "g/research"), action)
+        self.assertEqual(("reuse_profile", "research/deep"), action)
 
     def test_direct_composition_wins_before_creation(self):
         action = choose_profile_action(
@@ -87,28 +87,6 @@ class ProfileBuilderTests(unittest.TestCase):
         self.assertEqual(("edit", "researchnotes"), allowed)
         self.assertEqual(("create", None), blocked)
 
-    def test_built_in_customization_creates_separate_profile(self):
-        action = choose_profile_action(
-            ProfileAssessment(
-                edit_identity="g/research",
-                same_semantic_owner=True,
-                reusable=True,
-            )
-        )
-
-        self.assertEqual(("create", None), action)
-
-    def test_invalid_reserved_identity_is_never_selected_for_edit(self):
-        action = choose_profile_action(
-            ProfileAssessment(
-                edit_identity="g/problem/solving",
-                same_semantic_owner=True,
-                reusable=True,
-            )
-        )
-
-        self.assertEqual(("create", None), action)
-
     def test_create_preview_contains_complete_profile_diff(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -131,41 +109,61 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertIn("depth: short", proposal.diff)
             self.assertEqual((), proposal.preflight_errors)
 
-    def test_create_rejects_reserved_built_in_identity(self):
+    def test_edit_rejects_product_owned_file(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-
-            with self.assertRaisesRegex(ValueError, "reserved"):
-                preview_change(
-                    root,
-                    "create",
-                    "g/custom/profile",
-                    self.source(),
-                    same_semantic_owner=False,
-                    fact_safe=True,
-                    write_capable=True,
-                )
-
-    def test_edit_rejects_reserved_built_in_identity(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.repository(root)
-            (root / "workspace/profiles/g").mkdir()
-            (root / "workspace/profiles/g/coding.md").write_text(
-                self.source(), encoding="utf-8"
+            (root / "workspace/profiles/code").mkdir()
+            (root / "workspace/profiles/code/review.md").write_text(
+                self.source(extra="owner: product\n"), encoding="utf-8"
             )
 
-            with self.assertRaisesRegex(ValueError, "reserved"):
+            with self.assertRaisesRegex(ValueError, "product-owned"):
                 preview_change(
                     root,
                     "edit",
-                    "g/coding",
+                    "code/review",
                     self.source(),
                     same_semantic_owner=True,
                     fact_safe=True,
                     write_capable=True,
                 )
+
+    def test_create_rejects_content_declaring_product_ownership(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+
+            with self.assertRaisesRegex(ValueError, "product-owned"):
+                preview_change(
+                    root,
+                    "create",
+                    "newprofile",
+                    self.source(extra="owner: product\n"),
+                    same_semantic_owner=False,
+                    fact_safe=True,
+                    write_capable=True,
+                )
+
+    def test_edit_of_ordinary_custom_profile_is_unaffected_by_ownership_check(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/formalshort.md").write_text(
+                self.source(), encoding="utf-8"
+            )
+
+            proposal = preview_change(
+                root,
+                "edit",
+                "formalshort",
+                self.source(extra="owner: custom\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+            self.assertEqual((), proposal.preflight_errors)
 
     def test_edit_preview_requires_same_owner(self):
         with TemporaryDirectory() as directory:

@@ -5,7 +5,7 @@ prompt_tags:
   - pull_request
   - review
 prompt_profiles:
-  - g/coding
+  - code/review
 prompt_formats:
   - md
   - concept

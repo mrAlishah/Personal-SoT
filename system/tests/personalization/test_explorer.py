@@ -23,7 +23,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
-            "profile": "g/research",
+            "profile": "research/deep",
             "format": "compare",
             "tone": "formal",
             "depth": "short",
@@ -54,12 +54,12 @@ class PersonalizationExplorerTests(unittest.TestCase):
                     ("behavior", "teaching"),
                     ("control", "learning"),
                     ("control", "steps"),
-                    ("profile", "g/tech/learn"),
+                    ("profile", "tech/learn"),
                 ],
             ),
             (
                 CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
-                [("profile", "g/research")],
+                [("profile", "research/deep")],
             ),
         )
 
@@ -73,7 +73,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
         first = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
         second = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
 
-        expected = ["g/architecture/review", "g/coding", "g/research"]
+        expected = ["architecture/review", "code/review", "research/deep"]
         self.assertEqual(expected, [match.identity for match in first.matches])
         self.assertEqual(expected, [match.identity for match in second.matches])
 

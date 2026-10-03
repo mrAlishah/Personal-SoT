@@ -51,7 +51,7 @@ class BeginnerGuidanceTests(unittest.TestCase):
         result = guide(ROOT, personalization=PersonalizationIntent(
             behaviors=('research',), tone='professional', depth='deep'), save_requested=True)
         self.assertEqual('reuse_profile', result.composition.action)
-        self.assertEqual(('g/research',), result.composition.profiles)
+        self.assertEqual(('research/deep',), result.composition.profiles)
         self.assertNotEqual('Preview', result.level)
 
     def test_save_does_not_offer_creation_when_advisor_rejects_eligibility(self):

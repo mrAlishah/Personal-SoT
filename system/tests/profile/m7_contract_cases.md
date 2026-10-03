@@ -16,7 +16,7 @@ Expected: project context, never profile frontmatter.
 
 ## case_03_profile_not_context_selector
 
-`g/coding` profile is active.
+`code/review` profile is active.
 
 Expected: profile does not silently choose a factual `@ctx` scope.
 
@@ -62,15 +62,15 @@ Later profile contains no authority to overwrite project facts or hard policies.
 
 ## case_11_explicit_profiles_replace_default_profile
 
-Adapter default profile is `g/coding`; prompt explicitly selects `g/research`.
+Adapter default profile is `code/review`; prompt explicitly selects `research/deep`.
 
-Expected: use explicit `g/research`, not hidden `g/coding + g/research`.
+Expected: use explicit `research/deep`, not hidden `code/review + research/deep`.
 
 ## case_12_multiple_explicit_profiles
 
-Prompt selects `g/tech/learn` then `g/obsidian/note`.
+Prompt selects `tech/learn` then `obsidian/note`.
 
-Expected: behaviors from `g/tech/learn` remain; formats compose to ELI5 + concept + YAML + Markdown; tone/depth remain `g/tech/learn` defaults because `g/obsidian/note` defines neither.
+Expected: behaviors from `tech/learn` remain; formats compose to ELI5 + concept + YAML + Markdown; tone/depth remain `tech/learn` defaults because `obsidian/note` defines neither.
 
 ## case_13_prompt_tone_over_profile
 
@@ -92,7 +92,7 @@ Expected: concept disabled for current prompt.
 
 ## case_16_prompt_language_over_profile
 
-`g/lang/german` defaults to German; current prompt explicitly requests Persian.
+`lang/german` defaults to German; current prompt explicitly requests Persian.
 
 Expected: Persian for current prompt only.
 
@@ -158,15 +158,15 @@ No behavior, tone, depth, language, or context default is introduced.
 
 ## case_28_obsidian_note_composition
 
-`g/obsidian/note` + `g/lang/german` → YAML + Markdown packaging plus German-learning ELI5/vocab/language/tone/depth defaults.
+`obsidian/note` + `lang/german` → YAML + Markdown packaging plus German-learning ELI5/vocab/language/tone/depth defaults.
 
 Expected: no copied instructions and no hidden context selection.
 
 ## case_29_profile_dynamic_resolution
 
-A conforming Core profile exists at `workspace/profiles/g/tech/learn.md`.
+A conforming Core profile exists at `workspace/profiles/tech/learn.md`.
 
-Expected: `@profile:g/tech/learn` resolves directly to that exact file without a switch-registry entry.
+Expected: `@profile:tech/learn` resolves directly to that exact file without a switch-registry entry.
 
 ## case_30_profile_not_duplicated_in_switch_registry
 
@@ -188,7 +188,7 @@ Resolver reads profile manifest, then loads only referenced effective behavior/p
 
 A profile omits behaviors, language, tone, or depth.
 
-Expected: no artificial empty/default field is required; a presentation-only profile such as `g/obsidian/note` is valid.
+Expected: no artificial empty/default field is required; a presentation-only profile such as `obsidian/note` is valid.
 
 ## case_34_profile_cannot_weaken_policy
 
@@ -204,9 +204,9 @@ Expected: client-specific defaults stay in adapter configuration.
 
 ## case_36_adapter_default_profile_is_executable_configuration
 
-Adapter/project config selects `default_profile: g/tech/learn`; the user sends an ordinary prompt with no explicit profile or presentation switches.
+Adapter/project config selects `default_profile: tech/learn`; the user sends an ordinary prompt with no explicit profile or presentation switches.
 
-Expected: runtime reads `workspace/profiles/g/tech/learn.md`, resolves and applies reasoning + teaching + communication, ELI5 + concept, human tone, and deep depth before answering. `default_profile` is not a label-only hint.
+Expected: runtime reads `workspace/profiles/tech/learn.md`, resolves and applies reasoning + teaching + communication, ELI5 + concept, human tone, and deep depth before answering. `default_profile` is not a label-only hint.
 
 ## case_37_selected_profile_modules_cannot_be_silently_dropped
 

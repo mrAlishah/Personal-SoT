@@ -60,21 +60,21 @@ class CoreValidationTests(unittest.TestCase):
 
             self.assertTrue(any("g.example" in error for error in errors))
 
-    def test_prompt_profile_reference_accepts_hierarchical_built_in_identity(self):
+    def test_prompt_profile_reference_accepts_hierarchical_identity(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ("workspace", "system", "guides"):
                 (root / name).mkdir()
             (root / "workspace/prompts").mkdir()
             (root / "workspace/profiles").mkdir()
-            (root / "workspace/profiles/g").mkdir()
-            (root / "workspace/profiles/g/coding.md").write_text("---\n---\n", encoding="utf-8")
+            (root / "workspace/profiles/code").mkdir()
+            (root / "workspace/profiles/code/review.md").write_text("---\n---\n", encoding="utf-8")
             source = (
                 "---\n"
                 "prompt_status: active\n"
                 "prompt_tags: []\n"
                 "prompt_profiles:\n"
-                "  - g/coding\n"
+                "  - code/review\n"
                 "prompt_formats: []\n"
                 "required_params: []\n"
                 "optional_params: []\n"
