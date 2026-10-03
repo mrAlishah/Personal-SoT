@@ -1,12 +1,12 @@
 ---
-control_id: step_execution
+control_id: steps
 control_values:
   - "on"
   - "off"
   - "auto"
 control_default: "auto"
 ---
-# step_execution
+# steps
 
 ## purpose
 
@@ -65,16 +65,16 @@ This is execution-flow behavior, not response depth.
 Examples:
 
 ```text
-step_execution = on + depth = short
+steps = on + depth = short
 → one concise actionable step at a time
 
-step_execution = on + depth = deep
+steps = on + depth = deep
 → one step at a time with deeper explanation of that step
 ```
 
 ## tool_boundary
 
-When the runtime itself has tools and is authorized to execute steps, `step_execution = on` does not require unnecessary user round-trips after steps whose result the runtime can directly observe and validate. The runtime may continue internally until it reaches a genuine user-decision, permission, external-observation, or material risk boundary.
+When the runtime itself has tools and is authorized to execute steps, `steps = on` does not require unnecessary user round-trips after steps whose result the runtime can directly observe and validate. The runtime may continue internally until it reaches a genuine user-decision, permission, external-observation, or material risk boundary.
 
 ## acceptance
 

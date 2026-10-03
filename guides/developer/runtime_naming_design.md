@@ -9,6 +9,11 @@ Naming Normalization milestone (bootstrap-literal and profile-identity
 normalization) and must not be read as the current runtime authority. For
 current grammar and its executable ownership, see
 `system/routing/switch_syntax.md` and `system/routing/runtime_naming.py`.
+The dotted `g.*` Profile identity grammar this document introduced is
+itself fully superseded: Profile identity is now a single grammar shared
+by shipped and custom Profiles alike, with no reserved segment at all.
+Ownership is an internal, frontmatter-only concern; see
+`system/profiles/profile_contract.md`.
 
 ## purpose
 

@@ -23,8 +23,8 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
-            "profile": "g.research",
-            "format": "comparison_table",
+            "profile": "research/deep",
+            "format": "compare",
             "tone": "formal",
             "depth": "short",
             "control": "learning",
@@ -41,25 +41,25 @@ class PersonalizationExplorerTests(unittest.TestCase):
             (CapabilityQuery(text="short", lanes=("depth",)), [("depth", "short")]),
             (CapabilityQuery(text="formal", lanes=("tone",)), [("tone", "formal")]),
             (
-                CapabilityQuery(text="comparison_table", lanes=("format",)),
-                [("format", "comparison_table")],
+                CapabilityQuery(text="compare", lanes=("format",)),
+                [("format", "compare")],
             ),
             (
                 CapabilityQuery(
-                    text="technical learning step_execution teaching",
+                    text="learn learning steps teaching",
                     lanes=("profile", "control", "behavior"),
                     limit=4,
                 ),
                 [
-                    ("profile", "g.technical.learning"),
                     ("behavior", "teaching"),
                     ("control", "learning"),
-                    ("control", "step_execution"),
+                    ("control", "steps"),
+                    ("profile", "tech/learn"),
                 ],
             ),
             (
                 CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
-                [("profile", "g.research")],
+                [("profile", "research/deep")],
             ),
         )
 
@@ -73,7 +73,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
         first = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
         second = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
 
-        expected = ["g.architecture.review", "g.coding", "g.research"]
+        expected = ["architecture/review", "code/review", "research/deep"]
         self.assertEqual(expected, [match.identity for match in first.matches])
         self.assertEqual(expected, [match.identity for match in second.matches])
 
@@ -115,15 +115,16 @@ class PersonalizationExplorerTests(unittest.TestCase):
             self.assertEqual((), report.matches)
             self.assertEqual(1, report.unavailable_count)
 
-    def test_invalid_built_in_profile_identity_is_not_discovered(self):
+    def test_invalid_nested_profile_identity_is_not_discovered(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_profile(root, "g.problem_solving", "---\n---\n")
+            (root / "workspace/profiles/code").mkdir()
+            self.write_profile(root, "code/problem_solving", "---\n---\n")
 
             report = search(
                 root,
-                CapabilityQuery(identity="g.problem_solving", lanes=("profile",)),
+                CapabilityQuery(identity="code/problem_solving", lanes=("profile",)),
             )
 
             self.assertEqual((), report.matches)

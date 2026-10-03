@@ -40,7 +40,9 @@ A control MAY also define a bounded contextual default when the same control sho
 Canonical runtime identities use:
 
 ```text
-controls.<lowercase_snake_case_name>
+controls.<name>
+
+name := [a-z0-9]+
 ```
 
 Unknown control keys are configuration errors.
@@ -51,7 +53,7 @@ Each registered control target MUST begin with YAML frontmatter containing these
 
 ```yaml
 ---
-control_id: <lowercase_snake_case_name>
+control_id: <lowercase [a-z0-9]+ name, no underscores>
 control_values:
   - "<exact_allowed_value>"
 control_default: "<one_of_control_values>"

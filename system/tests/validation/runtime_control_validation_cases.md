@@ -8,7 +8,7 @@ Profile frontmatter contains:
 
 ```yaml
 controls:
-  clarify_risk: true
+  clarify: true
 ```
 
 Expected: static profile validation accepts the control.
@@ -19,7 +19,7 @@ Profile frontmatter contains:
 
 ```yaml
 controls:
-  clarify_risk: false
+  clarify: false
 ```
 
 Expected: static profile validation accepts the control.
@@ -41,7 +41,7 @@ Profile frontmatter contains:
 
 ```yaml
 controls:
-  clarify_risk: off
+  clarify: off
 ```
 
 Expected: static validation rejects the value and requires exact `true` or `false`.

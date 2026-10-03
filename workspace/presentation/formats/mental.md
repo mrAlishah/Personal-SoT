@@ -1,8 +1,8 @@
 ---
-format_id: mental_picture
+format_id: mental
 placement: body
 ---
-# mental_picture
+# mental
 
 ## purpose
 
@@ -10,7 +10,7 @@ Render one compact conceptual model that helps the user see how the important pa
 
 ## activation
 
-This format is rendered only when explicitly selected by profile, prompt, adapter/project default, or `@fmt:mental_picture`.
+This format is rendered only when explicitly selected by profile, prompt, adapter/project default, or `@fmt:mental`.
 
 When active, render it only if the current answer has a meaningful structure, mechanism, flow, hierarchy, lifecycle, dependency, or comparison that benefits from visualization. For trivial answers or isolated facts, omit the block rather than inventing a diagram.
 
@@ -52,8 +52,8 @@ A small table or short analogy is acceptable when it communicates the structure 
 
 ## boundaries
 
-`mental_picture` owns only the compact conceptual visualization. It does not activate teaching behavior, increase depth, perform research, or replace `concept`, `comparison_table`, or the main explanation.
+`mental` owns only the compact conceptual visualization. It does not activate teaching behavior, increase depth, perform research, or replace `concept`, `compare`, or the main explanation.
 
 ## acceptance
 
-A compliant response with `mental_picture` active includes a compact model when it materially improves understanding, omits it when it would be artificial, and keeps the visualization faithful to the explanation already supported by the task/context.
+A compliant response with `mental` active includes a compact model when it materially improves understanding, omits it when it would be artificial, and keeps the visualization faithful to the explanation already supported by the task/context.

@@ -60,11 +60,11 @@ Examples:
 
 ```text
 @ctx:personal
-@profile:g.technical.learning
+@profile:tech/learn
 @fmt:yaml
 @tone:human
 @depth:short
-@run:ai/recap
+@run:chat/recap
 ```
 
 No user should need to write `@ctx:workspace/context/personal` or `@run:workspace/prompts/...`.

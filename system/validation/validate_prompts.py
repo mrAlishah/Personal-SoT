@@ -11,10 +11,11 @@ if __package__:
 else:
     from validate_v1 import switch_registry_entries
 
-from system.routing.runtime_naming import is_profile_identity
+from system.routing.runtime_naming import STRICT_SEGMENT, is_profile_identity
 
 VALID_STATUS = {"active", "draft", "deprecated"}
 NAME_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+_STRICT_ID_RE = re.compile(rf"^{STRICT_SEGMENT}$")
 VAR_RE = re.compile(r"\{\{([a-z0-9]+(?:_[a-z0-9]+)*)\}\}")
 ALLOWED_FIELDS = {"prompt_status", "prompt_tags", "prompt_profiles", "prompt_formats", "prompt_tone", "prompt_depth", "required_params", "optional_params", "owned_assets"}
 LIST_FIELDS = {"prompt_tags", "prompt_profiles", "prompt_formats", "required_params", "optional_params", "owned_assets"}
@@ -172,7 +173,7 @@ def _validate_source(
         errors.append(f"{rel}: missing or invalid prompt_status ({scalars.get('prompt_status')!r})")
     prompt_root = root / ("workspace/prompts" if canonical else "guides/developer/examples/prompts")
     for part in path.with_suffix("").relative_to(prompt_root).parts:
-        if not NAME_RE.fullmatch(part):
+        if not _STRICT_ID_RE.fullmatch(part):
             errors.append(f"{rel}: invalid prompt path segment {part!r}")
     required = set(lists["required_params"])
     optional = set(lists["optional_params"])
@@ -199,7 +200,7 @@ def _validate_source(
         if not NAME_RE.fullmatch(tag):
             errors.append(f"{rel}: invalid prompt tag {tag!r}")
     for value in lists["prompt_formats"]:
-        if not NAME_RE.fullmatch(value):
+        if not _STRICT_ID_RE.fullmatch(value):
             errors.append(f"{rel}: invalid format identifier {value!r}")
         elif value not in format_ids:
             errors.append(f"{rel}: unresolved registered format reference {value!r}")

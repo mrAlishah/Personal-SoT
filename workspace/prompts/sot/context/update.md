@@ -141,7 +141,7 @@ Before adding or changing a current fact there:
 4. do not silently infer equivalence across labels, sizing systems, units, or categories;
 5. if a clearly newer value supersedes an older current value, update/mark the older value rather than preserving contradictory current facts;
 6. if apparently different values can legitimately coexist because of date, system, scope, person, or context, record those qualifiers explicitly;
-7. if reconciliation is not deterministic, follow `controls.clarify_risk` before the affected write.
+7. if reconciliation is not deterministic, follow `controls.clarify` before the affected write.
 
 When a specialized semantic owner already exists and the candidate satisfies that owner's stricter threshold, prefer that specialized owner over the catch-all.
 
@@ -163,13 +163,13 @@ durable accepted decisions    → decisions/ when the project's established cont
 
 Do not create a changelog inside context. Do not copy reusable runtime/system contracts into factual context; record only scope-level state or decisions and reference the reusable contract when useful.
 
-Do not introduce new context file types, directory structures, or broad reorganizations merely for completeness. Reuse established semantic owners and an established catch-all when available. If no owner or catch-all safely fits and creating new structure would be material, follow `controls.clarify_risk` rather than inventing structure.
+Do not introduce new context file types, directory structures, or broad reorganizations merely for completeness. Reuse established semantic owners and an established catch-all when available. If no owner or catch-all safely fits and creating new structure would be material, follow `controls.clarify` rather than inventing structure.
 
 ## conflict_and_risk
 
 Before any write that could alter a canonical current fact, reconcile the candidate with all obviously relevant canonical owners available in the resolved scope. This includes checking for the same fact stored under a specialized owner and the general-info catch-all when both could plausibly mention it.
 
-When candidate evidence conflicts with canonical state, when a supplied label/value is ambiguous, or when uncertainty could change the stored meaning, ownership, scope, date, unit, identity, relationship, or privacy treatment, follow the effective `controls.clarify_risk` behavior before the affected write.
+When candidate evidence conflicts with canonical state, when a supplied label/value is ambiguous, or when uncertainty could change the stored meaning, ownership, scope, date, unit, identity, relationship, or privacy treatment, follow the effective `controls.clarify` behavior before the affected write.
 
 Do not create two contradictory current values merely to avoid deciding which is correct. Prefer explicit qualifiers when both values are valid in different contexts; otherwise ask.
 

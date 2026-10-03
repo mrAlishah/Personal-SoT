@@ -60,7 +60,7 @@ Invocation body after the leading control block is reserved for `{{input}}` when
 Example:
 
 ```text
-@run:language/translate_professional
+@run:lang/translate
 @param:target_language=[german]
 
 من هنوز آن را شروع نکرده‌ام.

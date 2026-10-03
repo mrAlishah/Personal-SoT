@@ -54,12 +54,12 @@ class PromptExplorerBuilderEndToEndTests(unittest.TestCase):
             self.repository(root)
             self.write_prompt(
                 root,
-                "coding/review_pr",
+                "code/review",
                 self.source(tags=("code", "review"), body="Review {{input}}."),
             )
             self.write_prompt(
                 root,
-                "writing/draft_email",
+                "writing/draftemail",
                 self.source(
                     tags=("email", "writing"),
                     required=("topic",),
@@ -67,16 +67,16 @@ class PromptExplorerBuilderEndToEndTests(unittest.TestCase):
                 ),
             )
 
-            exact = search(root, PromptQuery(identity="coding/review_pr"))
+            exact = search(root, PromptQuery(identity="code/review"))
             self.assertEqual(
-                ("reuse_exact", "coding/review_pr"),
+                ("reuse_exact", "code/review"),
                 choose_action(ReuseAssessment(exact_identity=exact.matches[0].identity)),
             )
 
             parameterized = search(root, PromptQuery(text="draft email"))
             self.assertEqual(("topic",), parameterized.matches[0].required_params)
             self.assertEqual(
-                ("reuse_parameterized", "writing/draft_email"),
+                ("reuse_parameterized", "writing/draftemail"),
                 choose_action(
                     ReuseAssessment(parameterized_identity=parameterized.matches[0].identity)
                 ),
@@ -86,7 +86,7 @@ class PromptExplorerBuilderEndToEndTests(unittest.TestCase):
             self.assertEqual((), unmatched.matches)
             self.assertEqual(("create", None), choose_action(ReuseAssessment()))
 
-            identity = "planning/compare_budget"
+            identity = "planning/comparebudget"
             created_source = self.source(
                 tags=("budget", "planning"),
                 body="Compare the budget information in {{input}}.",

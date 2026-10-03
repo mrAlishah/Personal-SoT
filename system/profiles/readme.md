@@ -17,9 +17,11 @@ workspace/profiles/<profile_name>.md
 
 Do not maintain a second canonical list of selectable profile identities in this README. The exact filename under `workspace/profiles/` is the runtime identity, as defined by `profile_contract.md`.
 
-Shipped Profiles use the reserved hierarchical `g.*` namespace. Custom
-Profiles use `lowercase_snake_case`. Resolution is exact: neither form creates
-aliases for the other, and user create/edit flows do not write `g.*` Profiles.
+Shipped and custom Profiles share one identity grammar; no identity shape
+is reserved. Ownership (shipped vs custom) is carried internally by each
+file's own `owner: product | custom` frontmatter field, never by the
+identity. Resolution is exact, and user create/edit flows refuse to write
+over any existing file whose `owner` is `product`.
 
 Read `profile_contract.md` for schema, composition, precedence, validation, and exact runtime-resolution rules.
 

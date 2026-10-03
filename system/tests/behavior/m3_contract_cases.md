@@ -108,7 +108,7 @@ Expected: use the teaching method within the short depth; teaching must not sile
 
 Teaching uses an example because it improves understanding.
 
-Expected: allowed as pedagogy. It must not impose a permanent response format such as `comparison_table` unless presentation selects it.
+Expected: allowed as pedagogy. It must not impose a permanent response format such as `compare` unless presentation selects it.
 
 ## case_18_research_freshness
 

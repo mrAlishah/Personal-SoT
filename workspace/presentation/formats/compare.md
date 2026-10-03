@@ -1,8 +1,8 @@
 ---
-format_id: comparison_table
+format_id: compare
 placement: body
 ---
-# comparison_table
+# compare
 
 ## purpose
 
@@ -16,4 +16,4 @@ Render alternatives or entities side by side so material differences are easy to
 - preserve uncertainty or unknown values explicitly;
 - summarize the decisive differences outside the table only when useful and permitted by active formats/depth.
 
-When combined with `yaml`, keep the comparison in the response body. `yaml` owns only the frontmatter prefix and MUST NOT convert `comparison_table` content into YAML records.
+When combined with `yaml`, keep the comparison in the response body. `yaml` owns only the frontmatter prefix and MUST NOT convert `compare` content into YAML records.

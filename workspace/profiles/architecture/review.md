@@ -1,4 +1,5 @@
 ---
+owner: product
 behaviors:
   - reasoning
   - research
@@ -6,7 +7,7 @@ behaviors:
   - review
   - communication
 formats:
-  - comparison_table
+  - compare
 tone: professional
 depth: deep
 ---

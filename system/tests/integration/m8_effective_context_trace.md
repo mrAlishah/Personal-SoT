@@ -7,7 +7,7 @@ Worked synthetic trace for M1–M7 integration.
 ```text
 @ctx:org/acme/projects/payment_service/reconciliation
 @ctx:personal
-@profile:g.architecture.review
+@profile:architecture/review
 @depth:short
 
 Compare the current messaging choice with its relevant constraints.
@@ -18,7 +18,7 @@ Compare the current messaging choice with its relevant constraints.
 ```text
 primary_context = org/acme/projects/payment_service/reconciliation
 supplemental_contexts = [personal]
-profiles = [g.architecture.review]
+profiles = [architecture/review]
 explicit_depth = short
 ```
 
@@ -156,11 +156,11 @@ Hard policies remain the exception: an applicable accessible supplemental hard p
 
 ## 8_resolve_profile
 
-`g.architecture.review` resolves to:
+`architecture/review` resolves to:
 
 ```text
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth_default = deep
 ```
@@ -176,7 +176,7 @@ short > profile deep default
 Effective presentation:
 
 ```text
-formats = comparison_table
+formats = compare
 tone = professional
 depth = short
 ```
@@ -189,7 +189,7 @@ No explicit current-prompt language request exists, so language follows lower co
 primary_scope = org/acme/projects/payment_service/reconciliation
 supplemental_scopes = [personal]
 behaviors = [reasoning, research, communication]
-formats = [comparison_table]
+formats = [compare]
 tone = professional
 depth = short
 messaging = kafka

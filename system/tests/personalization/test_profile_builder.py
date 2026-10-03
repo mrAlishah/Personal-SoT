@@ -52,13 +52,13 @@ class ProfileBuilderTests(unittest.TestCase):
     def test_exact_profile_reuse_wins(self):
         action = choose_profile_action(
             ProfileAssessment(
-                exact_identity="g.research",
+                exact_identity="research/deep",
                 direct_composition_sufficient=True,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("reuse_profile", "g.research"), action)
+        self.assertEqual(("reuse_profile", "research/deep"), action)
 
     def test_direct_composition_wins_before_creation(self):
         action = choose_profile_action(
@@ -74,40 +74,18 @@ class ProfileBuilderTests(unittest.TestCase):
 
     def test_edit_requires_clear_same_semantic_owner(self):
         allowed = choose_profile_action(
-            ProfileAssessment(edit_identity="research_notes", same_semantic_owner=True)
+            ProfileAssessment(edit_identity="researchnotes", same_semantic_owner=True)
         )
         blocked = choose_profile_action(
             ProfileAssessment(
-                edit_identity="research_notes",
+                edit_identity="researchnotes",
                 same_semantic_owner=False,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("edit", "research_notes"), allowed)
+        self.assertEqual(("edit", "researchnotes"), allowed)
         self.assertEqual(("create", None), blocked)
-
-    def test_built_in_customization_creates_separate_profile(self):
-        action = choose_profile_action(
-            ProfileAssessment(
-                edit_identity="g.research",
-                same_semantic_owner=True,
-                reusable=True,
-            )
-        )
-
-        self.assertEqual(("create", None), action)
-
-    def test_invalid_reserved_identity_is_never_selected_for_edit(self):
-        action = choose_profile_action(
-            ProfileAssessment(
-                edit_identity="g.problem_solving",
-                same_semantic_owner=True,
-                reusable=True,
-            )
-        )
-
-        self.assertEqual(("create", None), action)
 
     def test_create_preview_contains_complete_profile_diff(self):
         with TemporaryDirectory() as directory:
@@ -118,60 +96,81 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
                 write_capable=True,
             )
 
-            self.assertEqual("workspace/profiles/formal_short.md", proposal.target)
+            self.assertEqual("workspace/profiles/formalshort.md", proposal.target)
             self.assertIsNone(proposal.before_content)
             self.assertIn("tone: formal", proposal.diff)
             self.assertIn("depth: short", proposal.diff)
             self.assertEqual((), proposal.preflight_errors)
 
-    def test_create_rejects_reserved_built_in_identity(self):
+    def test_edit_rejects_product_owned_file(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-
-            with self.assertRaisesRegex(ValueError, "reserved"):
-                preview_change(
-                    root,
-                    "create",
-                    "g.custom.profile",
-                    self.source(),
-                    same_semantic_owner=False,
-                    fact_safe=True,
-                    write_capable=True,
-                )
-
-    def test_edit_rejects_reserved_built_in_identity(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.repository(root)
-            (root / "workspace/profiles/g.coding.md").write_text(
-                self.source(), encoding="utf-8"
+            (root / "workspace/profiles/code").mkdir()
+            (root / "workspace/profiles/code/review.md").write_text(
+                self.source(extra="owner: product\n"), encoding="utf-8"
             )
 
-            with self.assertRaisesRegex(ValueError, "reserved"):
+            with self.assertRaisesRegex(ValueError, "product-owned"):
                 preview_change(
                     root,
                     "edit",
-                    "g.coding",
+                    "code/review",
                     self.source(),
                     same_semantic_owner=True,
                     fact_safe=True,
                     write_capable=True,
                 )
 
+    def test_create_rejects_content_declaring_product_ownership(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+
+            with self.assertRaisesRegex(ValueError, "product-owned"):
+                preview_change(
+                    root,
+                    "create",
+                    "newprofile",
+                    self.source(extra="owner: product\n"),
+                    same_semantic_owner=False,
+                    fact_safe=True,
+                    write_capable=True,
+                )
+
+    def test_edit_of_ordinary_custom_profile_is_unaffected_by_ownership_check(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/formalshort.md").write_text(
+                self.source(), encoding="utf-8"
+            )
+
+            proposal = preview_change(
+                root,
+                "edit",
+                "formalshort",
+                self.source(extra="owner: custom\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+            self.assertEqual((), proposal.preflight_errors)
+
     def test_edit_preview_requires_same_owner(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
-            (root / "workspace/profiles/formal_short.md").write_text(
+            (root / "workspace/profiles/formalshort.md").write_text(
                 self.source(), encoding="utf-8"
             )
 
@@ -179,7 +178,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 preview_change(
                     root,
                     "edit",
-                    "formal_short",
+                    "formalshort",
                     self.source(),
                     same_semantic_owner=False,
                     fact_safe=True,
@@ -211,7 +210,7 @@ class ProfileBuilderTests(unittest.TestCase):
             body = preview_change(
                 root,
                 "create",
-                "body_copy",
+                "bodycopy",
                 self.source(body="Always use internal project facts.\n"),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -220,7 +219,7 @@ class ProfileBuilderTests(unittest.TestCase):
             context = preview_change(
                 root,
                 "create",
-                "context_owner",
+                "contextowner",
                 self.source(extra="context: personal/projects/private\n"),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -248,7 +247,7 @@ class ProfileBuilderTests(unittest.TestCase):
                     proposal = preview_change(
                         root,
                         "create",
-                        f"unsafe_{index}",
+                        f"unsafe{index}",
                         source,
                         same_semantic_owner=False,
                         fact_safe=True,
@@ -266,7 +265,7 @@ class ProfileBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "create.*edit"):
                 preview_change(
                     root,
-                    "create_tone",
+                    "createtone",
                     "formal",
                     self.source(),
                     same_semantic_owner=False,
@@ -282,7 +281,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -304,7 +303,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -334,13 +333,13 @@ class ProfileBuilderTests(unittest.TestCase):
                 root = Path(directory)
                 self.repository(root)
                 self.add_dependencies(root)
-                path = root / "workspace/profiles/formal_short.md"
+                path = root / "workspace/profiles/formalshort.md"
                 if operation == "edit":
                     path.write_text(self.source(), encoding="utf-8")
                 proposal = preview_change(
                     root,
                     operation,
-                    "formal_short",
+                    "formalshort",
                     self.source(extra="formats: []\n"),
                     same_semantic_owner=operation == "edit",
                     fact_safe=True,
@@ -361,7 +360,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -402,7 +401,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -420,7 +419,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertFalse(result.success)
-            self.assertFalse((external / "formal_short.md").exists())
+            self.assertFalse((external / "formalshort.md").exists())
 
     def test_workspace_ancestor_swap_cannot_redirect_write(self):
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
@@ -439,7 +438,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 "---\n---\n",
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -457,7 +456,203 @@ class ProfileBuilderTests(unittest.TestCase):
                 result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertFalse(result.success)
-            self.assertFalse((external_workspace / "profiles/formal_short.md").exists())
+            self.assertFalse((external_workspace / "profiles/formalshort.md").exists())
+
+    def test_nested_create_success(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertEqual("workspace/profiles/tech/learn.md", result.affected_path)
+            self.assertTrue((root / "workspace/profiles/tech/learn.md").is_file())
+            self.assertFalse((root / "workspace/profiles/learn.md").exists())
+
+    def test_nested_edit_success(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/custom").mkdir()
+            (root / "workspace/profiles/custom/deep.md").write_text(
+                self.source(), encoding="utf-8"
+            )
+            proposal = preview_change(
+                root,
+                "edit",
+                "custom/deep",
+                self.source(extra="formats: []\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertIn(
+                "formats: []", (root / "workspace/profiles/custom/deep.md").read_text(encoding="utf-8")
+            )
+
+    def test_nested_stale_write_requires_new_preview(self):
+        for operation in ("create", "edit"):
+            with self.subTest(operation=operation), TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.repository(root)
+                self.add_dependencies(root)
+                (root / "workspace/profiles/tech").mkdir()
+                path = root / "workspace/profiles/tech/learn.md"
+                if operation == "edit":
+                    path.write_text(self.source(), encoding="utf-8")
+                proposal = preview_change(
+                    root,
+                    operation,
+                    "tech/learn",
+                    self.source(extra="formats: []\n"),
+                    same_semantic_owner=operation == "edit",
+                    fact_safe=True,
+                    write_capable=True,
+                )
+                path.write_text(self.source(body="concurrent\n"), encoding="utf-8")
+
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+                self.assertFalse(result.write_applied)
+                self.assertIn("concurrent", path.read_text(encoding="utf-8"))
+
+    def test_nested_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            target = root / proposal.target
+            real_link = os.link
+
+            def concurrent_create(*args, **kwargs):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("concurrent\n", encoding="utf-8")
+                return real_link(*args, **kwargs)
+
+            with patch("system.personalization.profile_builder.os.link", side_effect=concurrent_create):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.write_applied)
+            self.assertEqual("concurrent\n", target.read_text(encoding="utf-8"))
+
+    def test_nested_concurrent_edit_is_serialized_at_atomic_boundary(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/tech").mkdir()
+            target = root / "workspace/profiles/tech/learn.md"
+            target.write_text(self.source(), encoding="utf-8")
+            proposal = preview_change(
+                root,
+                "edit",
+                "tech/learn",
+                self.source(extra="formats: []\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+            concurrent_results = []
+            real_replace = os.replace
+
+            def concurrent_apply(*args, **kwargs):
+                concurrent_results.append(
+                    apply_change(root, proposal, proposal.confirmation_digest)
+                )
+                return real_replace(*args, **kwargs)
+
+            with patch("system.personalization.profile_builder.os.replace", side_effect=concurrent_apply):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertFalse(concurrent_results[0].write_applied)
+
+    def test_intermediate_directory_symlink_cannot_redirect_write(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/tech").symlink_to(Path(outside), target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                preview_change(
+                    root,
+                    "create",
+                    "tech/learn",
+                    self.source(),
+                    same_semantic_owner=False,
+                    fact_safe=True,
+                    write_capable=True,
+                )
+
+            self.assertFalse((Path(outside) / "learn.md").exists())
+
+    def test_intermediate_directory_swap_during_apply_cannot_redirect_write(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            external = Path(outside)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            original_validate = validate_v1.validate_profile_source
+
+            def swap_intermediate_directory(*args):
+                tech = root / "workspace/profiles/tech"
+                tech.rename(root / "workspace/profiles/tech_original")
+                tech.symlink_to(external, target_is_directory=True)
+                return original_validate(*args)
+
+            with patch.object(validate_v1, "validate_profile_source", side_effect=swap_intermediate_directory):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.success)
+            self.assertFalse((external / "learn.md").exists())
+
+    def test_edit_rejects_product_owned_nested_profile_in_real_repository(self):
+        root = Path(__file__).resolve().parents[3]
+        with self.assertRaisesRegex(ValueError, "product-owned"):
+            preview_change(
+                root,
+                "edit",
+                "code/review",
+                self.source(),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
 
     def test_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
         with TemporaryDirectory() as directory:
@@ -467,7 +662,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -491,12 +686,12 @@ class ProfileBuilderTests(unittest.TestCase):
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
-            target = root / "workspace/profiles/formal_short.md"
+            target = root / "workspace/profiles/formalshort.md"
             target.write_text(self.source(), encoding="utf-8")
             proposal = preview_change(
                 root,
                 "edit",
-                "formal_short",
+                "formalshort",
                 self.source(extra="formats: []\n"),
                 same_semantic_owner=True,
                 fact_safe=True,
@@ -525,7 +720,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -547,7 +742,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -576,7 +771,7 @@ class ProfileBuilderTests(unittest.TestCase):
             create = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -596,7 +791,7 @@ class ProfileBuilderTests(unittest.TestCase):
             edit = preview_change(
                 root,
                 "edit",
-                "formal_short",
+                "formalshort",
                 self.source(extra="formats: []\n"),
                 same_semantic_owner=True,
                 fact_safe=True,
@@ -614,7 +809,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,

@@ -1,6 +1,6 @@
 # update_context_cases
 
-These scenarios validate `workspace/prompts/ai/update_context.md` as the unified factual-context maintenance workflow.
+These scenarios validate `workspace/prompts/sot/context/update.md` as the unified factual-context maintenance workflow.
 
 ## case_01_personal_scope_updates_personal_owner
 
@@ -78,7 +78,7 @@ Expected: full multiline content binds literally to `user_context`; embedded swi
 
 `user_context` conflicts with verified canonical/current state.
 
-Expected: reconcile/classify it; with effective `clarify_risk = on`, ask before an affected write when the conflict cannot be safely reconciled.
+Expected: reconcile/classify it; with effective `clarify = on`, ask before an affected write when the conflict cannot be safely reconciled.
 
 ## case_14_focus_optional
 
@@ -110,15 +110,15 @@ All reviewed context is already current.
 
 Expected: make no write solely to record execution; report that no canonical changes were justified.
 
-## case_19_material_conflict_with_clarify_risk
+## case_19_material_conflict_with_clarify
 
-Credible sources conflict about ownership, sensitive placement, value, or a durable decision and effective `controls.clarify_risk = on`.
+Credible sources conflict about ownership, sensitive placement, value, or a durable decision and effective `controls.clarify = on`.
 
 Expected: stop the dependent update, explain the problem in concise ELI5 language, identify the AI recommendation when supportable, offer concrete choices plus a custom answer, and wait for the user.
 
 ## case_20_hard_boundary_not_bypassed
 
-Effective `controls.clarify_risk = off`, but required authorization/access policy independently blocks a write.
+Effective `controls.clarify = off`, but required authorization/access policy independently blocks a write.
 
 Expected: remain blocked; runtime control does not bypass mandatory boundaries.
 
@@ -198,7 +198,7 @@ Expected: classify as `personal_general_fact` and record the clear fact in the c
 
 Candidate text says `Large 50`, while available evidence confirms `EU/DE 50` but does not establish `Large/L` as an equivalent label.
 
-Expected: with effective `clarify_risk = on`, do not silently store the equivalence. Explain in ELI5 terms that sizing systems may differ, recommend recording confirmed `EU/DE 50` separately, provide choices including a custom answer, and ask the minimum clarifying question before the ambiguous portion is written.
+Expected: with effective `clarify = on`, do not silently store the equivalence. Explain in ELI5 terms that sizing systems may differ, recommend recording confirmed `EU/DE 50` separately, provide choices including a custom answer, and ask the minimum clarifying question before the ambiguous portion is written.
 
 ## case_34_specialized_owner_beats_catch_all
 

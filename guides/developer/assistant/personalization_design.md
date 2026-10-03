@@ -76,7 +76,7 @@ durable Personal/project truth       → context, never Profile
 The Advisor must not solve one lane by writing another. A request for a shorter
 answer recommends a depth; a formal register recommends a tone; a comparison
 table recommends a format. Step-by-step learning may compose an existing
-learning Profile with canonical `learning` and `step_execution` control values.
+learning Profile with canonical `learning` and `steps` control values.
 
 ## Discovery and ranking
 
@@ -107,7 +107,7 @@ exact existing Profile
 
 An invocation such as `formal + short` is already satisfied by direct tone and
 depth composition and must not create a Profile. `research + deep +
-professional` reuses the existing `g.research` Profile when its manifest matches.
+professional` reuses the existing `research/deep` Profile when its manifest matches.
 
 High similarity does not authorize an edit. Editing requires an exact Profile
 identity, clear same-semantic-owner intent, and the normal safe-write pipeline.

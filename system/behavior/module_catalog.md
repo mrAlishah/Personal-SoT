@@ -170,7 +170,7 @@ distinguish symptom mitigation from root cause
 verify resolution against the original problem
 ```
 
-Stepwise execution gating remains controlled by `controls.step_execution`.
+Stepwise execution gating remains controlled by `controls.steps`.
 
 ## review.md
 

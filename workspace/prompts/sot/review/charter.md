@@ -117,7 +117,7 @@ If proposing a priority reorder, state concrete examples where the new order wou
 
 If the user's proposed principle/priority is ambiguous, conflicts with another charter principle, or has multiple plausible interpretations with different architectural consequences, do not silently choose one.
 
-Use `controls.clarify_risk`:
+Use `controls.clarify`:
 
 1. explain the ambiguity/conflict in concise ELI5 language;
 2. explain why it matters;

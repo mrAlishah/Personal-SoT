@@ -59,7 +59,7 @@ Bare `@prompt:<path>`, bare `@help`, and bare `@assist` are unsupported because 
 
 ## lexical_rules
 
-Repository-owned identifiers generally use lowercase snake_case; shipped Profile identities use the reserved hierarchical `g.*` grammar defined by `system/profiles/profile_contract.md`; hierarchical context/prompt identities use `/`. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
+Repository-owned identifiers generally use lowercase snake_case. User-facing Prompt and Profile identities use the stricter `[a-z0-9]+` segment grammar joined by `/` defined by `system/prompts/prompt_contract.md` and `system/profiles/profile_contract.md`; no identity shape is reserved, and Profile ownership (shipped vs custom) is an internal frontmatter concern, never part of the identity. Values are exact and case-sensitive. Adapters must not silently fix case, spelling or nearest matches.
 
 `@fmt`, `@tone`, and `@depth` accept exact identifiers registered in the corresponding `system/routing/switch_registry.md` sections. This syntax contract does not maintain duplicate current-identity lists.
 

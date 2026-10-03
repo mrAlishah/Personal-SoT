@@ -33,19 +33,19 @@ The user never writes `@ctx:workspace/context/...`.
 ### Case 3 - prompt identity stays stable
 
 ```text
-@do:prompt:ai/recap
+@do:prompt:chat/recap
 ```
 
 resolves:
 
 ```text
-workspace/prompts/ai/recap.md
+workspace/prompts/chat/recap.md
 ```
 
 ### Case 4 - presentation mapping
 
 ```text
-@profile:g.technical.learning → workspace/profiles/g.technical.learning.md
+@profile:tech/learn → workspace/profiles/tech/learn.md
 @fmt:yaml                  → workspace/presentation/formats/yaml.md
 @tone:human                → workspace/presentation/tones/human.md
 @depth:short               → workspace/presentation/depth/short.md

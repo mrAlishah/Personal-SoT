@@ -39,7 +39,7 @@ class BeginnerGuidanceTests(unittest.TestCase):
     def test_project_route_comes_from_valid_existing_prompt_metadata(self):
         result = guide(ROOT, prompt_query=PromptQuery(prompt_tags=('project', 'creation')))
         self.assertEqual('Create', result.category)
-        self.assertEqual('sot/create_project', result.workflow)
+        self.assertEqual('sot/project/create', result.workflow)
         self.assertEqual('Recommend', result.level)
 
     def test_try_before_save_keeps_even_reusable_intent_transient(self):
@@ -51,7 +51,7 @@ class BeginnerGuidanceTests(unittest.TestCase):
         result = guide(ROOT, personalization=PersonalizationIntent(
             behaviors=('research',), tone='professional', depth='deep'), save_requested=True)
         self.assertEqual('reuse_profile', result.composition.action)
-        self.assertEqual(('g.research',), result.composition.profiles)
+        self.assertEqual(('research/deep',), result.composition.profiles)
         self.assertNotEqual('Preview', result.level)
 
     def test_save_does_not_offer_creation_when_advisor_rejects_eligibility(self):
@@ -101,7 +101,7 @@ class BeginnerGuidanceTests(unittest.TestCase):
 
     def test_explicit_uncertainty_gets_a_verified_starting_point(self):
         result = guide(ROOT, uncertain=True)
-        self.assertEqual('sot/create_project', result.workflow)
+        self.assertEqual('sot/project/create', result.workflow)
         self.assertEqual('Create', result.category)
         self.assertIsNotNone(result.question)
         self.assertNotIn('category', result.question.lower())
@@ -120,19 +120,19 @@ class BeginnerGuidanceTests(unittest.TestCase):
             saved = guide(root, personalization=intent, save_requested=True)
             self.assertTrue(saved.composition.profile_creation_eligible)
             self.assertIn('Builder', saved.next_action)
-            web = preview_change(root, 'create', 'practice_style', fixture.source(),
+            web = preview_change(root, 'create', 'practicestyle', fixture.source(),
                                  same_semantic_owner=False, fact_safe=True, write_capable=False)
             self.assertIn('+tone: formal', web.diff)
             no_write = apply_change(root, web, web.confirmation_digest)
             self.assertFalse(no_write.write_applied or no_write.validation_ran)
-            local = preview_change(root, 'create', 'practice_style', fixture.source(),
+            local = preview_change(root, 'create', 'practicestyle', fixture.source(),
                                    same_semantic_owner=False, fact_safe=True, write_capable=True)
             self.assertFalse(apply_change(root, local, 'wrong-confirmation').write_applied)
             applied = apply_change(root, local, local.confirmation_digest)
             self.assertTrue(applied.write_applied and applied.validation_ran and applied.validation_passed)
             reused = guide(root, personalization=intent, save_requested=True)
             self.assertEqual('reuse_profile', reused.composition.action)
-            self.assertEqual(('practice_style',), reused.composition.profiles)
+            self.assertEqual(('practicestyle',), reused.composition.profiles)
 
 
 if __name__ == '__main__':
