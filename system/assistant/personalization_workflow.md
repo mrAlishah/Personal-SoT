@@ -52,7 +52,7 @@ Examples:
 - “Answer more formally” recommends the current `formal` tone.
 - “Use a comparison table” recommends the current `compare` format.
 - “Teach step by step” may compose `g/tech/learn` with canonical
-  `learning=on` and `step_execution=on` controls.
+  `learning=on` and `steps=on` controls.
 - “Deep professional research” reuses `g/research` when its current manifest
   supplies that composition.
 

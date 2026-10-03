@@ -32,7 +32,7 @@ User wants a guided learning flow one step at a time.
 
 Expected: recommend an evidence-backed composition such as the existing
 `g/tech/learn` Profile with registered `learning=on` and
-`step_execution=on`, while preserving behavior/control ownership.
+`steps=on`, while preserving behavior/control ownership.
 
 ## Deep professional research
 

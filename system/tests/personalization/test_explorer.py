@@ -46,15 +46,15 @@ class PersonalizationExplorerTests(unittest.TestCase):
             ),
             (
                 CapabilityQuery(
-                    text="technical learning step_execution teaching",
+                    text="learn learning steps teaching",
                     lanes=("profile", "control", "behavior"),
                     limit=4,
                 ),
                 [
-                    ("profile", "g/tech/learn"),
                     ("behavior", "teaching"),
                     ("control", "learning"),
-                    ("control", "step_execution"),
+                    ("control", "steps"),
+                    ("profile", "g/tech/learn"),
                 ],
             ),
             (

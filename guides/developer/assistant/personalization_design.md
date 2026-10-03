@@ -76,7 +76,7 @@ durable Personal/project truth       → context, never Profile
 The Advisor must not solve one lane by writing another. A request for a shorter
 answer recommends a depth; a formal register recommends a tone; a comparison
 table recommends a format. Step-by-step learning may compose an existing
-learning Profile with canonical `learning` and `step_execution` control values.
+learning Profile with canonical `learning` and `steps` control values.
 
 ## Discovery and ranking
 

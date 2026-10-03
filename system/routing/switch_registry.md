@@ -50,9 +50,9 @@ deep    → workspace/presentation/depth/deep.md
 Registered runtime-control identities are canonical configuration keys and resolve to their canonical contracts.
 
 ```text
-clarify_risk    → system/behavior/clarify_risk.md
-learning        → system/behavior/learning.md
-step_execution  → system/behavior/step_execution.md
+clarify  → system/behavior/clarify.md
+learning → system/behavior/learning.md
+steps    → system/behavior/steps.md
 ```
 
 The shared control model is defined by:
@@ -70,9 +70,9 @@ Public prompt syntax uses the generic registered-control directive:
 Examples:
 
 ```text
-@control:clarify_risk=auto
+@control:clarify=auto
 @control:learning=off
-@control:step_execution=on
+@control:steps=on
 ```
 
 Control identities are repository-owned lowercase_snake_case identifiers. Values are exact and validated by the target control contract.

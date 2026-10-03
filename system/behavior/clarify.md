@@ -1,12 +1,12 @@
 ---
-control_id: clarify_risk
+control_id: clarify
 control_values:
   - "on"
   - "off"
   - "auto"
 control_default: "auto"
 ---
-# clarify_risk
+# clarify
 
 ## purpose
 
@@ -86,7 +86,7 @@ When `auto` decides clarification is required, use the canonical clarification p
 
 ### off
 
-When effective `clarify_risk = off`, do not stop solely because of ordinary ambiguity or risk covered by this optional control. Continue using the best-supported safe assumption when existing contracts allow it.
+When effective `clarify = off`, do not stop solely because of ordinary ambiguity or risk covered by this optional control. Continue using the best-supported safe assumption when existing contracts allow it.
 
 `off` never bypasses:
 
@@ -106,7 +106,7 @@ If any of those independently require stopping or obtaining user input, they rem
 General analytical ambiguity detection remains in `reasoning.md`.
 General collaboration and clarification behavior remains in `communication.md`.
 Repository execution discipline remains in `coding.md`.
-The clarification procedure may use ELI5-style language, but `clarify_risk` does not otherwise own response presentation, tone, depth, or language.
+The clarification procedure may use ELI5-style language, but `clarify` does not otherwise own response presentation, tone, depth, or language.
 
 The behavior names in `contextual_default` are selectors for this control's default only; their operating semantics remain owned by their respective behavior modules.
 

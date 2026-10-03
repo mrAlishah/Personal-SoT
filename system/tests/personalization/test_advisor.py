@@ -34,7 +34,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
             ROOT,
             PersonalizationIntent(
                 behaviors=("teaching",),
-                controls=(("learning", "on"), ("step_execution", "on")),
+                controls=(("learning", "on"), ("steps", "on")),
             ),
         )
 
@@ -42,7 +42,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         self.assertEqual(("g/tech/learn",), result.profiles)
         self.assertEqual(("teaching",), result.behaviors)
         self.assertEqual(
-            (("learning", "on"), ("step_execution", "on")),
+            (("learning", "on"), ("steps", "on")),
             result.controls,
         )
 
@@ -94,10 +94,10 @@ class PersonalizationAdvisorTests(unittest.TestCase):
             for name in ("short", "deep"):
                 (root / f"workspace/presentation/depth/{name}.md").write_text(f"# {name}\n", encoding="utf-8")
             for index in range(10):
-                (root / f"workspace/profiles/a_{index}.md").write_text(
+                (root / f"workspace/profiles/a{index}.md").write_text(
                     "---\ntone: professional\ndepth: deep\n---\n", encoding="utf-8"
                 )
-            (root / "workspace/profiles/z_exact.md").write_text(
+            (root / "workspace/profiles/zexact.md").write_text(
                 "---\ntone: formal\ndepth: short\n---\n", encoding="utf-8"
             )
 
@@ -107,7 +107,7 @@ class PersonalizationAdvisorTests(unittest.TestCase):
             )
 
             self.assertEqual("reuse_profile", result.action)
-            self.assertEqual(("z_exact",), result.profiles)
+            self.assertEqual(("zexact",), result.profiles)
             self.assertFalse(result.profile_creation_eligible)
 
     def test_incomplete_profile_discovery_never_authorizes_creation(self):
@@ -125,10 +125,10 @@ class PersonalizationAdvisorTests(unittest.TestCase):
             (root / "workspace/presentation/tones/formal.md").write_text("# formal\n", encoding="utf-8")
             (root / "workspace/presentation/depth/short.md").write_text("# short\n", encoding="utf-8")
             for index in range(20):
-                (root / f"workspace/profiles/a_{index:02}.md").write_text(
+                (root / f"workspace/profiles/a{index:02}.md").write_text(
                     "---\ntone: formal\ndepth: short\n---\ninvalid body\n", encoding="utf-8"
                 )
-            (root / "workspace/profiles/z_exact.md").write_text(
+            (root / "workspace/profiles/zexact.md").write_text(
                 "---\ntone: formal\ndepth: short\n---\n", encoding="utf-8"
             )
 

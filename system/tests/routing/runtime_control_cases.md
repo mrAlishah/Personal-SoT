@@ -7,24 +7,24 @@ These scenarios validate registered runtime-control syntax, metadata, and preced
 Input:
 
 ```text
-@control:clarify_risk=on
+@control:clarify=on
 
 Proceed with the task.
 ```
 
-Expected: current-prompt `controls.clarify_risk = on`.
+Expected: current-prompt `controls.clarify = on`.
 
 ## case_02_prompt_off
 
 Input:
 
 ```text
-@control:clarify_risk=off
+@control:clarify=off
 
 Proceed with the task.
 ```
 
-Expected: current-prompt `controls.clarify_risk = off`.
+Expected: current-prompt `controls.clarify = off`.
 
 ## case_03_exact_control_identity
 
@@ -34,21 +34,21 @@ Input:
 @control:clarifyRisk=off
 ```
 
-Expected: invalid directive; do not normalize to `clarify_risk`.
+Expected: invalid directive; do not normalize to `clarify`.
 
 ## case_04_exact_allowed_values
 
-Inputs `@control:clarify_risk=True`, `@control:clarify_risk=false`, and `@control:clarify_risk=0`.
+Inputs `@control:clarify=True`, `@control:clarify=false`, and `@control:clarify=0`.
 
-Expected: invalid values; only values listed in the canonical target's `control_values` metadata are accepted. For `clarify_risk`, the canonical values are `on|off|auto`.
+Expected: invalid values; only values listed in the canonical target's `control_values` metadata are accepted. For `clarify`, the canonical values are `on|off|auto`.
 
 ## case_05_last_prompt_value_wins
 
 Input:
 
 ```text
-@control:clarify_risk=off
-@control:clarify_risk=on
+@control:clarify=off
+@control:clarify=on
 ```
 
 Expected: `on`.
@@ -59,16 +59,16 @@ Given:
 
 ```text
 global default = on
-profile controls.clarify_risk = off
-project controls.clarify_risk = on
-prompt @control:clarify_risk=off
+profile controls.clarify = off
+project controls.clarify = on
+prompt @control:clarify=off
 ```
 
 Expected: `off` for the current prompt.
 
 ## case_07_profile_fallback
 
-Given global default `on`, selected profile `controls.clarify_risk = off`, and no higher override.
+Given global default `on`, selected profile `controls.clarify = off`, and no higher override.
 
 Expected: `off`.
 
@@ -86,25 +86,25 @@ Expected: `off` while that real session override remains applicable.
 
 ## case_10_no_invented_session_persistence
 
-Host does not provide a session-control mechanism and prompt uses `@control:clarify_risk=off`.
+Host does not provide a session-control mechanism and prompt uses `@control:clarify=off`.
 
 Expected: prompt-local only; do not persist the value into later prompts.
 
 ## case_11_initial_sot_exclusive
 
-Input combines `@do:sot` with `@control:clarify_risk=off`.
+Input combines `@do:sot` with `@control:clarify=off`.
 
 Expected: invalid control block; bootstrap resolves configured controls itself.
 
 ## case_12_recap_rejects_control
 
-Input combines `@recap:5` with `@control:clarify_risk=off`.
+Input combines `@recap:5` with `@control:clarify=off`.
 
 Expected: invalid control block in V1.1.
 
 ## case_13_prompt_action_allows_control
 
-Input combines `@run:<path>` with `@control:clarify_risk=off`.
+Input combines `@run:<path>` with `@control:clarify=off`.
 
 Expected: valid when all other prompt-action requirements are satisfied; the explicit control applies to that invocation.
 
@@ -113,10 +113,10 @@ Expected: valid when all other prompt-action requirements are satisfied; the exp
 Input:
 
 ```text
-@control:clarify_risk=auto
+@control:clarify=auto
 ```
 
-Expected: valid; the runtime applies the canonical adaptive semantics defined by `system/behavior/clarify_risk.md`.
+Expected: valid; the runtime applies the canonical adaptive semantics defined by `system/behavior/clarify.md`.
 
 ## case_15_unknown_control
 
@@ -134,7 +134,7 @@ A registered control target contains:
 
 ```yaml
 ---
-control_id: clarify_risk
+control_id: clarify
 control_values:
   - "on"
   - "off"
@@ -147,7 +147,7 @@ Expected: validators derive the registered profile-control identity, allowed val
 
 ## case_17_registry_control_id_mismatch
 
-`switch_registry.md` registers identifier `clarify_risk` but the target declares:
+`switch_registry.md` registers identifier `clarify` but the target declares:
 
 ```yaml
 control_id: another_name

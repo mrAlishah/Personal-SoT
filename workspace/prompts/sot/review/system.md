@@ -196,7 +196,7 @@ When files/contracts disagree, do not choose a winner merely because one is newe
 
 First determine whether normal precedence/ownership/governance contracts resolve the conflict deterministically.
 
-If they do not, or if intent is ambiguous and the choice would alter canonical meaning, architecture, behavior, ownership, access, migration, or durable state, stop that dependent change and use `controls.clarify_risk`.
+If they do not, or if intent is ambiguous and the choice would alter canonical meaning, architecture, behavior, ownership, access, migration, or durable state, stop that dependent change and use `controls.clarify`.
 
 When clarification is required:
 
