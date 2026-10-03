@@ -160,7 +160,7 @@ Hard policies remain the exception: an applicable accessible supplemental hard p
 
 ```text
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth_default = deep
 ```
@@ -176,7 +176,7 @@ short > profile deep default
 Effective presentation:
 
 ```text
-formats = comparison_table
+formats = compare
 tone = professional
 depth = short
 ```
@@ -189,7 +189,7 @@ No explicit current-prompt language request exists, so language follows lower co
 primary_scope = org/acme/projects/payment_service/reconciliation
 supplemental_scopes = [personal]
 behaviors = [reasoning, research, communication]
-formats = [comparison_table]
+formats = [compare]
 tone = professional
 depth = short
 messaging = kafka

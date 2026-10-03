@@ -24,7 +24,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
             "profile": "g.research",
-            "format": "comparison_table",
+            "format": "compare",
             "tone": "formal",
             "depth": "short",
             "control": "learning",
@@ -41,8 +41,8 @@ class PersonalizationExplorerTests(unittest.TestCase):
             (CapabilityQuery(text="short", lanes=("depth",)), [("depth", "short")]),
             (CapabilityQuery(text="formal", lanes=("tone",)), [("tone", "formal")]),
             (
-                CapabilityQuery(text="comparison_table", lanes=("format",)),
-                [("format", "comparison_table")],
+                CapabilityQuery(text="compare", lanes=("format",)),
+                [("format", "compare")],
             ),
             (
                 CapabilityQuery(

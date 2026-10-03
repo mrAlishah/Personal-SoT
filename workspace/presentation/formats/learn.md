@@ -1,8 +1,8 @@
 ---
-format_id: learning_summary
+format_id: learn
 placement: suffix
 ---
-# learning_summary
+# learn
 
 ## purpose
 
@@ -10,7 +10,7 @@ Append a compact learning-focused summary of the most reusable points taught or 
 
 ## activation
 
-This format is rendered only when explicitly selected by profile, prompt, adapter/project default, or `@fmt:learning_summary`.
+This format is rendered only when explicitly selected by profile, prompt, adapter/project default, or `@fmt:learn`.
 
 When active, omit the appendix for trivial acknowledgements, isolated factual lookups, or responses where no meaningful learning point was developed.
 
@@ -44,10 +44,10 @@ Normally include about 2–6 high-value points depending on task size and select
 
 ## boundaries
 
-`learning_summary` is presentation only. It does not activate `teaching`, broaden factual scope, change depth, or modify runtime controls.
+`learn` is presentation only. It does not activate `teaching`, broaden factual scope, change depth, or modify runtime controls.
 
 When another lane such as `controls.learning` reduces or suppresses teaching, this format summarizes only meaningful learning content that still exists in the effective response; it does not recreate suppressed teaching by itself.
 
 ## acceptance
 
-A compliant response with `learning_summary` active ends with a compact set of genuinely reusable learning points when educational content exists and omits the appendix when it would add no value.
+A compliant response with `learn` active ends with a compact set of genuinely reusable learning points when educational content exists and omits the appendix when it would add no value.

@@ -50,7 +50,7 @@ Examples:
 
 - “Make answers shorter” recommends the current `short` depth.
 - “Answer more formally” recommends the current `formal` tone.
-- “Use a comparison table” recommends the current `comparison_table` format.
+- “Use a comparison table” recommends the current `compare` format.
 - “Teach step by step” may compose `g.technical.learning` with canonical
   `learning=on` and `step_execution=on` controls.
 - “Deep professional research” reuses `g.research` when its current manifest
@@ -89,7 +89,7 @@ show exact optional syntax such as:
 
 ```text
 @profile:g.research
-@fmt:comparison_table
+@fmt:compare
 @tone:formal
 @depth:short
 @control:learning=on

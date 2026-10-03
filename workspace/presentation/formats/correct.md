@@ -1,8 +1,8 @@
 ---
-format_id: language_correction
+format_id: correct
 placement: body
 ---
-# language_correction
+# correct
 
 ## purpose
 
@@ -10,7 +10,7 @@ Render language corrections inline while preserving the user's original sentence
 
 ## activation
 
-This format is rendered only when selected by profile, prompt, adapter/project default, or `@fmt:language_correction` and when a real correction candidate exists.
+This format is rendered only when selected by profile, prompt, adapter/project default, or `@fmt:correct` and when a real correction candidate exists.
 
 If the input is already correct, omit the correction block.
 

@@ -18,11 +18,11 @@ md                   → workspace/presentation/formats/md.md
 eli5                 → workspace/presentation/formats/eli5.md
 vocab                → workspace/presentation/formats/vocab.md
 concept              → workspace/presentation/formats/concept.md
-mental_picture       → workspace/presentation/formats/mental_picture.md
-learning_summary     → workspace/presentation/formats/learning_summary.md
-comparison_table     → workspace/presentation/formats/comparison_table.md
+mental               → workspace/presentation/formats/mental.md
+learn                → workspace/presentation/formats/learn.md
+compare              → workspace/presentation/formats/compare.md
 cheatsheet           → workspace/presentation/formats/cheatsheet.md
-language_correction  → workspace/presentation/formats/language_correction.md
+correct              → workspace/presentation/formats/correct.md
 ```
 
 ## tones

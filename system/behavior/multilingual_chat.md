@@ -24,7 +24,7 @@ The behavior is generic; it does not hard-code Personal language preferences.
    - do not invent a conversational reply unless the user asks for one.
 4. If the input is in a supporting language:
    - provide its concise meaning/translation in the primary language;
-   - if a clear grammar, spelling, agreement, case, tense, word-choice, or idiomatic error exists, produce a correction candidate for `language_correction` rendering;
+   - if a clear grammar, spelling, agreement, case, tense, word-choice, or idiomatic error exists, produce a correction candidate for `correct` rendering;
    - provide a short, natural, friendly reply in each supporting language; put the input language first, then the remaining supporting languages in configured order.
 5. If the sentence is already correct, do not manufacture corrections merely to improve style.
 6. Distinguish correction from optional stylistic alternatives. Do not label a valid colloquial form as wrong merely because a more formal wording exists.
@@ -35,7 +35,7 @@ The behavior is generic; it does not hard-code Personal language preferences.
 ## boundaries
 
 - Tone belongs to `workspace/presentation/tones/`.
-- Correction markup belongs to `workspace/presentation/formats/language_correction.md`.
+- Correction markup belongs to `workspace/presentation/formats/correct.md`.
 - Vocabulary-table structure belongs to `workspace/presentation/formats/vocab.md`.
 - Language identities/order belong to the effective language configuration.
 - Deep grammar teaching belongs to `teaching.md` when explicitly requested or otherwise effective.

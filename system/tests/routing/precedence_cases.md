@@ -81,10 +81,10 @@ Prompt:
 
 ```text
 @no:fmt:yaml
-@fmt:comparison_table
+@fmt:compare
 ```
 
-Expected: `eli5 + comparison_table`.
+Expected: `eli5 + compare`.
 
 ## case_10_adapter_fact_duplication
 

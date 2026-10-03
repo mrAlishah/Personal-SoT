@@ -18,14 +18,14 @@ class PersonalizationAdvisorTests(unittest.TestCase):
         self.assertEqual("short", result.depth)
         self.assertFalse(result.profile_creation_eligible)
 
-    def test_comparison_table_remains_format_owned(self):
+    def test_compare_remains_format_owned(self):
         result = recommend(
             ROOT,
-            PersonalizationIntent(formats=("comparison_table",)),
+            PersonalizationIntent(formats=("compare",)),
         )
 
         self.assertEqual("compose", result.action)
-        self.assertEqual(("comparison_table",), result.formats)
+        self.assertEqual(("compare",), result.formats)
         self.assertEqual((), result.profiles)
         self.assertEqual((), result.behaviors)
 

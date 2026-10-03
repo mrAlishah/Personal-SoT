@@ -16,7 +16,7 @@ These scenarios validate V1 format, tone, depth, placement, and additive composi
 
 ## case_04_format_additive
 
-`@fmt:eli5` + `@fmt:comparison_table` → both active when compatible.
+`@fmt:eli5` + `@fmt:compare` → both active when compatible.
 
 ## case_05_duplicate_format
 

@@ -164,7 +164,7 @@ Expected profile configuration:
 
 ```text
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth = deep
 ```
@@ -322,7 +322,7 @@ Expected high-level effective configuration:
 primary_scope = reconciliation
 supplemental = personal
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth = short
 hard_policies = credential_exposure + token_logging
