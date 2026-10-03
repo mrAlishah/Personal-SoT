@@ -19,11 +19,11 @@ workspace/prompts/<topic>/<nested_path>/<prompt_name>.md
 Runtime identity is the exact relative path below `workspace/prompts/` without `.md`.
 
 ```text
-workspace/prompts/coding/review_pr.md
-→ coding/review_pr
+workspace/prompts/code/review.md
+→ code/review
 ```
 
-Identifiers use lowercase_snake_case path segments. Identity is case-sensitive; no aliases or fuzzy matching are implicit.
+Identifiers use lowercase `[a-z0-9]+` path segments joined by `/`, no underscores. Identity is case-sensitive; no aliases or fuzzy matching are implicit.
 
 ## representation
 
