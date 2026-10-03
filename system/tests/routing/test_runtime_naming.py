@@ -11,7 +11,6 @@ from system.routing.runtime_naming import (
     classify_prompt_action,
     classify_system_action,
     is_profile_identity,
-    profile_identity_kind,
 )
 
 
@@ -370,51 +369,33 @@ class MultilineParameterOpacityTests(unittest.TestCase):
 
 
 class ProfileIdentityTests(unittest.TestCase):
-    def test_custom_profile_keeps_lowercase_segment_grammar(self):
-        for identity in ("coding", "my/profile", "profile2"):
+    def test_accepts_single_segment(self):
+        for identity in ("coding", "research", "profile2"):
             with self.subTest(identity=identity):
-                self.assertEqual(profile_identity_kind(identity), "custom")
                 self.assertTrue(is_profile_identity(identity))
 
-    def test_built_in_profile_accepts_hierarchical_segments(self):
-        for identity in (
-            "g/coding",
-            "g/architecture/review",
-            "g/problem/solving",
-            "g/technical/learning",
-        ):
+    def test_accepts_hierarchical_segments(self):
+        for identity in ("code/review", "tech/learn", "lang/german"):
             with self.subTest(identity=identity):
-                self.assertEqual(profile_identity_kind(identity), "built_in")
                 self.assertTrue(is_profile_identity(identity))
 
-    def test_invalid_built_in_forms_are_rejected(self):
-        for identity in (
-            "g.architecture_review",
-            "g.problem_solving",
-            "G.Architecture.Review",
-            "g..review",
-            "g.",
-        ):
+    def test_rejects_underscore_segment(self):
+        self.assertFalse(is_profile_identity("tech_learn"))
+
+    def test_rejects_case_variant(self):
+        self.assertFalse(is_profile_identity("Tech/Learn"))
+
+    def test_rejects_dot_separator(self):
+        self.assertFalse(is_profile_identity("g.coding"))
+
+    def test_rejects_empty_segment(self):
+        for identity in ("", "/review", "code/", "code//review"):
             with self.subTest(identity=identity):
-                self.assertIsNone(profile_identity_kind(identity))
                 self.assertFalse(is_profile_identity(identity))
 
-    def test_profile_identity_rejects_underscore_segment(self):
-        self.assertIsNone(profile_identity_kind("tech_learn"))
-
-    def test_profile_identity_accepts_new_slash_custom_form(self):
-        self.assertEqual(profile_identity_kind("tech/learn"), "custom")
-
-    def test_profile_identity_accepts_new_slash_reserved_form(self):
-        self.assertEqual(profile_identity_kind("g/tech/learn"), "built_in")
-
-    def test_profile_identity_reserved_prefix_fails_closed_on_malformed_shape(self):
-        self.assertIsNone(profile_identity_kind("g"))
-        self.assertIsNone(profile_identity_kind("g/"))
-        self.assertIsNone(profile_identity_kind("g/Tech"))
-
-    def test_profile_identity_non_reserved_g_prefixed_word_is_still_custom(self):
-        self.assertEqual(profile_identity_kind("game/show"), "custom")
+    def test_no_identity_segment_is_structurally_reserved(self):
+        self.assertTrue(is_profile_identity("g/anything"))
+        self.assertTrue(is_profile_identity("game/show"))
 
 
 if __name__ == "__main__":

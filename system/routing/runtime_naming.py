@@ -3,7 +3,7 @@ profile identity names; see system/routing/switch_syntax.md."""
 
 from dataclasses import dataclass
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 
 CANONICAL_BOOTSTRAP_ACTION = "@do:sot"
@@ -21,8 +21,7 @@ _PROMPT_ACTION_KEYWORDS = (RUN_ACTION, EDIT_ACTION, DELETE_ACTION)
 
 STRICT_SEGMENT = r"[a-z0-9]+"
 
-_CUSTOM_PROFILE_RE = re.compile(rf"^{STRICT_SEGMENT}(?:/{STRICT_SEGMENT})*$")
-_BUILT_IN_PROFILE_RE = re.compile(rf"^g/{STRICT_SEGMENT}(?:/{STRICT_SEGMENT})*$")
+_PROFILE_RE = re.compile(rf"^{STRICT_SEGMENT}(?:/{STRICT_SEGMENT})*$")
 
 _PATH_SEGMENT = STRICT_SEGMENT
 _PROMPT_PATH_RE = re.compile(rf"^{_PATH_SEGMENT}(?:/{_PATH_SEGMENT})*$")
@@ -183,17 +182,11 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     return PromptActionInvocation(keyword, candidate)
 
 
-def profile_identity_kind(identity: str) -> Optional[Literal["custom", "built_in"]]:
-    """Classify an exact custom or product-owned built-in profile identity."""
-
-    if _BUILT_IN_PROFILE_RE.fullmatch(identity):
-        return "built_in"
-    if identity.split("/", 1)[0] == "g":
-        return None
-    if _CUSTOM_PROFILE_RE.fullmatch(identity):
-        return "custom"
-    return None
-
-
 def is_profile_identity(identity: str) -> bool:
-    return profile_identity_kind(identity) is not None
+    """Grammar-only check: no identity shape is reserved. Ownership (shipped
+    vs custom) is a repository-internal concern carried by the target
+    file's own frontmatter, never by the identity string; see
+    system/profiles/profile_contract.md and
+    system/personalization/profile_builder.py.
+    """
+    return bool(_PROFILE_RE.fullmatch(identity))
