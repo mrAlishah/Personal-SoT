@@ -115,16 +115,16 @@ class PersonalizationExplorerTests(unittest.TestCase):
             self.assertEqual((), report.matches)
             self.assertEqual(1, report.unavailable_count)
 
-    def test_invalid_built_in_profile_identity_is_not_discovered(self):
+    def test_invalid_nested_profile_identity_is_not_discovered(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            (root / "workspace/profiles/g").mkdir()
-            self.write_profile(root, "g/problem_solving", "---\n---\n")
+            (root / "workspace/profiles/code").mkdir()
+            self.write_profile(root, "code/problem_solving", "---\n---\n")
 
             report = search(
                 root,
-                CapabilityQuery(identity="g/problem_solving", lanes=("profile",)),
+                CapabilityQuery(identity="code/problem_solving", lanes=("profile",)),
             )
 
             self.assertEqual((), report.matches)

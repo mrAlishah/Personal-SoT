@@ -23,7 +23,7 @@ class CoreValidationTests(unittest.TestCase):
             root = Path(directory)
             for name in ("workspace", "system", "guides"):
                 (root / name).mkdir()
-            profiles = root / "workspace/profiles/g/architecture"
+            profiles = root / "workspace/profiles/architecture"
             profiles.mkdir(parents=True)
             (profiles / "review.md").write_text("---\n---\n", encoding="utf-8")
 
@@ -32,19 +32,19 @@ class CoreValidationTests(unittest.TestCase):
 
             self.assertEqual([], errors)
 
-    def test_profile_filename_rejects_underscored_built_in_identity(self):
+    def test_profile_filename_rejects_underscored_nested_identity(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ("workspace", "system", "guides"):
                 (root / name).mkdir()
-            profiles = root / "workspace/profiles/g"
+            profiles = root / "workspace/profiles/code"
             profiles.mkdir(parents=True)
             (profiles / "problem_solving.md").write_text("---\n---\n", encoding="utf-8")
 
             errors = []
             validate_v1.validate_names(root, errors)
 
-            self.assertTrue(any("g/problem_solving" in error for error in errors))
+            self.assertTrue(any("code/problem_solving" in error for error in errors))
 
     def test_dot_names_remain_invalid_outside_profiles(self):
         with TemporaryDirectory() as directory:

@@ -162,8 +162,8 @@ class SourceTests(unittest.TestCase):
     def test_transport_paths_preserve_existing_profile_grammar(self):
         self.assertTrue(safe_path('workspace/profiles/architecture/review.md'))
         self.assertTrue(safe_path('workspace/profiles/customnotes.md'))
-        self.assertFalse(safe_path('workspace/profiles/g/architecture_review.md'))
-        self.assertFalse(safe_path('workspace/context/personal/g.architecture.review.md'))
+        self.assertFalse(safe_path('workspace/profiles/code/architecture_review.md'))
+        self.assertFalse(safe_path('workspace/context/personal/code.architecture.review.md'))
 
 
 if __name__ == '__main__':

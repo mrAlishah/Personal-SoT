@@ -129,8 +129,6 @@ def _score(candidate: _Candidate, query: CapabilityQuery) -> tuple[int, int, int
     terms = set(_tokens(candidate.identity + " " + " ".join(candidate.components)))
     requested = _tokens(query.text)
     identity_tokens = _tokens(candidate.identity)
-    if candidate.lane == "profile" and identity_tokens[:1] == ("g",):
-        identity_tokens = identity_tokens[1:]
     return (
         int(query.identity == candidate.identity),
         int(bool(identity_tokens) and set(identity_tokens).issubset(requested)),
