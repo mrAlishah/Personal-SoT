@@ -52,13 +52,13 @@ class ProfileBuilderTests(unittest.TestCase):
     def test_exact_profile_reuse_wins(self):
         action = choose_profile_action(
             ProfileAssessment(
-                exact_identity="g.research",
+                exact_identity="g/research",
                 direct_composition_sufficient=True,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("reuse_profile", "g.research"), action)
+        self.assertEqual(("reuse_profile", "g/research"), action)
 
     def test_direct_composition_wins_before_creation(self):
         action = choose_profile_action(
@@ -74,23 +74,23 @@ class ProfileBuilderTests(unittest.TestCase):
 
     def test_edit_requires_clear_same_semantic_owner(self):
         allowed = choose_profile_action(
-            ProfileAssessment(edit_identity="research_notes", same_semantic_owner=True)
+            ProfileAssessment(edit_identity="researchnotes", same_semantic_owner=True)
         )
         blocked = choose_profile_action(
             ProfileAssessment(
-                edit_identity="research_notes",
+                edit_identity="researchnotes",
                 same_semantic_owner=False,
                 reusable=True,
             )
         )
 
-        self.assertEqual(("edit", "research_notes"), allowed)
+        self.assertEqual(("edit", "researchnotes"), allowed)
         self.assertEqual(("create", None), blocked)
 
     def test_built_in_customization_creates_separate_profile(self):
         action = choose_profile_action(
             ProfileAssessment(
-                edit_identity="g.research",
+                edit_identity="g/research",
                 same_semantic_owner=True,
                 reusable=True,
             )
@@ -101,7 +101,7 @@ class ProfileBuilderTests(unittest.TestCase):
     def test_invalid_reserved_identity_is_never_selected_for_edit(self):
         action = choose_profile_action(
             ProfileAssessment(
-                edit_identity="g.problem_solving",
+                edit_identity="g/problem/solving",
                 same_semantic_owner=True,
                 reusable=True,
             )
@@ -118,14 +118,14 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
                 write_capable=True,
             )
 
-            self.assertEqual("workspace/profiles/formal_short.md", proposal.target)
+            self.assertEqual("workspace/profiles/formalshort.md", proposal.target)
             self.assertIsNone(proposal.before_content)
             self.assertIn("tone: formal", proposal.diff)
             self.assertIn("depth: short", proposal.diff)
@@ -140,7 +140,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 preview_change(
                     root,
                     "create",
-                    "g.custom.profile",
+                    "g/custom/profile",
                     self.source(),
                     same_semantic_owner=False,
                     fact_safe=True,
@@ -151,7 +151,8 @@ class ProfileBuilderTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            (root / "workspace/profiles/g.coding.md").write_text(
+            (root / "workspace/profiles/g").mkdir()
+            (root / "workspace/profiles/g/coding.md").write_text(
                 self.source(), encoding="utf-8"
             )
 
@@ -159,7 +160,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 preview_change(
                     root,
                     "edit",
-                    "g.coding",
+                    "g/coding",
                     self.source(),
                     same_semantic_owner=True,
                     fact_safe=True,
@@ -171,7 +172,7 @@ class ProfileBuilderTests(unittest.TestCase):
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
-            (root / "workspace/profiles/formal_short.md").write_text(
+            (root / "workspace/profiles/formalshort.md").write_text(
                 self.source(), encoding="utf-8"
             )
 
@@ -179,7 +180,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 preview_change(
                     root,
                     "edit",
-                    "formal_short",
+                    "formalshort",
                     self.source(),
                     same_semantic_owner=False,
                     fact_safe=True,
@@ -211,7 +212,7 @@ class ProfileBuilderTests(unittest.TestCase):
             body = preview_change(
                 root,
                 "create",
-                "body_copy",
+                "bodycopy",
                 self.source(body="Always use internal project facts.\n"),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -220,7 +221,7 @@ class ProfileBuilderTests(unittest.TestCase):
             context = preview_change(
                 root,
                 "create",
-                "context_owner",
+                "contextowner",
                 self.source(extra="context: personal/projects/private\n"),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -248,7 +249,7 @@ class ProfileBuilderTests(unittest.TestCase):
                     proposal = preview_change(
                         root,
                         "create",
-                        f"unsafe_{index}",
+                        f"unsafe{index}",
                         source,
                         same_semantic_owner=False,
                         fact_safe=True,
@@ -266,7 +267,7 @@ class ProfileBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "create.*edit"):
                 preview_change(
                     root,
-                    "create_tone",
+                    "createtone",
                     "formal",
                     self.source(),
                     same_semantic_owner=False,
@@ -282,7 +283,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -304,7 +305,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -334,13 +335,13 @@ class ProfileBuilderTests(unittest.TestCase):
                 root = Path(directory)
                 self.repository(root)
                 self.add_dependencies(root)
-                path = root / "workspace/profiles/formal_short.md"
+                path = root / "workspace/profiles/formalshort.md"
                 if operation == "edit":
                     path.write_text(self.source(), encoding="utf-8")
                 proposal = preview_change(
                     root,
                     operation,
-                    "formal_short",
+                    "formalshort",
                     self.source(extra="formats: []\n"),
                     same_semantic_owner=operation == "edit",
                     fact_safe=True,
@@ -361,7 +362,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -402,7 +403,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -420,7 +421,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertFalse(result.success)
-            self.assertFalse((external / "formal_short.md").exists())
+            self.assertFalse((external / "formalshort.md").exists())
 
     def test_workspace_ancestor_swap_cannot_redirect_write(self):
         with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
@@ -439,7 +440,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 "---\n---\n",
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -457,7 +458,7 @@ class ProfileBuilderTests(unittest.TestCase):
                 result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertFalse(result.success)
-            self.assertFalse((external_workspace / "profiles/formal_short.md").exists())
+            self.assertFalse((external_workspace / "profiles/formalshort.md").exists())
 
     def test_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
         with TemporaryDirectory() as directory:
@@ -467,7 +468,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -491,12 +492,12 @@ class ProfileBuilderTests(unittest.TestCase):
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
-            target = root / "workspace/profiles/formal_short.md"
+            target = root / "workspace/profiles/formalshort.md"
             target.write_text(self.source(), encoding="utf-8")
             proposal = preview_change(
                 root,
                 "edit",
-                "formal_short",
+                "formalshort",
                 self.source(extra="formats: []\n"),
                 same_semantic_owner=True,
                 fact_safe=True,
@@ -525,7 +526,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -547,7 +548,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -576,7 +577,7 @@ class ProfileBuilderTests(unittest.TestCase):
             create = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -596,7 +597,7 @@ class ProfileBuilderTests(unittest.TestCase):
             edit = preview_change(
                 root,
                 "edit",
-                "formal_short",
+                "formalshort",
                 self.source(extra="formats: []\n"),
                 same_semantic_owner=True,
                 fact_safe=True,
@@ -614,7 +615,7 @@ class ProfileBuilderTests(unittest.TestCase):
             proposal = preview_change(
                 root,
                 "create",
-                "formal_short",
+                "formalshort",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,

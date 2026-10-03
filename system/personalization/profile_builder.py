@@ -71,9 +71,9 @@ def _digest(value: str) -> str:
 def _target(root: Path, identity: str) -> tuple[str, Path]:
     kind = profile_identity_kind(identity)
     if kind == "built_in":
-        raise ValueError("The g.* Profile namespace is reserved for shipped built-ins")
+        raise ValueError("The g/* Profile namespace is reserved for shipped built-ins")
     if kind != "custom":
-        raise ValueError("Profile identity must use one lowercase_snake_case name")
+        raise ValueError("Profile identity must use lowercase [a-z0-9]+ segment grammar")
     relative = f"workspace/profiles/{identity}.md"
     profile_root = root / "workspace" / "profiles"
     target = root / relative

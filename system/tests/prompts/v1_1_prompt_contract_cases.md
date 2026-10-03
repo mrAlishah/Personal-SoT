@@ -102,7 +102,7 @@ Deprecated prompt → edit/recovery with warning; do blocked.
 Prompt manifest defines factual context → unsupported field/configuration defect.
 
 ## case_30_prompt_profile_precedence
-Prompt defaults `g.research`; invocation explicitly selects `g.coding` → explicit selection replaces prompt profile selection.
+Prompt defaults `g/research`; invocation explicitly selects `g/coding` → explicit selection replaces prompt profile selection.
 
 ## case_31_prompt_format_composition
 Prompt defaults `md + concept`; invocation `@no:fmt:concept` → md remains, concept disabled.

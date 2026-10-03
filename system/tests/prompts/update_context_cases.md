@@ -1,6 +1,6 @@
 # update_context_cases
 
-These scenarios validate `workspace/prompts/ai/update_context.md` as the unified factual-context maintenance workflow.
+These scenarios validate `workspace/prompts/sot/context/update.md` as the unified factual-context maintenance workflow.
 
 ## case_01_personal_scope_updates_personal_owner
 

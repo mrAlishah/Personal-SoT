@@ -16,30 +16,30 @@ from system.validation import validate_prompts, validate_public, validate_v1
 class PromptBuilderReuseTests(unittest.TestCase):
     def test_exact_reuse_wins_before_every_other_option(self):
         assessment = ReuseAssessment(
-            exact_identity="coding/review_pr",
+            exact_identity="code/review",
             parameterized_identity="coding/review_generic",
-            composition=("profile:g.coding",),
+            composition=("profile:g/coding",),
             edit_identity="coding/old_review",
             same_semantic_owner=True,
         )
 
-        self.assertEqual(("reuse_exact", "coding/review_pr"), choose_action(assessment))
+        self.assertEqual(("reuse_exact", "code/review"), choose_action(assessment))
 
     def test_parameterized_reuse_wins_before_composition_or_creation(self):
         assessment = ReuseAssessment(
-            parameterized_identity="coding/review_pr",
-            composition=("profile:g.coding",),
+            parameterized_identity="code/review",
+            composition=("profile:g/coding",),
         )
 
         self.assertEqual(
-            ("reuse_parameterized", "coding/review_pr"),
+            ("reuse_parameterized", "code/review"),
             choose_action(assessment),
         )
 
     def test_composition_wins_before_edit_or_creation(self):
         assessment = ReuseAssessment(
-            composition=("profile:g.coding", "tone:professional"),
-            edit_identity="coding/review_pr",
+            composition=("profile:g/coding", "tone:professional"),
+            edit_identity="code/review",
             same_semantic_owner=True,
         )
 
@@ -47,15 +47,15 @@ class PromptBuilderReuseTests(unittest.TestCase):
 
     def test_edit_requires_the_same_semantic_owner(self):
         assessment = ReuseAssessment(
-            edit_identity="coding/review_pr",
+            edit_identity="code/review",
             same_semantic_owner=True,
         )
 
-        self.assertEqual(("edit", "coding/review_pr"), choose_action(assessment))
+        self.assertEqual(("edit", "code/review"), choose_action(assessment))
 
     def test_similarity_without_same_owner_never_authorizes_overwrite(self):
         assessment = ReuseAssessment(
-            edit_identity="coding/review_pr",
+            edit_identity="code/review",
             same_semantic_owner=False,
         )
 
@@ -96,7 +96,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
         arguments = {
             "root": root,
             "operation": operation,
-            "identity": "custom/helpful_prompt",
+            "identity": "custom/helpfulprompt",
             "content": self.source(),
             "same_semantic_owner": operation == "edit",
             "fact_safe": True,
@@ -112,7 +112,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
 
             proposal = self.preview(root)
 
-            self.assertEqual("workspace/prompts/custom/helpful_prompt.md", proposal.target)
+            self.assertEqual("workspace/prompts/custom/helpfulprompt.md", proposal.target)
             self.assertIsNone(proposal.before_digest)
             self.assertIsNone(proposal.before_content)
             self.assertIn("---", proposal.diff)
@@ -123,7 +123,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_prompt(root, "custom/helpful_prompt", self.source("Before."))
+            self.write_prompt(root, "custom/helpfulprompt", self.source("Before."))
 
             with self.assertRaisesRegex(ValueError, "same semantic owner"):
                 self.preview(root, "edit", same_semantic_owner=False)
@@ -132,7 +132,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            path = self.write_prompt(root, "custom/helpful_prompt", self.source("Before."))
+            path = self.write_prompt(root, "custom/helpfulprompt", self.source("Before."))
 
             with self.assertRaises(ValueError):
                 self.preview(root, "edit", same_semantic_owner=False, content=self.source("Similar."))
@@ -238,9 +238,9 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
             with self.subTest(operation=operation), TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.repository(root)
-                path = root / "workspace/prompts/custom/helpful_prompt.md"
+                path = root / "workspace/prompts/custom/helpfulprompt.md"
                 if operation == "edit":
-                    self.write_prompt(root, "custom/helpful_prompt", self.source("Before."))
+                    self.write_prompt(root, "custom/helpfulprompt", self.source("Before."))
                 proposal = self.preview(root, operation, content=self.source("Proposed."))
                 original = validate_prompts.validate_source
 
@@ -268,7 +268,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symbolic link"):
                 self.preview(root)
 
-            self.assertFalse((profiles / "helpful_prompt.md").exists())
+            self.assertFalse((profiles / "helpfulprompt.md").exists())
 
     def test_referenced_state_change_requires_new_preview(self):
         with TemporaryDirectory() as directory:
@@ -303,7 +303,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            path = self.write_prompt(root, "custom/helpful_prompt", self.source("Before."))
+            path = self.write_prompt(root, "custom/helpfulprompt", self.source("Before."))
             proposal = self.preview(root, "edit", content=self.source("After."))
             path.write_text(self.source("Concurrent change."), encoding="utf-8")
 
@@ -318,7 +318,7 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
             root = Path(directory)
             self.repository(root)
             proposal = self.preview(root)
-            path = self.write_prompt(root, "custom/helpful_prompt", self.source("Concurrent create."))
+            path = self.write_prompt(root, "custom/helpfulprompt", self.source("Concurrent create."))
 
             result = apply_change(root, proposal, proposal.confirmation_digest)
 

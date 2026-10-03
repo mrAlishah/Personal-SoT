@@ -72,7 +72,7 @@ class PersonalizationEndToEndTests(unittest.TestCase):
             preview_only = preview_change(
                 root,
                 "create",
-                "formal_short_reasoning",
+                "formalshortreasoning",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -85,7 +85,7 @@ class PersonalizationEndToEndTests(unittest.TestCase):
             local = preview_change(
                 root,
                 "create",
-                "formal_short_reasoning",
+                "formalshortreasoning",
                 self.source(),
                 same_semantic_owner=False,
                 fact_safe=True,
@@ -96,14 +96,14 @@ class PersonalizationEndToEndTests(unittest.TestCase):
 
             rediscovered = search(
                 root,
-                CapabilityQuery(identity="formal_short_reasoning", lanes=("profile",), limit=1),
+                CapabilityQuery(identity="formalshortreasoning", lanes=("profile",), limit=1),
             )
-            self.assertEqual("formal_short_reasoning", rediscovered.matches[0].identity)
+            self.assertEqual("formalshortreasoning", rediscovered.matches[0].identity)
 
             edit = preview_change(
                 root,
                 "edit",
-                "formal_short_reasoning",
+                "formalshortreasoning",
                 self.source().replace("tone: formal", "formats: []\ntone: formal"),
                 same_semantic_owner=True,
                 fact_safe=True,
@@ -114,7 +114,7 @@ class PersonalizationEndToEndTests(unittest.TestCase):
             stale = preview_change(
                 root,
                 "edit",
-                "formal_short_reasoning",
+                "formalshortreasoning",
                 self.source(),
                 same_semantic_owner=True,
                 fact_safe=True,

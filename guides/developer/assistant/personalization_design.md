@@ -107,7 +107,7 @@ exact existing Profile
 
 An invocation such as `formal + short` is already satisfied by direct tone and
 depth composition and must not create a Profile. `research + deep +
-professional` reuses the existing `g.research` Profile when its manifest matches.
+professional` reuses the existing `g/research` Profile when its manifest matches.
 
 High similarity does not authorize an edit. Editing requires an exact Profile
 identity, clear same-semantic-owner intent, and the normal safe-write pipeline.

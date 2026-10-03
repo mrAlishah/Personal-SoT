@@ -156,7 +156,7 @@ Expected: invalid in V1.1; recap source remains selected conversation history on
 
 ## case_24_profile_invalid
 
-`@recap:5` plus `@profile:g.research`.
+`@recap:5` plus `@profile:g/research`.
 
 Expected: invalid in V1.1; do not silently add unrelated behavior/source acquisition.
 

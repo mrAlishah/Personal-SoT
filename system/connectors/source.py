@@ -66,8 +66,11 @@ class Result:
 
 def safe_path(path: str) -> bool:
     parts = path.split('/')
-    if parts[:2] == ['workspace', 'profiles'] and len(parts) == 3:
-        return parts[2].endswith('.md') and is_profile_identity(parts[2][:-3])
+    if parts[:2] == ['workspace', 'profiles'] and len(parts) >= 3:
+        if not path.endswith('.md'):
+            return False
+        identity = '/'.join(parts[2:])[:-len('.md')]
+        return is_profile_identity(identity)
     return bool(re.fullmatch(r'[a-z0-9_]+(?:/[a-z0-9_]+)*\.md', path))
 
 

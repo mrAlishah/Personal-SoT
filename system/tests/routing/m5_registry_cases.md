@@ -55,7 +55,7 @@ Expected exact mappings:
 
 ## case_09_profile_self_addressing_resolution
 
-`@profile:g.obsidian.note` resolves directly to `workspace/profiles/g.obsidian.note.md` by exact filename.
+`@profile:g/obsidian/note` resolves directly to `workspace/profiles/g/obsidian/note.md` by exact filename.
 
 Expected: no flat switch-registry entry is required or created for the profile.
 

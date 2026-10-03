@@ -23,7 +23,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
-            "profile": "g.research",
+            "profile": "g/research",
             "format": "compare",
             "tone": "formal",
             "depth": "short",
@@ -51,7 +51,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
                     limit=4,
                 ),
                 [
-                    ("profile", "g.technical.learning"),
+                    ("profile", "g/tech/learn"),
                     ("behavior", "teaching"),
                     ("control", "learning"),
                     ("control", "step_execution"),
@@ -59,7 +59,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
             ),
             (
                 CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
-                [("profile", "g.research")],
+                [("profile", "g/research")],
             ),
         )
 
@@ -73,7 +73,7 @@ class PersonalizationExplorerTests(unittest.TestCase):
         first = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
         second = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
 
-        expected = ["g.architecture.review", "g.coding", "g.research"]
+        expected = ["g/architecture/review", "g/coding", "g/research"]
         self.assertEqual(expected, [match.identity for match in first.matches])
         self.assertEqual(expected, [match.identity for match in second.matches])
 
@@ -119,11 +119,12 @@ class PersonalizationExplorerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_profile(root, "g.problem_solving", "---\n---\n")
+            (root / "workspace/profiles/g").mkdir()
+            self.write_profile(root, "g/problem_solving", "---\n---\n")
 
             report = search(
                 root,
-                CapabilityQuery(identity="g.problem_solving", lanes=("profile",)),
+                CapabilityQuery(identity="g/problem_solving", lanes=("profile",)),
             )
 
             self.assertEqual((), report.matches)

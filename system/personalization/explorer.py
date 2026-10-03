@@ -66,8 +66,11 @@ def _profile_candidates(root: Path) -> list[_Candidate]:
     if not base.is_dir() or base.is_symlink() or base.resolve() != base:
         return []
     candidates = []
-    for path in sorted(base.glob("*.md")):
-        if path.name == "readme.md" or path.is_symlink() or not is_profile_identity(path.stem):
+    for path in sorted(base.rglob("*.md")):
+        if path.name == "readme.md" or path.is_symlink():
+            continue
+        identity = path.relative_to(base).with_suffix("").as_posix()
+        if not is_profile_identity(identity):
             continue
         try:
             source = path.read_text(encoding="utf-8")
@@ -83,7 +86,7 @@ def _profile_candidates(root: Path) -> list[_Candidate]:
             + [*(f"language:{value}" for value in manifest.supporting_languages)]
             + [*(f"control:{key}={value}" for key, value in manifest.controls)]
         )
-        candidates.append(_Candidate("profile", path.stem, path, components))
+        candidates.append(_Candidate("profile", identity, path, components))
     return candidates
 
 

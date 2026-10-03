@@ -62,11 +62,11 @@ class PromptExplorerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_prompt(root, "coding/review_pr", tags=("review",))
+            self.write_prompt(root, "code/review", tags=("review",))
 
-            report = search(root, PromptQuery(identity="coding/review_pr"))
+            report = search(root, PromptQuery(identity="code/review"))
 
-            self.assertEqual(["coding/review_pr"], [item.identity for item in report.matches])
+            self.assertEqual(["code/review"], [item.identity for item in report.matches])
 
     def test_exact_filters_use_and_and_list_subset_semantics(self):
         with TemporaryDirectory() as directory:
@@ -74,7 +74,7 @@ class PromptExplorerTests(unittest.TestCase):
             self.repository(root)
             self.write_prompt(
                 root,
-                "coding/review_pr",
+                "coding/review",
                 tags=("review", "code"),
                 required=("diff", "goal"),
                 optional=("focus",),
@@ -82,7 +82,7 @@ class PromptExplorerTests(unittest.TestCase):
             )
             self.write_prompt(
                 root,
-                "coding/explain_pr",
+                "coding/explainpr",
                 tags=("review",),
                 required=("diff",),
                 body="Explain {{diff}}.",
@@ -98,19 +98,19 @@ class PromptExplorerTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(["coding/review_pr"], [item.identity for item in report.matches])
+            self.assertEqual(["coding/review"], [item.identity for item in report.matches])
 
     def test_ranking_and_identity_tie_break_are_deterministic(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_prompt(root, "coding/review_code", tags=("review", "code"))
-            self.write_prompt(root, "coding/code_review", tags=("review", "code"))
+            self.write_prompt(root, "coding/reviewcode", tags=("review", "code"))
+            self.write_prompt(root, "coding/codereview", tags=("review", "code"))
 
             first = search(root, PromptQuery(text="review code"))
             second = search(root, PromptQuery(text="review code"))
 
-            expected = ["coding/code_review", "coding/review_code"]
+            expected = ["coding/codereview", "coding/reviewcode"]
             self.assertEqual(expected, [item.identity for item in first.matches])
             self.assertEqual(expected, [item.identity for item in second.matches])
 
@@ -118,13 +118,13 @@ class PromptExplorerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_prompt(root, "coding/code_review", tags=("code",))
-            self.write_prompt(root, "coding/code_translate", tags=("code",))
+            self.write_prompt(root, "coding/codereview", tags=("code",))
+            self.write_prompt(root, "coding/codetranslate", tags=("code",))
 
             first = search(root, PromptQuery(text="بررسی code"))
             second = search(root, PromptQuery(text="بررسی code"))
 
-            expected = ["coding/code_review", "coding/code_translate"]
+            expected = ["coding/codereview", "coding/codetranslate"]
             self.assertEqual(expected, [item.identity for item in first.matches])
             self.assertEqual(expected, [item.identity for item in second.matches])
 
@@ -154,7 +154,7 @@ class PromptExplorerTests(unittest.TestCase):
             self.repository(root)
             self.write_prompt(
                 root,
-                "coding/missing_profile",
+                "coding/missingprofile",
                 tags=("coding",),
                 profiles=("does_not_exist",),
             )
@@ -185,21 +185,21 @@ class PromptExplorerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            asset = root / "workspace/prompts/_assets/assets/with_asset/example.txt"
+            asset = root / "workspace/prompts/_assets/assets/withasset/example.txt"
             asset.parent.mkdir(parents=True)
             asset.write_text("example", encoding="utf-8")
-            self.write_prompt(root, "assets/no_asset", tags=("assets",))
+            self.write_prompt(root, "assets/noasset", tags=("assets",))
             self.write_prompt(
                 root,
-                "assets/with_asset",
+                "assets/withasset",
                 tags=("assets",),
-                owned_assets=("workspace/prompts/_assets/assets/with_asset/example.txt",),
+                owned_assets=("workspace/prompts/_assets/assets/withasset/example.txt",),
             )
 
             report = search(root, PromptQuery(text="assets"))
 
             self.assertEqual(
-                ["assets/no_asset", "assets/with_asset"],
+                ["assets/noasset", "assets/withasset"],
                 [item.identity for item in report.matches],
             )
 
