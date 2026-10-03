@@ -14,7 +14,7 @@ Resolve registered runtime controls through `system/behavior/control_contract.md
 
 Apply control semantics exactly from their canonical contracts. No control may weaken external mandatory constraints, authorization, hard policies, safety/security boundaries, or explicit fail-closed contracts.
 
-After a successful bootstrap/re-anchor, reuse unchanged effective profile/presentation/control configuration within the same accessible conversation when still applicable. Do not reload stable modules on every ordinary turn merely for freshness; selectively resolve new factual context when materially needed. Re-resolve when directives/configuration change, relevant source is known to have changed, prior resolution is unavailable/uncertain, or `@do:sot` is invoked again.
+After a successful bootstrap/re-anchor, same-chat reuse of unchanged effective configuration is expected. `system/adapters/runtime_bootstrap.md` `## same_chat_reuse` is the sole owner of what may be reused, the freshness conditions that govern it, and when re-resolution is required; resolve those from that owner rather than from this baseline.
 
 Use current contracts under `system/`, especially `system/routing/switch_syntax.md`.
 Resolve factual context from `workspace/context/` and reusable prompts from `workspace/prompts/`.

@@ -41,9 +41,9 @@ All modes resolve through the same canonical contracts. Expert syntax is optiona
 
 `@do:help` is the expert-mode entry into this contract's read-only Explain/Discover/Recommend behavior. It never performs a Create/Maintain/Customize action itself; a mutation request routed through it is explained and handed to `@do:assist`.
 
-`@do:assist` is the expert-mode entry into this contract's Create/Maintain/Customize routing (Intent handling steps 5–11 above). It follows the same reuse-before-create, capability, and safe-write boundaries as an equivalent natural-language request.
+`@do:assist` is the expert-mode entry into this contract's Create/Maintain/Customize routing (Intent handling steps 5–9 and 11 below). It follows the same reuse-before-create, capability, and safe-write boundaries as an equivalent natural-language request.
 
-Both accept an optional ordinary-language body as the user's question/request. With none, they begin the guided flow described in "Help-me-decide behavior" and "Intent handling" above — one adaptive question at a time, not an unexplained feature inventory.
+Both accept an optional ordinary-language body as the user's question/request. With none, they begin the guided flow described in "Help-me-decide behavior" and "Intent handling" below — one adaptive question at a time, not an unexplained feature inventory.
 
 ## User-visible action levels
 
