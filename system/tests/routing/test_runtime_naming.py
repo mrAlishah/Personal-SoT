@@ -116,7 +116,7 @@ class SystemActionTests(unittest.TestCase):
 
     def test_help_and_assist_reject_selector_and_control_companions(self):
         for text in (
-            "@do:help\n@profile:g.coding",
+            "@do:help\n@profile:g/coding",
             "@do:assist\n@ctx:personal",
             "@do:help\n@control:learning=on",
         ):
@@ -139,11 +139,11 @@ class SystemActionTests(unittest.TestCase):
         """A system action must not become invisible merely because another
         directive precedes it in the control block."""
         for text in (
-            "@profile:g.coding\n@do:help",
+            "@profile:g/coding\n@do:help",
             "@ctx:personal\n@do:assist",
             "@run:ai/recap\n@do:help",
             "@recap:2\n@do:assist",
-            "@profile:g.coding\n@do:sot",
+            "@profile:g/coding\n@do:sot",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
@@ -167,23 +167,23 @@ class SystemActionTests(unittest.TestCase):
 
 class PromptActionTests(unittest.TestCase):
     def test_run_resolves_canonical_prompt_identity(self):
-        result = classify_prompt_action("@run:ai/context_snapshot")
+        result = classify_prompt_action("@run:chat/snapshot")
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_edit_resolves_canonical_prompt_identity(self):
-        result = classify_prompt_action("@edit:ai/context_snapshot")
+        result = classify_prompt_action("@edit:chat/snapshot")
         self.assertEqual(EDIT_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_delete_resolves_canonical_prompt_identity(self):
-        result = classify_prompt_action("@delete:ai/context_snapshot")
+        result = classify_prompt_action("@delete:chat/snapshot")
         self.assertEqual(DELETE_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
-    def test_lowercase_snake_case_nested_path_is_valid(self):
-        result = classify_prompt_action("@run:sot/create_project")
-        self.assertEqual("sot/create_project", result.prompt_id)
+    def test_lowercase_segment_nested_path_is_valid(self):
+        result = classify_prompt_action("@run:sot/project/create")
+        self.assertEqual("sot/project/create", result.prompt_id)
 
     def test_case_invalid_paths_fail(self):
         for path in ("Ai/Recap", "AI/RECAP", "ai/Recap"):
@@ -202,43 +202,43 @@ class PromptActionTests(unittest.TestCase):
             classify_prompt_action("@edit:workspace/prompts/ai/recap")
 
     def test_run_preserves_allowed_parameter_and_selector_composition(self):
-        text = "@ctx:personal\n@profile:g.coding\n@run:ai/context_snapshot\n@param:focus=[architecture]"
+        text = "@ctx:personal\n@profile:g/coding\n@run:chat/snapshot\n@param:focus=[architecture]"
         result = classify_prompt_action(text)
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_edit_preserves_currently_allowed_composition(self):
-        text = "@profile:g.coding\n@edit:ai/context_snapshot"
+        text = "@profile:g/coding\n@edit:chat/snapshot"
         result = classify_prompt_action(text)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_delete_resolves_without_requiring_a_second_confirm_directive(self):
-        result = classify_prompt_action("@delete:ai/context_snapshot")
+        result = classify_prompt_action("@delete:chat/snapshot")
         self.assertEqual(DELETE_ACTION, result.keyword)
 
     def test_delete_rejects_single_line_param_after(self):
         with self.assertRaises(ValueError):
-            classify_prompt_action("@delete:ai/context_snapshot\n@param:x=[1]")
+            classify_prompt_action("@delete:chat/snapshot\n@param:x=[1]")
 
     def test_delete_rejects_single_line_param_before(self):
         with self.assertRaises(ValueError):
-            classify_prompt_action("@param:x=[1]\n@delete:ai/context_snapshot")
+            classify_prompt_action("@param:x=[1]\n@delete:chat/snapshot")
 
     def test_delete_rejects_multiline_param(self):
-        text = "@delete:ai/context_snapshot\n@param:x=[[\nliteral data\n]]"
+        text = "@delete:chat/snapshot\n@param:x=[[\nliteral data\n]]"
         with self.assertRaises(ValueError):
             classify_prompt_action(text)
 
     def test_run_with_param_still_resolves(self):
-        result = classify_prompt_action("@run:ai/context_snapshot\n@param:x=[1]")
+        result = classify_prompt_action("@run:chat/snapshot\n@param:x=[1]")
         self.assertEqual(RUN_ACTION, result.keyword)
 
     def test_edit_with_param_still_resolves(self):
-        result = classify_prompt_action("@edit:ai/context_snapshot\n@param:x=[1]")
+        result = classify_prompt_action("@edit:chat/snapshot\n@param:x=[1]")
         self.assertEqual(EDIT_ACTION, result.keyword)
 
     def test_param_looking_text_in_body_does_not_reject_delete(self):
-        result = classify_prompt_action("@delete:ai/context_snapshot\n\n@param:x=[1]")
+        result = classify_prompt_action("@delete:chat/snapshot\n\n@param:x=[1]")
         self.assertEqual(DELETE_ACTION, result.keyword)
 
     def test_old_do_prompt_syntax_is_rejected(self):
@@ -277,6 +277,22 @@ class PromptActionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     classify_prompt_action(text)
 
+    def test_prompt_path_rejects_underscore_segment(self):
+        with self.assertRaises(ValueError):
+            classify_prompt_action("@run:code/review_pr")
+
+    def test_prompt_path_rejects_case_variant(self):
+        with self.assertRaises(ValueError):
+            classify_prompt_action("@run:Code/review")
+
+    def test_prompt_path_accepts_new_canonical_form(self):
+        result = classify_prompt_action("@run:code/review")
+        self.assertEqual(result.prompt_id, "code/review")
+
+    def test_prompt_path_accepts_deep_hierarchy(self):
+        result = classify_prompt_action("@run:sot/project/create")
+        self.assertEqual(result.prompt_id, "sot/project/create")
+
 
 class ControlBlockBoundaryTests(unittest.TestCase):
     """Defect 1: a real control block exists only when the first non-blank
@@ -289,8 +305,8 @@ class ControlBlockBoundaryTests(unittest.TestCase):
                 self.assertIsNone(classify_system_action(f"ordinary request\n{action}"))
 
     def test_ordinary_text_before_prompt_action_leaves_it_unresolved(self):
-        for line in ("@run:ai/context_snapshot", "@edit:ai/context_snapshot",
-                     "@delete:ai/context_snapshot"):
+        for line in ("@run:chat/snapshot", "@edit:chat/snapshot",
+                     "@delete:chat/snapshot"):
             with self.subTest(line=line):
                 self.assertIsNone(classify_prompt_action(f"ordinary text\n{line}"))
 
@@ -306,9 +322,9 @@ class ControlBlockBoundaryTests(unittest.TestCase):
 
     def test_prompt_action_body_may_contain_switch_looking_text(self):
         result = classify_prompt_action(
-            "@run:ai/context_snapshot\n\nordinary body\n@do:help")
+            "@run:chat/snapshot\n\nordinary body\n@do:help")
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
 
 class MultilineParameterOpacityTests(unittest.TestCase):
@@ -317,27 +333,27 @@ class MultilineParameterOpacityTests(unittest.TestCase):
     and blank lines, regardless of whether they precede or follow it."""
 
     def test_dangerous_content_inside_multiline_param_is_not_a_second_action(self):
-        text = "@run:ai/context_snapshot\n@param:focus=[[\n@do:sot\n@recap:2\n]]"
+        text = "@run:chat/snapshot\n@param:focus=[[\n@do:sot\n@recap:2\n]]"
         result = classify_prompt_action(text)
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_edit_with_dangerous_multiline_content_is_not_a_second_action(self):
-        text = ("@edit:ai/context_snapshot\n@param:fake=[[\n@delete:other/path\n"
+        text = ("@edit:chat/snapshot\n@param:fake=[[\n@delete:other/path\n"
                 "@do:sot\n@fmt:yaml\n@param:fake=[value]\n]]")
         result = classify_prompt_action(text)
         self.assertEqual(EDIT_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_blank_line_inside_multiline_param_does_not_end_control_block(self):
-        text = "@param:focus=[[\nline one\n\nline two\n]]\n@run:ai/context_snapshot"
+        text = "@param:focus=[[\nline one\n\nline two\n]]\n@run:chat/snapshot"
         result = classify_prompt_action(text)
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
     def test_full_multiline_example_resolves_to_exactly_one_action(self):
         text = (
-            "@run:ai/context_snapshot\n"
+            "@run:chat/snapshot\n"
             "@param:focus=[[\n"
             "line one\n"
             "\n"
@@ -350,22 +366,22 @@ class MultilineParameterOpacityTests(unittest.TestCase):
         )
         result = classify_prompt_action(text)
         self.assertEqual(RUN_ACTION, result.keyword)
-        self.assertEqual("ai/context_snapshot", result.prompt_id)
+        self.assertEqual("chat/snapshot", result.prompt_id)
 
 
 class ProfileIdentityTests(unittest.TestCase):
-    def test_custom_profile_keeps_lowercase_snake_case(self):
-        for identity in ("coding", "my_profile", "profile2"):
+    def test_custom_profile_keeps_lowercase_segment_grammar(self):
+        for identity in ("coding", "my/profile", "profile2"):
             with self.subTest(identity=identity):
                 self.assertEqual(profile_identity_kind(identity), "custom")
                 self.assertTrue(is_profile_identity(identity))
 
     def test_built_in_profile_accepts_hierarchical_segments(self):
         for identity in (
-            "g.coding",
-            "g.architecture.review",
-            "g.problem.solving",
-            "g.technical.learning",
+            "g/coding",
+            "g/architecture/review",
+            "g/problem/solving",
+            "g/technical/learning",
         ):
             with self.subTest(identity=identity):
                 self.assertEqual(profile_identity_kind(identity), "built_in")
@@ -382,6 +398,23 @@ class ProfileIdentityTests(unittest.TestCase):
             with self.subTest(identity=identity):
                 self.assertIsNone(profile_identity_kind(identity))
                 self.assertFalse(is_profile_identity(identity))
+
+    def test_profile_identity_rejects_underscore_segment(self):
+        self.assertIsNone(profile_identity_kind("tech_learn"))
+
+    def test_profile_identity_accepts_new_slash_custom_form(self):
+        self.assertEqual(profile_identity_kind("tech/learn"), "custom")
+
+    def test_profile_identity_accepts_new_slash_reserved_form(self):
+        self.assertEqual(profile_identity_kind("g/tech/learn"), "built_in")
+
+    def test_profile_identity_reserved_prefix_fails_closed_on_malformed_shape(self):
+        self.assertIsNone(profile_identity_kind("g"))
+        self.assertIsNone(profile_identity_kind("g/"))
+        self.assertIsNone(profile_identity_kind("g/Tech"))
+
+    def test_profile_identity_non_reserved_g_prefixed_word_is_still_custom(self):
+        self.assertEqual(profile_identity_kind("game/show"), "custom")
 
 
 if __name__ == "__main__":
