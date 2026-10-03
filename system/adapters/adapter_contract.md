@@ -103,7 +103,7 @@ Adapters must not maintain a copied prompt registry or paste prompt bodies into 
 
 ### read_capability
 
-A client with authorized read access may resolve/render prompt files. `@edit` is possible when it can read the selected prompt. `@do` additionally requires whatever capabilities the rendered task itself needs.
+A client with authorized read access may resolve/render prompt files. `@edit` is possible when it can read the selected prompt. `@run` additionally requires whatever capabilities the rendered task itself needs.
 
 ### write_capability
 
