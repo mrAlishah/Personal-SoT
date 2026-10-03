@@ -17,9 +17,9 @@ class PromptBuilderReuseTests(unittest.TestCase):
     def test_exact_reuse_wins_before_every_other_option(self):
         assessment = ReuseAssessment(
             exact_identity="code/review",
-            parameterized_identity="coding/review_generic",
+            parameterized_identity="coding/reviewgeneric",
             composition=("profile:code/review",),
-            edit_identity="coding/old_review",
+            edit_identity="coding/oldreview",
             same_semantic_owner=True,
         )
 

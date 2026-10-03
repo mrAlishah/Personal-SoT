@@ -95,7 +95,7 @@ Expected: the standalone `]` closing the inner array is parameter content; only 
 First:
 
 ```text
-@delete:prompt:coding/review_pr
+@delete:prompt:code/review
 ```
 
 Expected:
@@ -112,7 +112,7 @@ resolve current prompt
 Then after review:
 
 ```text
-@confirm:delete:prompt:coding/review_pr
+@confirm:delete:prompt:code/review
 ```
 
 Expected:
