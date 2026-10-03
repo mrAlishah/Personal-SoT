@@ -9,8 +9,8 @@ They are not runtime canonical prompts and must not be treated as Personal promp
 Example identities if copied into a real `prompts/` tree:
 
 ```text
-coding/review_pr
-language/translate_professional
-research/compare_tools
-job_search/analyze_job
+code/review
+lang/translate
+research/compare
+job/analyze
 ```

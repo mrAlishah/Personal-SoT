@@ -15,13 +15,13 @@ Bare `@prompt` is invalid.
 
 ## case_02_exact_path
 
-`@do:prompt:coding/review_pr` resolves exactly to `workspace/prompts/coding/review_pr.md`.
+`@do:prompt:code/review` resolves exactly to `workspace/prompts/code/review.md`.
 
 No prompt registry or alias lookup.
 
 ## case_03_path_case_sensitive
 
-`@do:prompt:Coding/review_pr` is invalid/unresolved rather than normalized.
+`@do:prompt:Code/review` is invalid/unresolved rather than normalized.
 
 ## case_04_one_action
 
@@ -71,7 +71,7 @@ Prompt manifest cannot select factual context; explicit/default scope remains ro
 
 ## case_15_discovery_not_identity
 
-Tag/search discovery may suggest `coding/review_pr`; after selection exact path identity governs.
+Tag/search discovery may suggest `code/review`; after selection exact path identity governs.
 
 ## case_16_unresolved_prompt
 

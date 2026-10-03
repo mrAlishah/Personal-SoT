@@ -1,5 +1,12 @@
 # Prompt Explorer and Builder Implementation Plan
 
+> **Status:** Historical implementation record (all tasks completed). File
+> paths and prompt identities below (`sot/explore_prompts`, `sot/build_prompt`)
+> reflect the naming scheme in effect at implementation time and are
+> superseded by the runtime user-naming refactor; see
+> `system/prompts/prompt_contract.md` for current canonical identities
+> (`sot/prompt/list`, `sot/prompt/create`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver deterministic prompt discovery and a beginner-safe reuse/create/edit flow with real local validation and truthful preview-only behavior.

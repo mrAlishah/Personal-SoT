@@ -34,15 +34,15 @@ Expected: fail closed; do not fall back to adapter default.
 
 ## case_06_default_profile
 
-Adapter selects `g.coding`; prompt has no explicit profile.
+Adapter selects `code/review`; prompt has no explicit profile.
 
-Expected: `g.coding` profile may apply.
+Expected: `code/review` profile may apply.
 
 ## case_07_explicit_profile_replaces_default
 
-Adapter default profile = `g.coding`; prompt explicitly selects `g.research`.
+Adapter default profile = `code/review`; prompt explicitly selects `research/deep`.
 
-Expected: explicit `g.research` selection replaces lower `g.coding` default selection.
+Expected: explicit `research/deep` selection replaces lower `code/review` default selection.
 
 ## case_08_presentation_precedence
 

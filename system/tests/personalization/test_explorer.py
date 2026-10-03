@@ -18,13 +18,84 @@ class PersonalizationExplorerTests(unittest.TestCase):
 
     def write_profile(self, root: Path, name: str, source: str) -> Path:
         path = root / "workspace/profiles" / f"{name}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source, encoding="utf-8")
         return path
 
+    def canonical_evidence_repository(self, root: Path) -> None:
+        self.repository(root)
+        for name in (
+            "workspace/presentation/formats",
+            "workspace/presentation/tones",
+            "workspace/presentation/depth",
+        ):
+            (root / name).mkdir(parents=True)
+
+        (root / "workspace/presentation/formats/compare.md").write_text(
+            "---\nformat_id: compare\nplacement: body\n---\n",
+            encoding="utf-8",
+        )
+        for name in ("formal", "professional"):
+            (root / f"workspace/presentation/tones/{name}.md").write_text(
+                f"# {name}\n", encoding="utf-8"
+            )
+        for name in ("short", "deep"):
+            (root / f"workspace/presentation/depth/{name}.md").write_text(
+                f"# {name}\n", encoding="utf-8"
+            )
+
+        (root / "system/behavior/module_catalog.md").write_text(
+            "# modules\n\n## teaching.md\n", encoding="utf-8"
+        )
+        (root / "system/behavior/teaching.md").write_text("# teaching\n", encoding="utf-8")
+        for name in ("learning", "steps"):
+            (root / f"system/behavior/{name}.md").write_text(
+                "---\n"
+                f"control_id: {name}\n"
+                "control_values:\n"
+                '  - "on"\n'
+                '  - "off"\n'
+                '  - "auto"\n'
+                'control_default: "auto"\n'
+                "---\n",
+                encoding="utf-8",
+            )
+
+        (root / "system/routing/switch_registry.md").write_text(
+            "# registry\n\n"
+            "## formats\n\n```text\n"
+            "compare → workspace/presentation/formats/compare.md\n"
+            "```\n\n"
+            "## tones\n\n```text\n"
+            "formal → workspace/presentation/tones/formal.md\n"
+            "professional → workspace/presentation/tones/professional.md\n"
+            "```\n\n"
+            "## depths\n\n```text\n"
+            "short → workspace/presentation/depth/short.md\n"
+            "deep → workspace/presentation/depth/deep.md\n"
+            "```\n\n"
+            "## registered_controls\n\n```text\n"
+            "learning → system/behavior/learning.md\n"
+            "steps → system/behavior/steps.md\n"
+            "```\n",
+            encoding="utf-8",
+        )
+
+        self.write_profile(
+            root,
+            "tech/learn",
+            "---\nbehaviors:\n  - teaching\n---\n",
+        )
+        self.write_profile(
+            root,
+            "research/deep",
+            "---\ntone: professional\ndepth: deep\n---\n",
+        )
+
     def test_discovers_each_lane_from_its_canonical_owner(self):
         expected = {
-            "profile": "g.research",
-            "format": "comparison_table",
+            "profile": "research/deep",
+            "format": "compare",
             "tone": "formal",
             "depth": "short",
             "control": "learning",
@@ -37,45 +108,67 @@ class PersonalizationExplorerTests(unittest.TestCase):
                 self.assertEqual([(lane, identity)], [(match.lane, match.identity) for match in report.matches])
 
     def test_classified_beginner_intents_use_only_canonical_evidence(self):
-        cases = (
-            (CapabilityQuery(text="short", lanes=("depth",)), [("depth", "short")]),
-            (CapabilityQuery(text="formal", lanes=("tone",)), [("tone", "formal")]),
-            (
-                CapabilityQuery(text="comparison_table", lanes=("format",)),
-                [("format", "comparison_table")],
-            ),
-            (
-                CapabilityQuery(
-                    text="technical learning step_execution teaching",
-                    lanes=("profile", "control", "behavior"),
-                    limit=4,
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.canonical_evidence_repository(root)
+            cases = (
+                (CapabilityQuery(text="short", lanes=("depth",)), [("depth", "short")]),
+                (CapabilityQuery(text="formal", lanes=("tone",)), [("tone", "formal")]),
+                (
+                    CapabilityQuery(text="compare", lanes=("format",)),
+                    [("format", "compare")],
                 ),
-                [
-                    ("profile", "g.technical.learning"),
-                    ("behavior", "teaching"),
-                    ("control", "learning"),
-                    ("control", "step_execution"),
-                ],
-            ),
-            (
-                CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
-                [("profile", "g.research")],
-            ),
-        )
+                (
+                    CapabilityQuery(
+                        text="learn learning steps teaching",
+                        lanes=("profile", "control", "behavior"),
+                        limit=4,
+                    ),
+                    [
+                        ("behavior", "teaching"),
+                        ("control", "learning"),
+                        ("control", "steps"),
+                        ("profile", "tech/learn"),
+                    ],
+                ),
+                (
+                    CapabilityQuery(text="research deep professional", lanes=("profile",), limit=1),
+                    [("profile", "research/deep")],
+                ),
+            )
 
-        for query, expected in cases:
-            with self.subTest(query=query):
-                report = search(ROOT, query)
-                actual = [(match.lane, match.identity) for match in report.matches]
-                self.assertEqual(expected, actual)
+            for query, expected in cases:
+                with self.subTest(query=query):
+                    report = search(root, query)
+                    actual = [(match.lane, match.identity) for match in report.matches]
+                    self.assertEqual(expected, actual)
 
     def test_profile_tie_break_is_deterministic(self):
-        first = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
-        second = search(ROOT, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            tones = root / "workspace/presentation/tones"
+            tones.mkdir(parents=True)
+            (tones / "professional.md").write_text("# professional\n", encoding="utf-8")
+            (root / "system/routing/switch_registry.md").write_text(
+                "# registry\n\n## tones\n\n```text\n"
+                "professional → workspace/presentation/tones/professional.md\n"
+                "```\n",
+                encoding="utf-8",
+            )
+            for identity in ("alpha", "beta", "gamma"):
+                self.write_profile(
+                    root,
+                    identity,
+                    "---\ntone: professional\n---\n",
+                )
 
-        expected = ["g.architecture.review", "g.coding", "g.research"]
-        self.assertEqual(expected, [match.identity for match in first.matches])
-        self.assertEqual(expected, [match.identity for match in second.matches])
+            first = search(root, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
+            second = search(root, CapabilityQuery(text="professional", lanes=("profile",), limit=10))
+
+            expected = ["alpha", "beta", "gamma"]
+            self.assertEqual(expected, [match.identity for match in first.matches])
+            self.assertEqual(expected, [match.identity for match in second.matches])
 
     def test_control_values_and_default_come_from_canonical_target(self):
         report = search(ROOT, CapabilityQuery(identity="learning", lanes=("control",)))
@@ -115,15 +208,16 @@ class PersonalizationExplorerTests(unittest.TestCase):
             self.assertEqual((), report.matches)
             self.assertEqual(1, report.unavailable_count)
 
-    def test_invalid_built_in_profile_identity_is_not_discovered(self):
+    def test_invalid_nested_profile_identity_is_not_discovered(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            self.write_profile(root, "g.problem_solving", "---\n---\n")
+            (root / "workspace/profiles/code").mkdir()
+            self.write_profile(root, "code/problem_solving", "---\n---\n")
 
             report = search(
                 root,
-                CapabilityQuery(identity="g.problem_solving", lanes=("profile",)),
+                CapabilityQuery(identity="code/problem_solving", lanes=("profile",)),
             )
 
             self.assertEqual((), report.matches)

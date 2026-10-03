@@ -10,7 +10,7 @@ Profile:
 ```yaml
 ---
 controls:
-  clarify_risk: off
+  clarify: off
 ---
 ```
 
@@ -36,7 +36,7 @@ Profile:
 ```yaml
 ---
 controls:
-  clarify_risk: false
+  clarify: false
 ---
 ```
 
@@ -51,14 +51,14 @@ Expected: valid; lower-priority project/global control defaults remain available
 
 ## case_05_multiple_profiles
 
-Profile A sets `clarify_risk: on`; later selected Profile B sets
-`clarify_risk: off`.
+Profile A sets `clarify: on`; later selected Profile B sets
+`clarify: off`.
 
 Expected among profile defaults: `off`.
 
 ## case_06_profile_control_has_no_policy_authority
 
-Profile sets `clarify_risk: off` while a hard policy independently requires
+Profile sets `clarify: off` while a hard policy independently requires
 user confirmation.
 
 Expected: hard policy remains authoritative; profile control cannot weaken it.

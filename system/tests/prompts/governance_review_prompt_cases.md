@@ -2,7 +2,7 @@
 
 ## purpose
 
-Contract scenarios for `ai/review_system` and `ai/review_project_charter`.
+Contract scenarios for `sot/review/system` and `sot/review/charter`.
 
 ## review_system
 

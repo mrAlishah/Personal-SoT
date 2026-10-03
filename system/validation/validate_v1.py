@@ -12,16 +12,18 @@ from typing import Dict, List, Optional, Tuple
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from system.routing.runtime_naming import is_profile_identity
+from system.routing.runtime_naming import STRICT_SEGMENT, is_profile_identity
 
 VALID_ACCESS = {"allow", "restricted", "deny"}
 VALID_DECISION_STATUS = {"proposed", "accepted", "superseded", "deprecated"}
 VALID_FORMAT_PLACEMENT = {"prefix", "body", "suffix"}
 NAME_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+_STRICT_ID_RE = re.compile(rf"^{STRICT_SEGMENT}$")
 SCOPE_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*(?:/[a-z0-9]+(?:_[a-z0-9]+)*)*$")
 SWITCH_MAPPING_RE = re.compile(r"^\s*([a-z0-9_]+)\s+→\s+([a-z0-9_./]+\.md)\s*$")
 EXTERNAL_FILENAMES = {"AGENTS.md", "CLAUDE.md"}
-PROFILE_TOP_LEVEL = {"behaviors", "formats", "tone", "depth", "language", "controls"}
+PROFILE_TOP_LEVEL = {"behaviors", "formats", "tone", "depth", "language", "controls", "owner"}
+PROFILE_OWNER_VALUES = {"product", "custom"}
 RAW_SECRET_KEYS = {"password", "bank_password", "api_token", "private_key", "recovery_code", "session_cookie", "bank_login_credentials", "card_cvv", "cvv", "full_payment_card_number", "payment_card_number"}
 SAFE_SECRET_SENTINELS = {"not_stored", "none", "null", "redacted", "external_reference", "not_applicable"}
 PRIMARY_DIRS = {"workspace", "system", "guides"}
@@ -36,6 +38,7 @@ class ProfileManifest:
     formats: tuple[str, ...]
     tone: Optional[str]
     depth: Optional[str]
+    owner: Optional[str]
     primary_language: Optional[str]
     supporting_languages: tuple[str, ...]
     controls: tuple[tuple[str, str], ...]
@@ -173,7 +176,7 @@ def validate_control_source(
     default = scalars.get("control_default")
     if control_id is None:
         errors.append(f"{rel}: registered control requires frontmatter control_id")
-    elif not NAME_RE.fullmatch(control_id):
+    elif not _STRICT_ID_RE.fullmatch(control_id):
         errors.append(f"{rel}: invalid control_id {control_id!r}")
     elif control_id != identifier:
         target = target_text or rel.as_posix()
@@ -207,7 +210,7 @@ def registered_format_specs(root: Path, errors: List[str]) -> Dict[str, str]:
         placement = metadata.get("placement")
         if format_id is None:
             errors.append(f"{rel}: registered format requires frontmatter format_id")
-        elif not NAME_RE.fullmatch(format_id):
+        elif not _STRICT_ID_RE.fullmatch(format_id):
             errors.append(f"{rel}: invalid format_id {format_id!r}")
         elif format_id != identifier:
             errors.append(
@@ -261,8 +264,11 @@ def validate_names(root: Path, errors: List[str]) -> None:
                     break
             if path.is_file() and path.name not in EXTERNAL_FILENAMES:
                 is_profile = rel.parts[:2] == ("workspace", "profiles") and path.suffix == ".md"
-                valid_name = is_profile_identity(path.stem) if is_profile else NAME_RE.fullmatch(path.stem)
-                if not valid_name:
+                if is_profile:
+                    identity = path.relative_to(root / "workspace" / "profiles").with_suffix("").as_posix()
+                    if not is_profile_identity(identity):
+                        errors.append(f"{rel}: profile identity {identity!r} is not a valid repository identity")
+                elif not NAME_RE.fullmatch(path.stem):
                     errors.append(f"{rel}: filename stem {path.stem!r} is not a valid repository identity")
 
 
@@ -410,6 +416,7 @@ def read_profile_manifest(source: str) -> ProfileManifest:
         tuple(lists.get("formats", [])),
         scalars.get("tone"),
         scalars.get("depth"),
+        scalars.get("owner"),
         scalars.get("language.primary"),
         tuple(lists.get("language.supporting", [])),
         tuple(
@@ -442,6 +449,8 @@ def _validate_profile_manifest(
     unknown = manifest.top_keys - PROFILE_TOP_LEVEL
     if unknown:
         errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
+    if manifest.owner is not None and manifest.owner not in PROFILE_OWNER_VALUES:
+        errors.append(f"{rel}: invalid owner {manifest.owner!r}; expected 'product' or 'custom'")
     for key, value in manifest.controls:
         allowed = control_specs.get(key)
         if allowed is None:

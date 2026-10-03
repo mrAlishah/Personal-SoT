@@ -157,14 +157,14 @@ Expected: primary remains, failed supplemental excluded with warning, Personal r
 Prompt:
 
 ```text
-@profile:g.architecture.review
+@profile:architecture/review
 ```
 
 Expected profile configuration:
 
 ```text
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth = deep
 ```
@@ -173,7 +173,7 @@ No factual context is selected by the profile.
 
 ## case_17_prompt_depth_over_profile
 
-`g.architecture.review` + `@depth:short`.
+`architecture/review` + `@depth:short`.
 
 Expected: short depth; profile remains otherwise active.
 
@@ -182,8 +182,8 @@ Expected: short depth; profile remains otherwise active.
 Explicit profiles in order:
 
 ```text
-g.technical.learning
-g.research
+tech/learn
+research/deep
 ```
 
 Expected:
@@ -197,13 +197,13 @@ depth = deep
 
 ## case_19_explicit_profiles_replace_default_profile
 
-Adapter default profile = g.coding; prompt explicitly selects g.research.
+Adapter default profile = code/review; prompt explicitly selects research/deep.
 
-Expected: g.research only as selected profile set; g.coding is not hidden-composed.
+Expected: research/deep only as selected profile set; code/review is not hidden-composed.
 
 ## case_20_german_learning_language
 
-`g.german.learning` with no prompt language override.
+`lang/german` with no prompt language override.
 
 Expected:
 
@@ -217,13 +217,13 @@ depth = medium
 
 ## case_21_prompt_language_override
 
-`g.german.learning`, prompt explicitly requests Persian for this answer.
+`lang/german`, prompt explicitly requests Persian for this answer.
 
 Expected: Persian primary for this prompt; no persistent change to profile.
 
 ## case_22_format_disable_after_profile
 
-`g.german.learning` provides `eli5 + vocab`; prompt includes `@no:fmt:vocab`.
+`lang/german` provides `eli5 + vocab`; prompt includes `@no:fmt:vocab`.
 
 Expected effective formats: `eli5` only.
 
@@ -246,7 +246,7 @@ Expected: invalid directive warning; lower profile selection may continue becaus
 
 ## case_25_profile_does_not_override_policy
 
-Coding/research/profile guidance conflicts with hard policy.
+Codinresearch/deep/profile guidance conflicts with hard policy.
 
 Expected: hard policy wins; profile remains active only for compatible behavior/presentation.
 
@@ -310,7 +310,7 @@ Given:
 ```text
 @ctx:org/acme/projects/payment_service/reconciliation
 @ctx:personal
-@profile:g.architecture.review
+@profile:architecture/review
 @depth:short
 
 Compare the current messaging choice with its relevant constraints.
@@ -322,7 +322,7 @@ Expected high-level effective configuration:
 primary_scope = reconciliation
 supplemental = personal
 behaviors = reasoning + research + communication
-formats = comparison_table
+formats = compare
 tone = professional
 depth = short
 hard_policies = credential_exposure + token_logging

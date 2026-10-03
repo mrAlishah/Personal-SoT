@@ -12,17 +12,17 @@ workspace/profiles/<profile_name>.md
 
 The filename is the runtime profile identity; users invoke `@profile:<profile_name>` without a physical path prefix.
 
-Two identity grammars are valid:
+Profile identity is a single grammar, shared by shipped and custom
+Profiles alike:
 
 ```text
-custom Profile:  <lowercase_snake_case>
-shipped Profile: g.<segment>[.<segment>...]
+segment := [a-z0-9]+
+identity := segment ( "/" segment )*
 ```
 
-Shipped-profile segments are non-empty lowercase ASCII letters or digits.
-Underscores are not valid inside `g.*` identities. The `g.*` namespace is
-reserved for product-owned Profiles; user-created Profiles use
-`lowercase_snake_case`.
+No identity shape is reserved. Ownership (shipped vs custom) is a
+repository-internal concern carried by the target file's own frontmatter
+(see `owner` below), never by the identity string.
 
 ## runtime_resolution
 
@@ -35,9 +35,17 @@ Profile lookup is exact and path-derived:
 
 Profiles are not duplicated in a flat switch registry. A missing file is an unresolved profile configuration error. Case, spelling, aliases, and nearest-match normalization are not applied.
 
-Personalization may discover, select, and compose shipped `g.*` Profiles.
-User-guided create/edit operations do not mutate that reserved namespace; a
-customized reusable composition receives a separate custom Profile identity.
+Ownership (product-shipped vs user-custom) is a repository-internal
+concern, never encoded in the runtime identity. A Profile file MAY
+declare `owner: product` in its frontmatter; this marks it as shipped and
+protected. Omitting the field, or declaring `owner: custom`, is the
+default and ordinary case for every user-created Profile. User-guided
+create/edit operations (`system/personalization/profile_builder.py`)
+refuse to write over any existing file whose `owner` is exactly
+`"product"`, and refuse to create a new file whose submitted content
+declares `owner: product`. This is a single, exact, non-fuzzy check —
+there is no second ownership signal (no reserved path prefix, no separate
+registry, no directory boundary).
 
 ## representation
 
@@ -68,10 +76,15 @@ behaviors[]
 formats[]
 tone
 depth
+owner
 language.primary
 language.supporting[]
 controls.<registered_control>
 ```
+
+`owner` is an internal, repository-owned field, not a user-facing identity
+component. Its only valid values are `product` and `custom`; see
+`runtime_resolution` above.
 
 `controls` is a bounded runtime-control map, not an arbitrary key/value bag. Every control key must resolve through the canonical `registered_controls` section of `system/routing/switch_registry.md`, and every value must match the resolved control target's canonical machine-readable metadata defined by `system/behavior/control_contract.md`.
 

@@ -84,11 +84,7 @@ Every invocation performs the same resolve + reload + re-anchor operation. It is
 
 When the host exposes the same conversation context, a successful bootstrap/re-anchor may establish an effective chat basis that subsequent ordinary requests reuse while it remains applicable.
 
-Reuse unchanged profile/presentation/control resolution instead of re-reading the same modules on every turn merely for freshness. Resolve additional factual context selectively when the new request materially requires it.
-
-Re-resolve when explicit directives/configuration change, relevant canonical source is known to have changed, previous resolution is unavailable/uncertain, or `@do:sot` is invoked again.
-
-This is an optimization only: canonical current source still outranks stale conversation state.
+Reuse scope, the freshness conditions that govern it, and every re-resolution trigger are owned solely by `system/adapters/runtime_bootstrap.md` `## same_chat_reuse`. This contract does not restate them; an adapter resolves them from that owner.
 
 ## prompt_library
 
@@ -107,13 +103,13 @@ Adapters must not maintain a copied prompt registry or paste prompt bodies into 
 
 ### read_capability
 
-A client with authorized read access may resolve/render prompt files. `@edit` is possible when it can read the selected prompt. `@do` additionally requires whatever capabilities the rendered task itself needs.
+A client with authorized read access may resolve/render prompt files. `@edit` is possible when it can read the selected prompt. `@run` additionally requires whatever capabilities the rendered task itself needs.
 
 ### write_capability
 
 Prompt deletion/repair requires real authorized repository/filesystem write capability. If unavailable, the adapter may produce the deletion plan but must state that it cannot apply it.
 
-`@delete` never implies write authorization. `@confirm:delete` confirms user intent but still does not bypass host/tool permissions or Git governance.
+`@delete:<path>` is analysis-only and there is no separate `@confirm:delete` directive; the canonical plan, explicit confirmation bound to the exact displayed plan, current-state re-check, and apply sequence are owned by `system/routing/switch_syntax.md`, `system/prompts/action_contract.md`, and `system/assistant/safe_write_contract.md`. The adapter-side rule is that neither `@delete` nor any confirmation implies write authorization, and confirmation never bypasses host/tool permissions or Git governance.
 
 ### composer_boundary
 

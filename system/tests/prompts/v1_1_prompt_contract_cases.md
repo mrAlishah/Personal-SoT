@@ -3,19 +3,19 @@
 These scenarios validate V1.1 Prompt Library semantics.
 
 ## case_01_prompt_identity
-`workspace/prompts/coding/review_pr.md` resolves exactly as `coding/review_pr`; no registry/fuzzy alias.
+`workspace/prompts/code/review.md` resolves exactly as `code/review`; no registry/fuzzy alias.
 
 ## case_02_do_executes
-`@do:prompt:coding/review_pr` with all required params → render, validate, execute.
+`@do:prompt:code/review` with all required params → render, validate, execute.
 
 ## case_03_edit_does_not_execute
-`@edit:prompt:coding/review_pr` → rendered preview only; stop before task execution.
+`@edit:prompt:code/review` → rendered preview only; stop before task execution.
 
 ## case_04_delete_plans_only
-`@delete:prompt:coding/review_pr` → analyze file/owned assets/inbound refs; show plan; no deletion.
+`@delete:prompt:code/review` → analyze file/owned assets/inbound refs; show plan; no deletion.
 
 ## case_05_confirm_delete
-Current deletion plan + `@confirm:delete:prompt:coding/review_pr` → revalidate state, then delete/repair only if unchanged and write-authorized.
+Current deletion plan + `@confirm:delete:prompt:code/review` → revalidate state, then delete/repair only if unchanged and write-authorized.
 
 ## case_06_changed_after_delete_plan
 Prompt/reference state changes after plan → confirmation invalid; require new plan.
@@ -27,7 +27,7 @@ Deleted prompt references `coding`, `md`, `concept` → shared modules remain.
 One block contains `@do` and `@edit` → invalid; no line-order choice.
 
 ## case_09_bare_prompt_invalid
-`@prompt:coding/review_pr` → invalid because action is ambiguous.
+`@prompt:code/review` → invalid because action is ambiguous.
 
 ## case_10_single_line_param
 `@param:target_language=[german]` → exact value `german`.
@@ -102,7 +102,7 @@ Deprecated prompt → edit/recovery with warning; do blocked.
 Prompt manifest defines factual context → unsupported field/configuration defect.
 
 ## case_30_prompt_profile_precedence
-Prompt defaults `g.research`; invocation explicitly selects `g.coding` → explicit selection replaces prompt profile selection.
+Prompt defaults `research/deep`; invocation explicitly selects `code/review` → explicit selection replaces prompt profile selection.
 
 ## case_31_prompt_format_composition
 Prompt defaults `md + concept`; invocation `@no:fmt:concept` → md remains, concept disabled.

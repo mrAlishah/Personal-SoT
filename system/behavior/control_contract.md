@@ -40,7 +40,9 @@ A control MAY also define a bounded contextual default when the same control sho
 Canonical runtime identities use:
 
 ```text
-controls.<lowercase_snake_case_name>
+controls.<name>
+
+name := [a-z0-9]+
 ```
 
 Unknown control keys are configuration errors.
@@ -51,7 +53,7 @@ Each registered control target MUST begin with YAML frontmatter containing these
 
 ```yaml
 ---
-control_id: <lowercase_snake_case_name>
+control_id: <lowercase [a-z0-9]+ name, no underscores>
 control_values:
   - "<exact_allowed_value>"
 control_default: "<one_of_control_values>"
@@ -102,29 +104,9 @@ Boolean values are not the canonical V1.2 control value model for newly register
 
 ## precedence
 
-Registered controls resolve in the runtime-control lane defined by `system/routing/precedence.md`.
+Registered controls resolve in the runtime-control lane defined by `system/routing/precedence.md`. That lane is the single owner of the effective precedence chain, contextual-default ordering, multi-profile resolution, and prompt-local override scope; this contract does not restate it.
 
-General precedence:
-
-```text
-explicit current-prompt control override
->
-explicit chat_or_session control override when supported
->
-project_or_adapter controls.<name>
->
-selected profile controls.<name>
->
-control-specific contextual default when its canonical condition matches
->
-global control default
-```
-
-A contextual default is a default-selection rule, not an explicit override. It MUST NOT outrank project/adapter, profile, session, or current-prompt values. Its matching conditions must be deterministic from already-resolved runtime state, such as the active factual scope, effective selected behaviors, or explicit task intent. Do not trigger it from vague keyword matching alone.
-
-When multiple selected profiles define the same registered control, the later selected profile wins among profile defaults before higher-precedence sources are applied.
-
-Prompt-local overrides affect only the current invocation unless a separate host/session capability explicitly provides persistence.
+Every registered control MUST declare its precedence participation as part of `## registration`. A control's contextual-default conditions must be deterministic from already-resolved runtime state, such as the active factual scope, effective selected behaviors, or explicit task intent. Do not trigger a contextual default from vague keyword matching alone.
 
 ## profile_boundary
 

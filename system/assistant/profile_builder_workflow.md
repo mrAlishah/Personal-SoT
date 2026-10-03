@@ -19,9 +19,11 @@ exact existing Profile
 Similarity never authorizes overwrite. An edit requires the exact Profile
 identity and clear intent to modify that same semantic owner.
 
-Shipped `g.*` Profiles are product-owned. The Assistant may discover, select,
-and compose them, but user-guided create/edit targets a separate custom
-`lowercase_snake_case` Profile.
+Shipped Profiles declare `owner: product` in their own frontmatter -- an
+internal, repository-owned marker, never part of the runtime identity. The
+Assistant may discover, select, and compose them, but user-guided
+create/edit always targets a separate Profile identity and refuses to
+write over any existing file whose `owner` is `product`.
 
 ## Representation
 

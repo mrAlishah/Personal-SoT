@@ -47,7 +47,7 @@ When this convention exists:
 - otherwise use the established `general_info` catch-all for concrete low-stakes facts rather than inventing one file per minor category;
 - the catch-all intentionally uses a lower importance threshold than specialized owners;
 - low importance does not mean low integrity: do not store facts known to be false, superseded current-state claims, unsupported inference, or raw secrets;
-- ambiguity/conflict that could change the stored meaning follows effective `controls.clarify_risk` before the affected write.
+- ambiguity/conflict that could change the stored meaning follows effective `controls.clarify` before the affected write.
 
 ## main_info_strictness
 
@@ -77,7 +77,7 @@ Before writing a new or changed current fact to the catch-all:
 4. never silently assume equivalence between labels/systems when that mapping is not established;
 5. when a clearly newer current value supersedes an older one, update/mark the old current value rather than retaining two contradictory current facts;
 6. when both values may legitimately coexist because they refer to different dates, systems, contexts, people, or scopes, preserve those qualifiers explicitly;
-7. if the conflict cannot be reconciled deterministically, follow `controls.clarify_risk` before the affected write.
+7. if the conflict cannot be reconciled deterministically, follow `controls.clarify` before the affected write.
 
 The goal is broad retention of useful low-stakes facts while maintaining a single coherent canonical interpretation of current Personal context.
 

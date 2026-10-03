@@ -40,7 +40,7 @@ Expected: unresolved scope; do not silently substitute another scope.
 
 ## case_07_format_resolution
 
-`@fmt:comparison_table` maps exactly to `workspace/presentation/formats/comparison_table.md`.
+`@fmt:compare` maps exactly to `workspace/presentation/formats/compare.md`.
 
 ## case_08_new_format_resolution
 
@@ -55,7 +55,7 @@ Expected exact mappings:
 
 ## case_09_profile_self_addressing_resolution
 
-`@profile:g.obsidian.note` resolves directly to `workspace/profiles/g.obsidian.note.md` by exact filename.
+`@profile:obsidian/note` resolves directly to `workspace/profiles/obsidian/note.md` by exact filename.
 
 Expected: no flat switch-registry entry is required or created for the profile.
 
@@ -75,7 +75,7 @@ Expected: no flat switch-registry entry is required or created for the profile.
 
 ## case_13_no_fuzzy_match
 
-`@fmt:comparison-table` must not map to `comparison_table`.
+`@fmt:comparison-table` must not map to `compare`.
 
 ## case_14_case_sensitive
 
@@ -143,9 +143,9 @@ A registered runtime scope contains an invalid segment such as camelCase, kebab-
 
 Expected: static validation fails rather than normalizing or guessing the scope identity.
 
-## case_25_language_correction_format_resolution
+## case_25_correct_format_resolution
 
-`@fmt:language_correction` maps exactly to `workspace/presentation/formats/language_correction.md`.
+`@fmt:correct` maps exactly to `workspace/presentation/formats/correct.md`.
 
 Expected: the selectable format is present in `switch_registry`; validation fails if that lifecycle mapping becomes stale or missing.
 
@@ -155,7 +155,7 @@ A target under the registry `formats` section declares:
 
 ```yaml
 ---
-format_id: learning_summary
+format_id: learn
 placement: suffix
 ---
 ```
@@ -164,7 +164,7 @@ Expected: identity/placement consumers derive these facts from registry + canoni
 
 ## case_27_registry_format_id_mismatch
 
-The registry identifier is `learning_summary` but its target declares a different `format_id`.
+The registry identifier is `learn` but its target declares a different `format_id`.
 
 Expected: static validation fails; registry identity and target metadata must agree exactly.
 

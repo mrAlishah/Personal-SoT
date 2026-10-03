@@ -19,7 +19,7 @@ Guide systematic resolution of unclear, failing, or non-trivial problems where t
 General analytical discipline remains in `reasoning.md`.
 Evidence retrieval remains in `research.md`.
 Repository implementation remains in `coding.md`.
-Stepwise execution gating remains controlled by `controls.step_execution`.
+Stepwise execution gating remains controlled by `controls.steps`.
 Presentation remains outside behavior.
 
 ## acceptance

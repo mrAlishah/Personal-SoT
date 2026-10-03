@@ -23,7 +23,7 @@ change depth, format, or facts.
 
 User asks to compare alternatives in a table.
 
-Expected: classify as format and recommend `comparison_table`; do not create a
+Expected: classify as format and recommend `compare`; do not create a
 Profile solely for this invocation.
 
 ## Step-by-step learning
@@ -31,14 +31,14 @@ Profile solely for this invocation.
 User wants a guided learning flow one step at a time.
 
 Expected: recommend an evidence-backed composition such as the existing
-`g.technical.learning` Profile with registered `learning=on` and
-`step_execution=on`, while preserving behavior/control ownership.
+`tech/learn` Profile with registered `learning=on` and
+`steps=on`, while preserving behavior/control ownership.
 
 ## Deep professional research
 
 User requests deep professional research.
 
-Expected: reuse the existing `g.research` Profile before proposing anything new.
+Expected: reuse the existing `research/deep` Profile before proposing anything new.
 
 ## Unknown friendly label
 

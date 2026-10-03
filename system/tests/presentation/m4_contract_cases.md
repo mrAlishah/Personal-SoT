@@ -16,7 +16,7 @@ These scenarios validate V1 format, tone, depth, placement, and additive composi
 
 ## case_04_format_additive
 
-`@fmt:eli5` + `@fmt:comparison_table` → both active when compatible.
+`@fmt:eli5` + `@fmt:compare` → both active when compatible.
 
 ## case_05_duplicate_format
 
@@ -180,27 +180,27 @@ Deep adds mechanisms, trade-offs, evidence, and boundaries; it must not pad with
 
 ## case_35_german_learning_vocab
 
-`g.german.learning` profile includes `vocab`.
+`lang/german` profile includes `vocab`.
 
 Expected: vocabulary appendix appears at the end under the suffix semantics owned by the format target metadata.
 
 ## case_36_technical_learning_concept
 
-`g.technical.learning` profile includes `concept`.
+`tech/learn` profile includes `concept`.
 
 Expected: concept appendix summarizes learned technical concepts at the end.
 
 ## case_37_technical_learning_remove_concept
 
-`@profile:g.technical.learning` + `@no:fmt:concept` → concept appendix disabled for that prompt while other profile defaults remain.
+`@profile:tech/learn` + `@no:fmt:concept` → concept appendix disabled for that prompt while other profile defaults remain.
 
 ## case_38_g_obsidian_note_profile
 
-`@profile:g.obsidian.note` → `yaml + md` formats enabled without changing behavior, tone, depth, language, or context.
+`@profile:obsidian/note` → `yaml + md` formats enabled without changing behavior, tone, depth, language, or context.
 
 ## case_39_obsidian_plus_german
 
-`@profile:g.obsidian.note` + `@profile:g.german.learning` → formats compose to include YAML frontmatter, Markdown-capable body, ELI5 rendering, and vocabulary suffix; language/tone/depth come from `g.german.learning`.
+`@profile:obsidian/note` + `@profile:lang/german` → formats compose to include YAML frontmatter, Markdown-capable body, ELI5 rendering, and vocabulary suffix; language/tone/depth come from `lang/german`.
 
 ## case_40_invalid_format_name
 

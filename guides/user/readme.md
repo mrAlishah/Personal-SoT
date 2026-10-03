@@ -50,6 +50,10 @@ To change response style or guidance in natural language, see
 [Customize responses](customize_responses.md). Existing capabilities are
 combined first; only a reusable Profile can be created or edited in Public V1.
 
+To bring your installation up to date safely, see
+[Update Personal-SoT](update.md). The Assistant always previews before
+anything changes and asks you to confirm that exact preview first.
+
 ## Safety rule
 
 Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.

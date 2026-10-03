@@ -142,4 +142,4 @@ yaml + concept
 → frontmatter + answer + concept appendix
 ```
 
-It MUST NOT convert `vocab`, `concept`, `comparison_table`, or other formats into YAML records.
+It MUST NOT convert `vocab`, `concept`, `compare`, or other formats into YAML records.

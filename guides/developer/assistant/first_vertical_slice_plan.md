@@ -1,5 +1,12 @@
 # Personal SoT Assistant First Vertical Slice Implementation Plan
 
+> **Status:** Historical implementation record (all tasks completed). File
+> paths and prompt identities below (`sot/create_project`, `sot/update_project`)
+> reflect the naming scheme in effect at implementation time and are
+> superseded by the runtime user-naming refactor; see
+> `system/prompts/prompt_contract.md` for current canonical identities
+> (`sot/project/create`, `sot/project/update`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver a client-neutral, beginner-first project create/use/update workflow with truthful local-write and web-preview behavior.

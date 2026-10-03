@@ -16,7 +16,7 @@ Each target registered under the `formats` section of `system/routing/switch_reg
 
 ```yaml
 ---
-format_id: <lowercase_snake_case_identifier>
+format_id: <lowercase [a-z0-9]+ identifier, no underscores>
 placement: <prefix|body|suffix>
 ---
 ```

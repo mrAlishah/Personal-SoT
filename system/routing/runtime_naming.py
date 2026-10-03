@@ -3,7 +3,7 @@ profile identity names; see system/routing/switch_syntax.md."""
 
 from dataclasses import dataclass
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 
 CANONICAL_BOOTSTRAP_ACTION = "@do:sot"
@@ -19,10 +19,11 @@ _SYSTEM_ACTIONS = (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION, HELP_ACT
 _BODILESS_SYSTEM_ACTIONS = (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION)
 _PROMPT_ACTION_KEYWORDS = (RUN_ACTION, EDIT_ACTION, DELETE_ACTION)
 
-_CUSTOM_PROFILE_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
-_BUILT_IN_PROFILE_RE = re.compile(r"^g\.[a-z0-9]+(?:\.[a-z0-9]+)*$")
+STRICT_SEGMENT = r"[a-z0-9]+"
 
-_PATH_SEGMENT = r"[a-z0-9]+(?:_[a-z0-9]+)*"
+_PROFILE_RE = re.compile(rf"^{STRICT_SEGMENT}(?:/{STRICT_SEGMENT})*$")
+
+_PATH_SEGMENT = STRICT_SEGMENT
 _PROMPT_PATH_RE = re.compile(rf"^{_PATH_SEGMENT}(?:/{_PATH_SEGMENT})*$")
 _PHYSICAL_PROMPT_PREFIX = "workspace/prompts/"
 
@@ -143,9 +144,9 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     """Resolve an exact `@run`/`@edit`/`@delete` prompt-action invocation.
 
     Prompt identity resolves exactly to `workspace/prompts/<prompt_id>.md`;
-    this validates only the identity's own grammar (lowercase snake_case
-    `/`-hierarchical segments), never a fuzzy match or a corrected
-    spelling. The legacy `@do:prompt:`/`@edit:prompt:`/`@delete:prompt:`/
+    this validates only the identity's own grammar (lowercase `[a-z0-9]+`
+    `/`-hierarchical segments, no underscores), never a fuzzy match or a
+    corrected spelling. The legacy `@do:prompt:`/`@edit:prompt:`/`@delete:prompt:`/
     `@confirm:delete:prompt:` spellings and bare `@prompt:` do not match
     any recognized keyword here and resolve to `None` (unresolved), never
     normalized. A recognized keyword with a malformed path (including a
@@ -177,21 +178,15 @@ def classify_prompt_action(text: str) -> Optional[PromptActionInvocation]:
     if candidate.startswith(_PHYSICAL_PROMPT_PREFIX) or candidate == "workspace":
         raise ValueError(f"{keyword} takes a prompt identity, not the physical prefix")
     if not _PROMPT_PATH_RE.fullmatch(candidate):
-        raise ValueError(f"{keyword} requires an exact lowercase_snake_case prompt path")
+        raise ValueError(f"{keyword} requires an exact lowercase [a-z0-9]+ prompt path with / hierarchy")
     return PromptActionInvocation(keyword, candidate)
 
 
-def profile_identity_kind(identity: str) -> Optional[Literal["custom", "built_in"]]:
-    """Classify an exact custom or product-owned built-in profile identity."""
-
-    if _BUILT_IN_PROFILE_RE.fullmatch(identity):
-        return "built_in"
-    if identity.startswith("g.") or identity.startswith("G."):
-        return None
-    if _CUSTOM_PROFILE_RE.fullmatch(identity):
-        return "custom"
-    return None
-
-
 def is_profile_identity(identity: str) -> bool:
-    return profile_identity_kind(identity) is not None
+    """Grammar-only check: no identity shape is reserved. Ownership (shipped
+    vs custom) is a repository-internal concern carried by the target
+    file's own frontmatter, never by the identity string; see
+    system/profiles/profile_contract.md and
+    system/personalization/profile_builder.py.
+    """
+    return bool(_PROFILE_RE.fullmatch(identity))
