@@ -198,6 +198,34 @@ class CoreValidationTests(unittest.TestCase):
 
             self.assertTrue(any("invalid format identifier" in error for error in errors))
 
+    def test_owner_field_accepts_product_and_custom(self):
+        for value in ("product", "custom"):
+            with self.subTest(value=value):
+                with TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    for name in ("workspace", "system", "guides"):
+                        (root / name).mkdir()
+                    source = f"---\nowner: {value}\n---\n"
+
+                    errors = validate_v1.validate_profile_source(
+                        root, root / "workspace/profiles/example.md", source
+                    )
+
+                    self.assertEqual([], [error for error in errors if "owner" in error])
+
+    def test_owner_field_rejects_unknown_value(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("workspace", "system", "guides"):
+                (root / name).mkdir()
+            source = "---\nowner: shipped\n---\n"
+
+            errors = validate_v1.validate_profile_source(
+                root, root / "workspace/profiles/example.md", source
+            )
+
+            self.assertTrue(any("owner" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

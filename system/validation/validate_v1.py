@@ -22,7 +22,8 @@ _STRICT_ID_RE = re.compile(rf"^{STRICT_SEGMENT}$")
 SCOPE_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*(?:/[a-z0-9]+(?:_[a-z0-9]+)*)*$")
 SWITCH_MAPPING_RE = re.compile(r"^\s*([a-z0-9_]+)\s+→\s+([a-z0-9_./]+\.md)\s*$")
 EXTERNAL_FILENAMES = {"AGENTS.md", "CLAUDE.md"}
-PROFILE_TOP_LEVEL = {"behaviors", "formats", "tone", "depth", "language", "controls"}
+PROFILE_TOP_LEVEL = {"behaviors", "formats", "tone", "depth", "language", "controls", "owner"}
+PROFILE_OWNER_VALUES = {"product", "custom"}
 RAW_SECRET_KEYS = {"password", "bank_password", "api_token", "private_key", "recovery_code", "session_cookie", "bank_login_credentials", "card_cvv", "cvv", "full_payment_card_number", "payment_card_number"}
 SAFE_SECRET_SENTINELS = {"not_stored", "none", "null", "redacted", "external_reference", "not_applicable"}
 PRIMARY_DIRS = {"workspace", "system", "guides"}
@@ -37,6 +38,7 @@ class ProfileManifest:
     formats: tuple[str, ...]
     tone: Optional[str]
     depth: Optional[str]
+    owner: Optional[str]
     primary_language: Optional[str]
     supporting_languages: tuple[str, ...]
     controls: tuple[tuple[str, str], ...]
@@ -414,6 +416,7 @@ def read_profile_manifest(source: str) -> ProfileManifest:
         tuple(lists.get("formats", [])),
         scalars.get("tone"),
         scalars.get("depth"),
+        scalars.get("owner"),
         scalars.get("language.primary"),
         tuple(lists.get("language.supporting", [])),
         tuple(
@@ -446,6 +449,8 @@ def _validate_profile_manifest(
     unknown = manifest.top_keys - PROFILE_TOP_LEVEL
     if unknown:
         errors.append(f"{rel}: unsupported profile fields {sorted(unknown)}")
+    if manifest.owner is not None and manifest.owner not in PROFILE_OWNER_VALUES:
+        errors.append(f"{rel}: invalid owner {manifest.owner!r}; expected 'product' or 'custom'")
     for key, value in manifest.controls:
         allowed = control_specs.get(key)
         if allowed is None:
