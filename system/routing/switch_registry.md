@@ -75,7 +75,7 @@ Examples:
 @control:steps=on
 ```
 
-Control identities are repository-owned lowercase_snake_case identifiers. Values are exact and validated by the target control contract.
+Control identities are lowercase `[a-z0-9]+` identifiers, no underscores. Values are exact and validated by the target control contract.
 
 ## dynamic_path_actions
 
