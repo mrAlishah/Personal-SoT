@@ -15,14 +15,16 @@ The filename is the runtime profile identity; users invoke `@profile:<profile_na
 Two identity grammars are valid:
 
 ```text
-custom Profile:  <lowercase_snake_case>
-shipped Profile: g.<segment>[.<segment>...]
+custom Profile:  <segment>[/<segment>...]
+shipped Profile: g/<segment>[/<segment>...]
+
+segment := [a-z0-9]+
 ```
 
-Shipped-profile segments are non-empty lowercase ASCII letters or digits.
-Underscores are not valid inside `g.*` identities. The `g.*` namespace is
-reserved for product-owned Profiles; user-created Profiles use
-`lowercase_snake_case`.
+A custom Profile identity's first segment must not be the literal `g`;
+that string is reserved exactly, not fuzzy-matched. The `g/*` namespace is
+reserved for product-owned Profiles; user-created Profiles use any other
+first segment.
 
 ## runtime_resolution
 
@@ -35,9 +37,13 @@ Profile lookup is exact and path-derived:
 
 Profiles are not duplicated in a flat switch registry. A missing file is an unresolved profile configuration error. Case, spelling, aliases, and nearest-match normalization are not applied.
 
-Personalization may discover, select, and compose shipped `g.*` Profiles.
+Personalization may discover, select, and compose shipped `g/*` Profiles.
 User-guided create/edit operations do not mutate that reserved namespace; a
 customized reusable composition receives a separate custom Profile identity.
+Ownership is enforced deterministically by `profile_identity_kind()` in
+`system/routing/runtime_naming.py`, which classifies any identity whose
+first `/`-segment is exactly `g` as reserved — never as custom — rather
+than relying on a frontmatter field or a separate registry entry.
 
 ## representation
 
