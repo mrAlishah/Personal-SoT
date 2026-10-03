@@ -458,6 +458,202 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertFalse((external_workspace / "profiles/formalshort.md").exists())
 
+    def test_nested_create_success(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertEqual("workspace/profiles/tech/learn.md", result.affected_path)
+            self.assertTrue((root / "workspace/profiles/tech/learn.md").is_file())
+            self.assertFalse((root / "workspace/profiles/learn.md").exists())
+
+    def test_nested_edit_success(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/custom").mkdir()
+            (root / "workspace/profiles/custom/deep.md").write_text(
+                self.source(), encoding="utf-8"
+            )
+            proposal = preview_change(
+                root,
+                "edit",
+                "custom/deep",
+                self.source(extra="formats: []\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+
+            result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertIn(
+                "formats: []", (root / "workspace/profiles/custom/deep.md").read_text(encoding="utf-8")
+            )
+
+    def test_nested_stale_write_requires_new_preview(self):
+        for operation in ("create", "edit"):
+            with self.subTest(operation=operation), TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.repository(root)
+                self.add_dependencies(root)
+                (root / "workspace/profiles/tech").mkdir()
+                path = root / "workspace/profiles/tech/learn.md"
+                if operation == "edit":
+                    path.write_text(self.source(), encoding="utf-8")
+                proposal = preview_change(
+                    root,
+                    operation,
+                    "tech/learn",
+                    self.source(extra="formats: []\n"),
+                    same_semantic_owner=operation == "edit",
+                    fact_safe=True,
+                    write_capable=True,
+                )
+                path.write_text(self.source(body="concurrent\n"), encoding="utf-8")
+
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+                self.assertFalse(result.write_applied)
+                self.assertIn("concurrent", path.read_text(encoding="utf-8"))
+
+    def test_nested_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            target = root / proposal.target
+            real_link = os.link
+
+            def concurrent_create(*args, **kwargs):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("concurrent\n", encoding="utf-8")
+                return real_link(*args, **kwargs)
+
+            with patch("system.personalization.profile_builder.os.link", side_effect=concurrent_create):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.write_applied)
+            self.assertEqual("concurrent\n", target.read_text(encoding="utf-8"))
+
+    def test_nested_concurrent_edit_is_serialized_at_atomic_boundary(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/tech").mkdir()
+            target = root / "workspace/profiles/tech/learn.md"
+            target.write_text(self.source(), encoding="utf-8")
+            proposal = preview_change(
+                root,
+                "edit",
+                "tech/learn",
+                self.source(extra="formats: []\n"),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+            concurrent_results = []
+            real_replace = os.replace
+
+            def concurrent_apply(*args, **kwargs):
+                concurrent_results.append(
+                    apply_change(root, proposal, proposal.confirmation_digest)
+                )
+                return real_replace(*args, **kwargs)
+
+            with patch("system.personalization.profile_builder.os.replace", side_effect=concurrent_apply):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertTrue(result.success, result.validation_errors)
+            self.assertFalse(concurrent_results[0].write_applied)
+
+    def test_intermediate_directory_symlink_cannot_redirect_write(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            self.repository(root)
+            self.add_dependencies(root)
+            (root / "workspace/profiles/tech").symlink_to(Path(outside), target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                preview_change(
+                    root,
+                    "create",
+                    "tech/learn",
+                    self.source(),
+                    same_semantic_owner=False,
+                    fact_safe=True,
+                    write_capable=True,
+                )
+
+            self.assertFalse((Path(outside) / "learn.md").exists())
+
+    def test_intermediate_directory_swap_during_apply_cannot_redirect_write(self):
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            external = Path(outside)
+            self.repository(root)
+            self.add_dependencies(root)
+            proposal = preview_change(
+                root,
+                "create",
+                "tech/learn",
+                self.source(),
+                same_semantic_owner=False,
+                fact_safe=True,
+                write_capable=True,
+            )
+            original_validate = validate_v1.validate_profile_source
+
+            def swap_intermediate_directory(*args):
+                tech = root / "workspace/profiles/tech"
+                tech.rename(root / "workspace/profiles/tech_original")
+                tech.symlink_to(external, target_is_directory=True)
+                return original_validate(*args)
+
+            with patch.object(validate_v1, "validate_profile_source", side_effect=swap_intermediate_directory):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
+
+            self.assertFalse(result.success)
+            self.assertFalse((external / "learn.md").exists())
+
+    def test_edit_rejects_product_owned_nested_profile_in_real_repository(self):
+        root = Path(__file__).resolve().parents[3]
+        with self.assertRaisesRegex(ValueError, "product-owned"):
+            preview_change(
+                root,
+                "edit",
+                "code/review",
+                self.source(),
+                same_semantic_owner=True,
+                fact_safe=True,
+                write_capable=True,
+            )
+
     def test_concurrent_create_at_atomic_boundary_is_not_overwritten(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

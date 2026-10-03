@@ -181,27 +181,39 @@ def _read_at(directory_fd: int, name: str) -> str | None:
         return source.read()
 
 
-def _open_profile_directory(root: Path) -> tuple[int, int, int]:
-    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+def _open_profile_directory_chain(
+    root: Path, segments: tuple[str, ...], *, create_missing: bool
+) -> list[int]:
+    """Open workspace/profiles/<segments...> as a chain of O_NOFOLLOW
+    directory fds, one per path component. Every level -- including each
+    intermediate Profile-domain segment, not just the fixed
+    workspace/profiles prefix -- is opened with O_NOFOLLOW, so a symlink
+    swapped in at any depth raises rather than being silently followed.
+    For a `create` whose intermediate segments do not exist yet,
+    `create_missing` makes each missing directory before opening it;
+    `FileExistsError` from a concurrent, legitimate creation of the same
+    directory is swallowed, but a pre-existing *file* or symlink at that
+    path is never substituted for -- the immediately following O_NOFOLLOW
+    open rejects it. The caller owns closing every fd in the returned
+    list, in any order, on every exit path.
+    """
+    fds: list[int] = []
     try:
-        workspace_fd = os.open(
-            "workspace",
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-            dir_fd=root_fd,
-        )
-        try:
-            profiles_fd = os.open(
-                "profiles",
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=workspace_fd,
-            )
-        except Exception:
-            os.close(workspace_fd)
-            raise
+        fds.append(os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+        fds.append(os.open("workspace", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
+        fds.append(os.open("profiles", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
+        for segment in segments:
+            if create_missing:
+                try:
+                    os.mkdir(segment, 0o777, dir_fd=fds[-1])
+                except FileExistsError:
+                    pass
+            fds.append(os.open(segment, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
     except Exception:
-        os.close(root_fd)
+        for fd in fds:
+            os.close(fd)
         raise
-    return root_fd, workspace_fd, profiles_fd
+    return fds
 
 
 def _same_directory_entry(parent_fd: int, name: str, child_fd: int) -> bool:
@@ -213,9 +225,15 @@ def _same_directory_entry(parent_fd: int, name: str, child_fd: int) -> bool:
     )
 
 
-def _directory_chain_unchanged(root_fd: int, workspace_fd: int, profiles_fd: int) -> bool:
-    return _same_directory_entry(root_fd, "workspace", workspace_fd) and _same_directory_entry(
-        workspace_fd, "profiles", profiles_fd
+def _directory_chain_unchanged(fds: list[int], names: tuple[str, ...]) -> bool:
+    """Re-verify every link in the opened chain (`fds[0]` is the repository
+    root; `fds[i]` must still be `names[i - 1]` inside `fds[i - 1]`), so a
+    swap at any depth -- not only workspace/profiles -- invalidates the
+    write.
+    """
+    return all(
+        _same_directory_entry(fds[index - 1], names[index - 1], fds[index])
+        for index in range(1, len(fds))
     )
 
 
@@ -240,9 +258,9 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
     if confirmation_digest != proposal.confirmation_digest or expected != proposal.confirmation_digest:
         return _not_applied(proposal, "confirmation does not match the current proposal")
 
-    root_fd: int | None = None
-    workspace_fd: int | None = None
+    fds: list[int] = []
     directory_fd: int | None = None
+    chain_names: tuple[str, ...] = ()
     lock_name: str | None = None
     temporary_name: str | None = None
     write_applied = False
@@ -251,8 +269,14 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         relative, target = _target(root, proposal.identity)
         if relative != proposal.target:
             return _not_applied(proposal, "proposal target changed; create a new preview")
-        root_fd, workspace_fd, directory_fd = _open_profile_directory(root)
-        candidate_lock = f".{proposal.identity}.lock"
+        segments = tuple(proposal.identity.split("/")[:-1])
+        chain_names = ("workspace", "profiles", *segments)
+        fds = _open_profile_directory_chain(
+            root, segments, create_missing=proposal.operation == "create"
+        )
+        directory_fd = fds[-1]
+        leaf_name = target.name
+        candidate_lock = f".{leaf_name}.lock"
         lock_fd = os.open(
             candidate_lock,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -261,7 +285,7 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         )
         os.close(lock_fd)
         lock_name = candidate_lock
-        current = _read_at(directory_fd, target.name)
+        current = _read_at(directory_fd, leaf_name)
         if (_digest(current) if current is not None else None) != proposal.before_digest:
             return _not_applied(proposal, "Profile changed after preview; create a new preview")
         if validate_v1.profile_validation_state_digest(root, proposal.content) != proposal.validation_state_digest:
@@ -270,7 +294,7 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         if errors:
             return _not_applied(proposal, *errors)
 
-        temporary_name = f".{proposal.identity}.{token_hex(8)}.tmp"
+        temporary_name = f".{leaf_name}.{token_hex(8)}.tmp"
         temporary_fd = os.open(
             temporary_name,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -281,17 +305,17 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
             output.write(proposal.content)
             output.flush()
             os.fsync(output.fileno())
-        current = _read_at(directory_fd, target.name)
+        current = _read_at(directory_fd, leaf_name)
         if (_digest(current) if current is not None else None) != proposal.before_digest:
             return _not_applied(proposal, "Profile changed during write; create a new preview")
         if validate_v1.profile_validation_state_digest(root, proposal.content) != proposal.validation_state_digest:
             return _not_applied(proposal, "Profile dependencies changed during write; create a new preview")
-        if not _directory_chain_unchanged(root_fd, workspace_fd, directory_fd):
+        if not _directory_chain_unchanged(fds, chain_names):
             return _not_applied(proposal, "Profile root changed during write; create a new preview")
         if proposal.operation == "create":
             os.link(
                 temporary_name,
-                target.name,
+                leaf_name,
                 src_dir_fd=directory_fd,
                 dst_dir_fd=directory_fd,
                 follow_symlinks=False,
@@ -301,13 +325,13 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         else:
             os.replace(
                 temporary_name,
-                target.name,
+                leaf_name,
                 src_dir_fd=directory_fd,
                 dst_dir_fd=directory_fd,
             )
             write_applied = True
         temporary_name = None
-        if not _directory_chain_unchanged(root_fd, workspace_fd, directory_fd):
+        if not _directory_chain_unchanged(fds, chain_names):
             return ApplyResult(relative, proposal.diff, True, False, None, ("Profile root changed after write",), False)
         os.unlink(lock_name, dir_fd=directory_fd)
         lock_name = None
@@ -360,8 +384,5 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
                     os.unlink(lock_name, dir_fd=directory_fd)
                 except OSError:
                     pass
-            os.close(directory_fd)
-        if workspace_fd is not None:
-            os.close(workspace_fd)
-        if root_fd is not None:
-            os.close(root_fd)
+        for fd in fds:
+            os.close(fd)
