@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -11,6 +12,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 class DoctorTests(unittest.TestCase):
+    def private_identifier(self) -> str:
+        return "/".join(("mrAlishah", "obsidian-ai-context-source-of-truth"))
+
     def minimal_repository(self, root: Path) -> None:
         for name in ("workspace", "system", "guides"):
             (root / name).mkdir()
@@ -20,6 +24,27 @@ class DoctorTests(unittest.TestCase):
             "# Runtime\n\n"
             "deployment_config: workspace/adapters/public_bootstrap.md\n"
             "runtime_contract: system/adapters/runtime_bootstrap.md\n",
+            encoding="utf-8",
+        )
+
+    def personal_repository(self, root: Path, private_identifier: str = "") -> None:
+        shutil.copytree(
+            REPOSITORY_ROOT,
+            root,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".git", ".claude", ".serena", ".worktrees", "__pycache__"),
+        )
+        context = root / "workspace/context/personal/identity.md"
+        context.parent.mkdir(parents=True, exist_ok=True)
+        context.write_text(
+            "---\nai_access: allow\n---\n"
+            + (private_identifier + "\n" if private_identifier else "Personal context\n"),
+            encoding="utf-8",
+        )
+        registry = root / "system/routing/context_registry.md"
+        registry.write_text(
+            registry.read_text(encoding="utf-8")
+            + "\n```\npersonal\n→ workspace/context/personal/\n```\n",
             encoding="utf-8",
         )
 
@@ -100,6 +125,30 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("✓ ChatGPT configuration detected", rendered)
         self.assertIn("⚠ ChatGPT is preview-only", rendered)
         self.assertNotIn("run write validation", rendered)
+
+    def test_personal_private_identifier_does_not_block_default_readiness(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.personal_repository(root, "repository: " + self.private_identifier())
+
+            report = doctor.run(root)
+            rendered = doctor.render(report)
+
+            self.assertFalse(report.blocked)
+            self.assertIn("✓ Personal workspace is valid", rendered)
+            self.assertNotIn("Public-distribution safety check", rendered)
+
+    def test_explicit_public_distribution_check_blocks_private_identifier(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.personal_repository(root, "repository: " + self.private_identifier())
+
+            report = doctor.run(root, public_distribution=True)
+            rendered = doctor.render(report, advanced=True)
+
+            self.assertTrue(report.blocked)
+            self.assertIn("✗ Public-distribution safety check found a problem", rendered)
+            self.assertIn("private source identifier", rendered)
 
     def test_client_topology_comes_from_adapter_metadata(self):
         with TemporaryDirectory() as directory:
@@ -186,7 +235,7 @@ class DoctorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = doctor.render(doctor.run(root), advanced=True)
+            rendered = doctor.render(doctor.run(root, public_distribution=True), advanced=True)
 
             self.assertIn("✗ One or more prompts are invalid", rendered)
             self.assertIn("✗ Public-distribution safety check found a problem", rendered)
@@ -210,6 +259,33 @@ class DoctorTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("✓ Setup is ready", result.stdout)
+
+    def test_direct_cli_public_distribution_flag_enables_public_check(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "repository"
+            root.mkdir()
+            self.personal_repository(root, "repository: " + self.private_identifier())
+
+            result = subprocess.run(
+                (
+                    sys.executable,
+                    str(REPOSITORY_ROOT / "system/diagnostics/doctor.py"),
+                    "--root",
+                    str(root),
+                    "--adapter",
+                    "workspace/adapters/AGENTS.md",
+                    "--write-capability",
+                    "available",
+                    "--public-distribution",
+                ),
+                cwd=REPOSITORY_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("✗ Public-distribution safety check found a problem", result.stdout)
 
 
 if __name__ == "__main__":
