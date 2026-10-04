@@ -34,7 +34,10 @@ class DoctorTests(unittest.TestCase):
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns(".git", ".claude", ".serena", ".worktrees", "__pycache__"),
         )
-        context = root / "workspace/context/personal/identity.md"
+        context_root = root / "workspace/context"
+        if context_root.exists():
+            shutil.rmtree(context_root)
+        context = context_root / "personal/identity.md"
         context.parent.mkdir(parents=True, exist_ok=True)
         context.write_text(
             "---\nai_access: allow\n---\n"
@@ -43,8 +46,12 @@ class DoctorTests(unittest.TestCase):
         )
         registry = root / "system/routing/context_registry.md"
         registry.write_text(
-            registry.read_text(encoding="utf-8")
-            + "\n```\npersonal\n→ workspace/context/personal/\n```\n",
+            "# context_registry\n\n"
+            "## registered_scopes\n\n"
+            "```text\n"
+            "personal\n"
+            "→ workspace/context/personal/\n"
+            "```\n",
             encoding="utf-8",
         )
 
