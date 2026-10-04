@@ -190,6 +190,7 @@ def run(
     root: Path,
     adapter: str | None = None,
     write_capability: str = "unknown",
+    public_distribution: bool = False,
 ) -> Report:
     root = root.resolve()
     mode = validate_v1.infer_mode(root)
@@ -209,14 +210,17 @@ def run(
             "An invalid prompt may not resolve or may use unsupported configuration.",
             "Review the affected prompt with the Assistant before using or changing it.",
         ),
-        _validator_finding(
-            validate_public.run(root),
-            "Public-distribution safety check passed",
-            "Public-distribution safety check found a problem",
-            "Machine-specific paths, private identifiers, or likely secrets must not enter the public product.",
-            "Remove or safely replace the reported material through a confirmed repair proposal.",
-        ),
     ]
+    if public_distribution:
+        findings.append(
+            _validator_finding(
+                validate_public.run(root),
+                "Public-distribution safety check passed",
+                "Public-distribution safety check found a problem",
+                "Machine-specific paths, private identifiers, or likely secrets must not enter the public product.",
+                "Remove or safely replace the reported material through a confirmed repair proposal.",
+            )
+        )
     findings.extend(_adapter_findings(root, adapter, write_capability))
     return Report(tuple(findings))
 
@@ -250,9 +254,19 @@ def main() -> int:
         choices=("unknown", "available", "unavailable"),
         default="unknown",
     )
+    parser.add_argument(
+        "--public-distribution",
+        action="store_true",
+        help="also run the strict public-distribution validator",
+    )
     parser.add_argument("--advanced", action="store_true")
     args = parser.parse_args()
-    report = run(args.root, args.adapter, args.write_capability)
+    report = run(
+        args.root,
+        args.adapter,
+        args.write_capability,
+        public_distribution=args.public_distribution,
+    )
     print(render(report, args.advanced))
     return 1 if report.blocked else 0
 

@@ -18,9 +18,11 @@ selected AI client configuration and declared host capability
 
 Validator results remain authoritative for workspace, context, project, prompt, profile, access, reference, and public-distribution validity.
 
+Installation/readiness diagnosis is distinct from public-distribution certification. Normal Doctor runs the inferred Core/Personal validator and Prompt validator, but does not require an installed Personal workspace to pass the public-distribution validator. Public-distribution checking is an explicit opt-in Doctor scope; when requested, `validate_public.py` remains authoritative for that finding. Public release acceptance remains owned by the canonical branch/release workflow, including its full unit-test, Core, Prompt, and Public gates; Doctor does not replace that workflow.
+
 ## Execution
 
-On a capable local host, run Doctor from the repository root and supply the active repository-owned adapter plus the actual write capability. The adapter owns its client label, discovery surface, and entrypoint wiring; Doctor does not maintain a client registry. The Assistant translates the report into the user's selected language without changing finding status, blocking state, or meaning.
+On a capable local host, run Doctor from the repository root and supply the active repository-owned adapter plus the actual write capability. Add `--public-distribution` only when the strict public-distribution check is explicitly requested. The adapter owns its client label, discovery surface, and entrypoint wiring; Doctor does not maintain a client registry. The Assistant translates the report into the user's selected language without changing finding status, blocking state, or meaning.
 
 A host that cannot run local commands may explain the workflow and capability limitation, but must state that Doctor was not run there.
 
