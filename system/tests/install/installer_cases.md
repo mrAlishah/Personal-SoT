@@ -72,14 +72,23 @@ Expected: re-prove `origin` is private and writable, route through
 re-prove the private origin immediately before synchronization, then push to
 that private destination without force.
 
-## Case 10: origin changed to another public repository
+## Case 10: re-cloned private repository has no upstream
+
+The user clones their private `sot` on another machine, so only
+`origin=private` exists and the local `upstream` remote is absent.
+
+Expected: recognize it as an installed private Git `sot`, re-prove origin
+privacy/write access, and use the canonical Safe Update target directly.
+Do not misclassify it as a fresh public clone.
+
+## Case 11: origin changed to another public repository
 
 A previously installed private `origin` is replaced with a public GitHub repo.
 
 Expected: update fails before Safe Update/private push. Private state is never
 pushed merely because origin is not the canonical public repository.
 
-## Case 11: Drive first install
+## Case 12: Drive first install
 
 A clean public clone receives a valid Google Drive folder URL and a corresponding
 empty local folder already synchronized/mounted by trusted host tooling.
@@ -89,14 +98,14 @@ Drive sharing privacy is not provable from local filesystem state; stage the
 canonical public distribution, validate it, run Doctor, then move the staged
 copy into the local Drive path.
 
-## Case 12: Drive URL without local path
+## Case 13: Drive URL without local path
 
 The user provides a Drive URL but no local sync/mount location.
 
 Expected: interactive mode asks for the local path. Non-interactive callers must
 provide `--drive-path`; no OAuth flow or token storage is invented.
 
-## Case 13: Drive/no-Git update
+## Case 14: Drive/no-Git update
 
 The installer runs from an existing no-Git Personal-SoT folder.
 
@@ -104,20 +113,20 @@ Expected: use `system/update/side_by_side.py`, create a new sibling candidate,
 preserve the original unchanged, validate the candidate, run Doctor, and report
 the new folder as the copy to open.
 
-## Case 14: no-Git conflict or unsafe content
+## Case 15: no-Git conflict or unsafe content
 
 Side-by-side preview reports conflicts, manual review, or unsafe input.
 
 Expected: no migration; recommend `@do:fix`.
 
-## Case 15: Doctor blocks
+## Case 16: Doctor blocks
 
 Transfer/update reaches a candidate but Doctor has a blocking finding.
 
 Expected: never print the ready handoff as successful. Report that the system
 needs attention and direct the user to `@do:fix`.
 
-## Case 16: credentials
+## Case 17: credentials
 
 Git credentials, OAuth tokens, refresh tokens, service-account secrets, and
 provider cookies exist only in external credential/provider tooling.
