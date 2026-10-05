@@ -50,10 +50,11 @@ Unknown, dirty, ambiguous, or incompatible states fail closed.
 
 Initial GitHub installation requires:
 
-- a clean `sot public` clone on `main`;
+- a clean `sot public` clone on `main` whose HEAD exactly equals current canonical `sot public/main`;
 - an exact GitHub repository URL;
 - proof the destination exists and is not public;
 - proof current Git credentials can read and dry-run push;
+- no active Git URL rewrite rules that could redirect the chosen destination;
 - an empty destination repository.
 
 The installer then creates this topology:
@@ -126,6 +127,27 @@ that new copy for subsequent work.
 
 This deliberately preserves the existing Safe Update invariant rather than
 inventing in-place Drive mutation.
+
+## Runtime handoff boundary
+
+The installer owns mechanical storage/topology/readiness only. It does not
+invent Personal facts, a default factual scope, restricted-context authorization,
+or a user Profile merely because the destination is private.
+
+The repository adapters already define the opened repository root as the
+canonical SoT root. After installation:
+
+```text
+open/connect private repository root
+→ @do:sot
+→ source/runtime re-anchor to that private root
+→ @do:setup
+→ guided onboarding/configuration
+```
+
+The initial `public_bootstrap.md` remains intentionally onboarding-safe until
+the user's confirmed setup creates/configures durable Personal state. Private
+repository visibility by itself is not authorization to load restricted facts.
 
 ## Validation
 
