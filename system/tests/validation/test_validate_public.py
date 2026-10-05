@@ -72,6 +72,32 @@ class PublicValidationTests(unittest.TestCase):
         self.assertEqual(1, len(errors))
         self.assertIn("possible raw secret", errors[0])
 
+    def test_ignores_local_worktree_and_claude_settings_artifacts(self):
+        errors = self.validate(
+            {
+                ".worktrees/example/workspace/private.md": (
+                    "source_root: /Users/alice/private-sot\n"
+                    "active_ref: v1.2_ai_personal_source_of_truth\n"
+                ),
+                ".claude/settings.local.json": (
+                    '{"source_root": "/Users/alice/private-sot", '
+                    '"active_ref": "v1.2_ai_personal_source_of_truth"}\n'
+                ),
+            }
+        )
+
+        self.assertEqual([], errors)
+
+    def test_does_not_ignore_other_claude_files(self):
+        errors = self.validate(
+            {
+                ".claude/settings.json": "source_root: /Users/alice/private-sot\n",
+            }
+        )
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("user-specific home path", errors[0])
+
     def test_rejects_common_secret_assignments_and_private_key_blocks(self):
         errors = self.validate(
             {
