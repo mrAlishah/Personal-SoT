@@ -23,6 +23,8 @@ Assistant:
 
 The reusable SoT engine, safety validators, guided setup, Personal SoT Assistant contracts, and first Project Builder flow are present. The repository starts without real Personal facts and creates only the modules your confirmed setup or project actually needs.
 
+In user-facing source language, `sot` means your private Personal-SoT installation/repository. `sot public` means the upstream reusable product at `mrAlishah/Personal-SoT`. They are different source roles and the public repository must not receive your Personal facts.
+
 Start with [Set up Personal-SoT](setup.md).
 
 If setup or configuration seems wrong, run the [beginner-friendly Doctor](doctor.md).
@@ -87,7 +89,7 @@ optional navigation, not a choice you must make before getting help:
 - Explain — learn what a feature means and when to use it.
 - Diagnose — check the system and get beginner-friendly repair guidance.
 
-Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, `@run`, `@do:help`, and `@do:assist` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
+Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, `@run`, `@do:help`, `@do:assist`, `@do:setup`, `@do:doctor`, and `@do:fix` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
 
 See [Get help from the Assistant](assistant_guidance.md) for examples, trial
 customizations, and the difference between a suggestion, preview and saved change.
