@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 import uuid
@@ -51,7 +52,7 @@ class CommandResult:
     stderr: str = ""
 
 
-def _run(args, *, cwd=None, input_text=None, timeout=120) -> CommandResult:
+def _run(args, *, cwd=None, input_text=None, timeout=120, env=None) -> CommandResult:
     try:
         result = subprocess.run(
             list(args),
@@ -62,6 +63,7 @@ def _run(args, *, cwd=None, input_text=None, timeout=120) -> CommandResult:
             text=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise InstallError(f"Required command is not installed: {args[0]}") from exc
@@ -71,7 +73,23 @@ def _run(args, *, cwd=None, input_text=None, timeout=120) -> CommandResult:
 
 
 def _git(root: Path, *args, timeout=120) -> CommandResult:
-    return _run(("git",) + tuple(args), cwd=root, timeout=timeout)
+    # Keep provider credentials available while disabling repository/user hooks
+    # and replace-object interpretation for installer-owned Git operations.
+    with tempfile.TemporaryDirectory(prefix="personal_sot_install_hooks_") as hooks:
+        env = os.environ.copy()
+        env["GIT_NO_REPLACE_OBJECTS"] = "1"
+        return _run(
+            (
+                "git",
+                "-c",
+                f"core.hooksPath={hooks}",
+                "-c",
+                "core.fsmonitor=false",
+            ) + tuple(args),
+            cwd=root,
+            timeout=timeout,
+            env=env,
+        )
 
 
 def _check_python() -> None:
@@ -100,9 +118,25 @@ def _git_clean(root: Path) -> bool:
 
 
 def _remote_url(root: Path, name: str, *, push: bool = False) -> str | None:
-    args = ("remote", "get-url") + (("--push",) if push else ()) + (name,)
-    result = _git(root, *args)
+    key = f"remote.{name}.{'pushurl' if push else 'url'}"
+    result = _git(root, "config", "--local", "--get", key)
     return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+
+
+def _reject_git_url_rewrites(root: Path) -> None:
+    result = _git(
+        root,
+        "config",
+        "--get-regexp",
+        r"^url\..*\.(insteadof|pushinsteadof)$",
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        raise InstallError(
+            "Git URL rewrite rules are configured. Disable url.*.insteadOf/pushInsteadOf "
+            "for the installer so the private destination cannot be redirected."
+        )
+    if result.returncode not in (0, 1):
+        raise InstallError("Could not verify Git URL rewrite safety.")
 
 
 def _github_slug(value: str) -> str | None:
@@ -171,7 +205,7 @@ def _sync_fresh_public_clone(root: Path) -> str:
     if not _is_git_root(root):
         raise InstallError("Initial one-click install must be run from a Git clone of sot public.")
     if not _git_clean(root):
-        raise InstallError("The public clone has local changes. Commit/remove them before installation.")
+        raise InstallError("The public clone has local changes. Use a clean fresh clone for installation.")
 
     branch = _git(root, "branch", "--show-current")
     if branch.returncode != 0 or branch.stdout.strip() != PUBLIC_REF:
@@ -183,32 +217,19 @@ def _sync_fresh_public_clone(root: Path) -> str:
     if _remote_url(root, "upstream") is not None:
         raise InstallError("An upstream remote already exists; this does not look like a fresh public clone.")
 
-    fetched = _git(root, "fetch", "--quiet", "origin", PUBLIC_REF, timeout=180)
-    if fetched.returncode != 0:
-        raise InstallError("Could not fetch current sot public/main.")
-
-    counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...origin/{PUBLIC_REF}")
-    if counts.returncode != 0:
-        raise InstallError("Could not compare the local clone with sot public/main.")
-    try:
-        ahead, behind = (int(value) for value in counts.stdout.split())
-    except (TypeError, ValueError):
-        raise InstallError("Could not interpret Git history state.") from None
-
-    if ahead:
-        raise InstallError("The public clone has local commits. Use a fresh clone for one-click installation.")
-    if behind:
-        merged = _git(root, "merge", "--ff-only", f"origin/{PUBLIC_REF}", timeout=180)
-        if merged.returncode != 0:
-            raise InstallError("Could not fast-forward the public clone safely.")
-
     head = _git(root, "rev-parse", "HEAD")
     if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", head.stdout.strip()):
         raise InstallError("Could not resolve the current public commit.")
 
+    resolved = target.resolve()
+    if head.stdout.strip() != resolved.commit:
+        raise InstallError(
+            "This public clone is not exactly current sot public/main. "
+            "Use a fresh clone, then run the installer again."
+        )
+
     _public_validator(root)
     return head.stdout.strip()
-
 
 def _anonymous_github_visibility(slug: str) -> str:
     request = urllib.request.Request(
@@ -230,6 +251,7 @@ def _anonymous_github_visibility(slug: str) -> str:
 
 
 def _prove_existing_private_github_origin(root: Path, url: str) -> str:
+    _reject_git_url_rewrites(root)
     slug = _github_slug(url)
     if slug is None or slug.casefold() == PUBLIC_REPOSITORY.casefold():
         raise InstallError("Private origin is not a valid non-public GitHub repository.")
@@ -258,6 +280,7 @@ def _prove_existing_private_github_origin(root: Path, url: str) -> str:
 
 
 def _verify_private_github_destination(root: Path, url: str) -> str:
+    _reject_git_url_rewrites(root)
     slug = _github_slug(url)
     if slug is None:
         raise InstallError("Use an exact GitHub repository URL (HTTPS or SSH).")
