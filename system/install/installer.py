@@ -169,9 +169,17 @@ def _drive_folder_id(value: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _ask(prompt: str, *, option: str) -> str:
+    if not sys.stdin.isatty():
+        raise InstallError(f"Interactive input is unavailable; provide {option}.")
+    return input(prompt).strip()
+
+
 def _confirm(message: str, *, assume_yes: bool) -> None:
     if assume_yes:
         return
+    if not sys.stdin.isatty():
+        raise InstallError("Interactive confirmation is unavailable; review the preview and rerun with --yes.")
     answer = input(f"{message} [y/N]: ").strip().casefold()
     if answer not in {"y", "yes"}:
         raise InstallError("Cancelled. Nothing was changed.")
@@ -404,6 +412,10 @@ def _update_git(root: Path, *, assume_yes: bool) -> None:
     if not _git_private_topology(root):
         raise InstallError("This Git installation does not have a recognizable private GitHub origin/public update topology.")
 
+    branch = _git(root, "branch", "--show-current")
+    if branch.returncode != 0 or branch.stdout.strip() != PUBLIC_REF:
+        raise InstallError("Installer Safe Update must run from the private main branch.")
+
     origin = _remote_url(root, "origin")
     if origin is None:
         raise InstallError("Private origin is missing.")
@@ -559,7 +571,7 @@ def _update_no_git(current: Path, *, assume_yes: bool) -> None:
     _doctor(destination)
     print(f"✓ Updated copy is ready: {destination}")
     print(f"✓ Original copy was not changed: {current}")
-    _print_ready(destination, provider="google_drive")
+    _print_ready(destination, provider="no_git_or_drive")
 
 
 def _print_ready(root: Path, *, provider: str) -> None:
@@ -576,7 +588,7 @@ def _choose_target() -> str:
     print("\nWhere should your private sot live?")
     print("  1. GitHub private repository")
     print("  2. Google Drive synced/mounted folder")
-    choice = input("> ").strip()
+    choice = _ask("> ", option="--target github|drive")
     if choice == "1":
         return "github"
     if choice == "2":
@@ -618,13 +630,20 @@ def main(argv=None) -> int:
 
         selected = args.target or _choose_target()
         if selected == "github":
-            destination = args.destination or input("Private GitHub repository URL: ").strip()
+            destination = args.destination or _ask(
+                "Private GitHub repository URL: ", option="--destination <private-github-url>"
+            )
             _install_github(root, destination, assume_yes=args.yes)
         else:
-            drive_url = args.destination or input("Google Drive folder URL: ").strip()
+            drive_url = args.destination or _ask(
+                "Google Drive folder URL: ", option="--destination <google-drive-folder-url>"
+            )
             drive_path = args.drive_path
             if drive_path is None:
-                drive_path = Path(input("Local synced/mounted path for that Drive folder: ").strip())
+                drive_path = Path(_ask(
+                    "Local synced/mounted path for that Drive folder: ",
+                    option="--drive-path <local-synced-path>",
+                ))
             _initial_drive_install(root, drive_url, drive_path, assume_yes=args.yes)
         return 0
     except (InstallError, OSError) as exc:
