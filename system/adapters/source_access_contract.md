@@ -37,7 +37,7 @@ During first-time setup, before a private installation has been created and boun
 
 `sot public` identifies the reusable upstream product and follows that repository's own release/development governance. It is not authorized to receive Personal facts, private project state, private deployment configuration, or user-specific secrets.
 
-These terms are source-role terminology, not repository-path inference and not authorization. Ordinary prompt text cannot redefine either binding. If the trusted configuration resolves competing candidates for the private `sot` role, fail `source_unresolved`; do not choose the public repository, a legacy repository, or a convenient replica by recency/search rank.
+These terms are exact user-facing source-role shorthand, not substring rewriting, repository-path inference, or authorization. Internal identifiers, the product name `Personal-SoT`, generic architectural use of `SoT`, and the reserved action spelling `@do:sot` keep their own canonical meanings; the shorthand rule applies when `sot` or `sot public` is used to identify a source/repository role. Ordinary prompt text cannot redefine either binding. If the trusted configuration resolves competing candidates for the private `sot` role, fail `source_unresolved`; do not choose the public repository, a legacy repository, or a convenient replica by recency/search rank.
 
 Legacy repositories may remain historical or migration evidence, but they do not become `sot` or `sot public` unless the trusted current mapping explicitly selects the applicable canonical role.
 
