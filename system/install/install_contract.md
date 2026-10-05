@@ -64,9 +64,11 @@ origin   → user's private GitHub repository
 upstream → mrAlishah/Personal-SoT
 ```
 
-The public upstream receives an intentionally invalid push URL so an ordinary
-`git push upstream` cannot accidentally publish private work. Fetch authority
-remains the canonical public repository.
+`upstream` keeps the canonical public fetch URL, but its push URL is set to
+the same private destination as `origin`; `remote.pushDefault` is also set to
+`origin`. Therefore ordinary/default pushes and even an accidental
+`git push upstream` remain private, while fetch authority stays canonical
+`sot public`.
 
 If remote conversion or the initial private push fails, the installer attempts
 to restore the original public-origin topology and must not report success.
