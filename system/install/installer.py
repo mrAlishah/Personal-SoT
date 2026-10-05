@@ -211,7 +211,10 @@ def _doctor(root: Path) -> None:
     if result.stdout:
         print(result.stdout.rstrip())
     if result.returncode != 0:
-        raise InstallError("Doctor found a blocking problem. Run @do:fix after opening this installation.")
+        raise InstallError(
+            "Doctor found a blocking problem. Installation is not ready. "
+            "Inspect the Doctor output above; for an existing private sot, run @do:sot then @do:fix."
+        )
 
 
 def _sync_fresh_public_clone(root: Path) -> str:
@@ -491,6 +494,8 @@ def _initial_drive_install(
         raise InstallError("The Drive local destination itself may not be a symlink.")
     destination = destination_input.resolve()
 
+    if destination.exists() and not destination.is_dir():
+        raise InstallError("The Drive local destination must be a directory.")
     if destination.exists() and any(destination.iterdir()):
         if all((destination / marker).is_file() for marker in REQUIRED_MARKERS) and not (destination / ".git").exists():
             print("Existing no-Git Personal-SoT found in the Drive-synced folder; switching to Safe Update.")
