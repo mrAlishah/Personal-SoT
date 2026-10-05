@@ -107,7 +107,7 @@ def classify_system_action(text: str) -> Optional[SystemActionInvocation]:
     a real system action invisible. `@do:sot` (and its legacy
     `@do:initialSoT` alias) is bodiless and exclusive: no body, no
     `@param`, no companion directive of any kind. `@do:help` and
-    `@do:assist` may carry an ordinary body after the control block but
+    `@do:assist`, `@do:setup`, `@do:doctor`, and `@do:fix` may carry an ordinary body after the control block but
     still reject every companion directive and a second high-level
     action, since the control block they occupy must contain only the one
     action line — this is enforced by a control-block line count, so it
