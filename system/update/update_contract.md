@@ -661,6 +661,24 @@ operation — but that content never appears in a `Plan`/`Preview`/
 `MigrationResult` field, an exception message, or any diagnostic text;
 only paths, classification labels, and content hashes do.
 
+## deployment-boundary conflict prevention
+
+Safe Update does not make arbitrary both-changed files "easy" by silently
+merging them. Predictable product/private overlap is removed at the ownership
+boundary instead.
+
+`workspace/adapters/runtime_entrypoint.md` is frozen in the public
+distribution as a stable deployment boundary. Private installations may
+intentionally carry deployment-specific divergence there. New reusable product
+features must be wired through the referenced `system/` contracts rather
+than repeatedly editing that public boundary. Consequently, after a private
+installation has synchronized the current public entrypoint once, its
+intentional deployment divergence remains `user_only` across ordinary future
+product releases instead of recurring as a `conflict`.
+
+The public validator enforces that freeze. Real unrelated both-changed paths
+remain conflicts and still require an explicit decision.
+
 ## scope
 
 This file currently owns target resolution, the shared `controlled_git`
