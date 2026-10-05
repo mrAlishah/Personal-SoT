@@ -37,8 +37,9 @@ reimplement provider, update, validation, or safety logic.
 clean sot public Git clone
 → first private installation
 
-private Git installation with origin=private and upstream=sot public
+private Git installation with origin=private
 → Git Safe Update
+→ local upstream may be canonical public or absent after a re-clone
 
 no-Git Personal-SoT installation
 → side-by-side Safe Update
@@ -75,7 +76,7 @@ to restore the original public-origin topology and must not report success.
 
 ## Git update
 
-An existing private Git installation routes update planning/apply through:
+An existing private Git installation routes update planning/apply through the canonical updater. A private repository cloned onto another machine may have only `origin=private`; that is valid because remotes such as `upstream` are local Git configuration and Safe Update resolves its public authority independently:
 
 ```text
 system/update/git_update.py
