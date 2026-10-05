@@ -13,7 +13,7 @@ else:
     from validate_v1 import RAW_SECRET_KEYS
 
 
-TEXT_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
+TEXT_SUFFIXES = {".bat", ".cmd", ".json", ".md", ".py", ".sh", ".toml", ".txt", ".yaml", ".yml"}
 SKIP_PARTS = {".git", ".superpowers", "__pycache__"}
 SELF_FIXTURES = {
     "system/tests/validation/test_validate_public.py",
