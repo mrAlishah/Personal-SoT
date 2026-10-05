@@ -8,8 +8,7 @@ A clean `sot public/main` clone runs `./install.sh` and supplies an empty,
 private GitHub repository with working read/write credentials.
 
 Expected: public source fast-forwards only when safe, public validation passes,
-preview is shown, `origin` becomes private, `upstream` remains public with
-push disabled, initial push succeeds, Doctor passes, and the final handoff is
+preview is shown, `origin` becomes private, `upstream` keeps public fetch authority but routes push to the same private destination, default push is `origin`, initial push succeeds, Doctor passes, and the final handoff is
 `@do:sot` then `@do:setup`.
 
 ## Case 2: Windows launcher
