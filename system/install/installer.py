@@ -439,6 +439,7 @@ def _initial_drive_install(
     print(f"  Drive link:  folder id ...{folder_id[-8:]}")
     print(f"  local path:  {destination}")
     print("  mode:        validated no-Git installation")
+    print("  privacy:     verify in Google Drive that this folder is not public/shared-to-anyone")
     print("  test:        public validation + Doctor")
     _confirm("Create the private sot in this Drive-synced folder?", assume_yes=assume_yes)
 
