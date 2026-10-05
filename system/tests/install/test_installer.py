@@ -63,6 +63,33 @@ class InstallerParsingTests(unittest.TestCase):
                 self.assertIsNone(installer._drive_folder_id(value))
 
 
+class InstallerFreshCloneTests(unittest.TestCase):
+    @patch("system.install.installer._public_validator")
+    @patch("system.install.installer.git_update.classify")
+    @patch("system.install.installer._remote_url")
+    @patch("system.install.installer._git")
+    @patch("system.install.installer._is_git_root", return_value=True)
+    def test_initial_install_rejects_clone_not_exactly_current_public_main(
+        self, _git_root, git, remote_url, classify, _public_validator
+    ):
+        git.return_value = installer.CommandResult(0, "main\n")
+        remote_url.side_effect = (
+            lambda _root, name, push=False:
+            installer.PUBLIC_URL if name == "origin" and not push else None
+        )
+        classify.return_value = installer.git_update.Plan(
+            "a" * 40,
+            "b" * 40,
+            "a" * 40,
+        )
+
+        with self.assertRaises(installer.InstallError) as raised:
+            installer._sync_fresh_public_clone(Path("."))
+
+        self.assertIn("exactly current", str(raised.exception).lower())
+        _public_validator.assert_not_called()
+
+
 class InstallerSafetyTests(unittest.TestCase):
     def test_next_side_by_side_destination_never_reuses_existing_folder(self):
         with TemporaryDirectory() as directory:
