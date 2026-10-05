@@ -37,7 +37,7 @@ install.bat
 
 The launcher asks where your private `sot` should live:
 
-- **GitHub Private:** enter an empty private GitHub repository URL. The installer verifies privacy/write access, changes the clone to `origin=private` + `upstream=sot public`, disables accidental pushes to the public upstream, pushes the initial copy, and runs Doctor.
+- **GitHub Private:** enter an empty private GitHub repository URL. The installer verifies privacy/write access, changes the clone to `origin=private` + `upstream=sot public`, routes default/upstream pushes to the private destination so Personal work cannot accidentally be pushed to the public upstream, pushes the initial copy, and runs Doctor.
 - **Google Drive:** enter the Drive folder URL and the matching local folder already synchronized or mounted by Google Drive Desktop, rclone mount, or equivalent tooling. The installer never stores OAuth credentials and does not pretend Drive is a Git remote. You must verify in Google Drive that the folder is not publicly shared.
 
 After a successful install, open/connect the private copy in your AI client and run:
