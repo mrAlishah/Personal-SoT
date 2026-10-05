@@ -6,6 +6,7 @@ shared_instruction: system/adapters/base_instruction.md
 assistant_contract: system/assistant/assistant_contract.md
 guided_flow_contract: system/assistant/guided_flow_contract.md
 safe_write_contract: system/assistant/safe_write_contract.md
+install_contract: system/install/install_contract.md
 setup_workflow: system/assistant/setup_workflow.md
 update_workflow: system/assistant/update_workflow.md
 fix_workflow: system/assistant/fix_workflow.md
