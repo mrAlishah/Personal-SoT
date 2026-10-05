@@ -338,6 +338,13 @@ def _install_github(root: Path, destination: str, *, assume_yes: bool) -> None:
     print("  test:        Doctor after transfer")
     _confirm("Create the private sot with this plan?", assume_yes=assume_yes)
 
+    fresh_head = _sync_fresh_public_clone(root)
+    if fresh_head != head:
+        raise InstallError("sot public changed after preview. Run the installer again.")
+    fresh_slug = _verify_private_github_destination(root, destination)
+    if fresh_slug != slug:
+        raise InstallError("Private destination changed after preview. Run the installer again.")
+
     renamed = _git(root, "remote", "rename", "origin", "upstream")
     if renamed.returncode != 0:
         raise InstallError("Could not rename public origin to upstream.")
@@ -416,7 +423,11 @@ def _update_git(root: Path, *, assume_yes: bool) -> None:
 
     _doctor(root)
 
-    pushed = _git(root, "push", "origin", f"HEAD:{PUBLIC_REF}", timeout=180)
+    current_origin = _remote_url(root, "origin")
+    if current_origin != origin:
+        raise InstallError("Private origin changed during update; nothing was pushed.")
+    _prove_existing_private_github_origin(root, origin)
+    pushed = _git(root, "push", origin, f"HEAD:{PUBLIC_REF}", timeout=180)
     if pushed.returncode != 0:
         raise InstallError(
             "Local Safe Update passed, but the private GitHub origin was not updated. "
@@ -472,6 +483,12 @@ def _initial_drive_install(
     print("  privacy:     verify in Google Drive that this folder is not public/shared-to-anyone")
     print("  test:        public validation + Doctor")
     _confirm("Create the private sot in this Drive-synced folder?", assume_yes=assume_yes)
+
+    fresh = target.resolve()
+    if fresh.commit != resolved.commit:
+        raise InstallError("sot public changed after preview. Run the installer again.")
+    if destination.exists() and any(destination.iterdir()):
+        raise InstallError("Drive destination changed after preview. Run the installer again.")
 
     parent.mkdir(parents=True, exist_ok=True)
     stage = parent / f".personal-sot-install-{uuid.uuid4().hex}"
