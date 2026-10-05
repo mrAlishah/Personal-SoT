@@ -70,6 +70,24 @@ Then open the private `sot` in Codex or Claude Code and run:
 
 See [Setup](guides/user/setup.md).
 
+## Update later
+
+Normally, just tell a local capable AI client:
+
+```text
+Update my Personal-SoT.
+```
+
+Or from the private `sot` terminal run:
+
+```bash
+python3 update.py
+```
+
+Safe Update shows one preview, asks for confirmation, then applies and validates.
+You do not need to manage SHAs, digests, temporary branches, or manual merge
+commands for a normal update.
+
 ## How it works
 
 ```text
