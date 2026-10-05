@@ -77,6 +77,17 @@ def _git(root: Path, *args, timeout=120) -> CommandResult:
     # and replace-object interpretation for installer-owned Git operations.
     with tempfile.TemporaryDirectory(prefix="personal_sot_install_hooks_") as hooks:
         env = os.environ.copy()
+        for key in tuple(env):
+            if key in {
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_INDEX_FILE",
+                "GIT_OBJECT_DIRECTORY",
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                "GIT_COMMON_DIR",
+                "GIT_CEILING_DIRECTORIES",
+            } or key.startswith("GIT_CONFIG_"):
+                env.pop(key, None)
         env["GIT_NO_REPLACE_OBJECTS"] = "1"
         return _run(
             (
@@ -110,11 +121,6 @@ def _is_git_root(root: Path) -> bool:
         return Path(result.stdout.strip()).resolve() == root.resolve()
     except OSError:
         return False
-
-
-def _git_clean(root: Path) -> bool:
-    result = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
-    return result.returncode == 0 and not result.stdout.strip()
 
 
 def _remote_url(root: Path, name: str, *, push: bool = False) -> str | None:
@@ -204,8 +210,6 @@ def _sync_fresh_public_clone(root: Path) -> str:
     _require_markers(root)
     if not _is_git_root(root):
         raise InstallError("Initial one-click install must be run from a Git clone of sot public.")
-    if not _git_clean(root):
-        raise InstallError("The public clone has local changes. Use a clean fresh clone for installation.")
 
     branch = _git(root, "branch", "--show-current")
     if branch.returncode != 0 or branch.stdout.strip() != PUBLIC_REF:
@@ -217,19 +221,22 @@ def _sync_fresh_public_clone(root: Path) -> str:
     if _remote_url(root, "upstream") is not None:
         raise InstallError("An upstream remote already exists; this does not look like a fresh public clone.")
 
-    head = _git(root, "rev-parse", "HEAD")
-    if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", head.stdout.strip()):
-        raise InstallError("Could not resolve the current public commit.")
-
-    resolved = target.resolve()
-    if head.stdout.strip() != resolved.commit:
+    plan = git_update.classify(root)
+    if plan.blocked is not None:
         raise InstallError(
-            "This public clone is not exactly current sot public/main. "
+            f"The public clone is not safe/current for installation: {plan.blocked}. "
+            "Use a fresh clone and retry."
+        )
+    if plan.conflict or plan.user_only or plan.upstream_only or plan.current != plan.target:
+        raise InstallError(
+            "This clone is not exactly current sot public/main. "
             "Use a fresh clone, then run the installer again."
         )
+    if not re.fullmatch(r"[0-9a-f]{40}", plan.current):
+        raise InstallError("Could not prove the current canonical public commit.")
 
     _public_validator(root)
-    return head.stdout.strip()
+    return plan.current
 
 def _anonymous_github_visibility(slug: str) -> str:
     request = urllib.request.Request(
