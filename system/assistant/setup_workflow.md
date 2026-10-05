@@ -81,6 +81,15 @@ Resolve the current source and actual host capability before deciding what setup
 
 ### Initial installation
 
+When the user starts from a local Git clone of `sot public`, the simplest mechanical path is:
+
+```text
+Linux/macOS → ./install.sh
+Windows     → install.bat
+```
+
+The bootstrap installer prepares a private GitHub destination or an empty local Google Drive-synced folder, runs the repository checks and Doctor, then hands the user back to `@do:sot` and `@do:setup`. It does not own later Safe Update behavior.
+
 When the user has no private `sot` yet:
 
 1. identify an accessible trusted `sot public` source;
