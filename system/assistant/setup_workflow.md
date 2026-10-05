@@ -81,6 +81,17 @@ Resolve the current source and actual host capability before deciding what setup
 
 ### Initial installation
 
+When the user is starting from a local clone of `sot public`, the simplest supported mechanical path is the repository-owned one-click launcher:
+
+```text
+Linux/macOS → ./install.sh
+Windows     → install.bat
+```
+
+Both route to `system/install/installer.py` and `system/install/install_contract.md`. The installer may create a private GitHub topology or a validated no-Git copy in a local Google Drive synced/mounted folder, runs Doctor, and ends by handing the user back to `@do:sot` then `@do:setup`.
+
+Do not duplicate installer mechanics inside this conversational workflow. If the host can run the launcher, recommend it. If it cannot, continue with the equivalent guided steps below.
+
 When the user has no private `sot` yet:
 
 1. identify an accessible trusted `sot public` source;
