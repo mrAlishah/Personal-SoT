@@ -14,7 +14,10 @@ else:
 
 
 TEXT_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
-SKIP_PARTS = {".git", ".superpowers", "__pycache__"}
+SKIP_PARTS = {".git", ".superpowers", ".worktrees", "__pycache__"}
+SKIP_PATHS = {
+    ".claude/settings.local.json",
+}
 SELF_FIXTURES = {
     "system/tests/validation/test_validate_public.py",
     "system/validation/validate_public.py",
@@ -71,7 +74,11 @@ def candidate_files(root: Path):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
         relative = path.relative_to(root)
-        if SKIP_PARTS.intersection(relative.parts) or relative.as_posix() in SELF_FIXTURES:
+        if (
+            SKIP_PARTS.intersection(relative.parts)
+            or relative.as_posix() in SKIP_PATHS
+            or relative.as_posix() in SELF_FIXTURES
+        ):
             continue
         yield path, relative
 
