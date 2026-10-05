@@ -256,3 +256,69 @@ Input:
 ```
 
 Expected: invalid control block; `@do:sot` remains exclusive and resolves deployment defaults itself.
+
+
+## case_setup_action_rerunnable
+
+Input:
+
+```text
+@do:setup
+```
+
+Expected: exact reserved system action; route to the re-runnable setup workflow. Do not infer that this is necessarily first-time installation.
+
+## case_setup_action_optional_body
+
+Input:
+
+```text
+@do:setup
+
+Continue my setup and update anything safely if needed.
+```
+
+Expected: the ordinary body is setup intent/context, not a second directive; no companion control directive is implied.
+
+## case_doctor_action_read_only
+
+Input:
+
+```text
+@do:doctor
+```
+
+Expected: exact reserved system action; run/route to the read-only Doctor workflow using actual host capability. No repair is authorized.
+
+## case_fix_action_guided_repair
+
+Input:
+
+```text
+@do:fix
+
+Doctor says the runtime connection is broken.
+```
+
+Expected: exact reserved system action; route to fix workflow, verify the current defect, then guide or preview a repair. No write occurs without safe-write confirmation.
+
+## case_new_system_actions_are_exclusive
+
+Input:
+
+```text
+@do:setup
+@do:doctor
+```
+
+Expected: invalid control block; at most one high-level action may appear.
+
+## case_new_system_action_case_is_exact
+
+Input:
+
+```text
+@do:Doctor
+```
+
+Expected: unresolved action; do not case-correct to `@do:doctor`.
