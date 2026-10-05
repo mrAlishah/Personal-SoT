@@ -4,10 +4,16 @@ Doctor gives you a read-only health report. It checks the setup but never change
 
 ## Ask naturally
 
-Open the repository in your local AI agent and say:
+Open your private `sot` in your local AI agent and say:
 
 ```text
 Run Personal-SoT Doctor and explain the result in English.
+```
+
+Or use the exact expert action:
+
+```text
+@do:doctor
 ```
 
 You can use any preferred language. You do not need to know repository paths, YAML, registries, or Git.
@@ -47,13 +53,17 @@ Technical paths and validator details stay in an optional `Advanced` section.
 
 ## Repairs are separate
 
-Doctor does not silently repair anything. If a fix requires a canonical change, ask:
+Doctor does not silently repair anything. If a finding needs action, use:
 
 ```text
-Show me a repair proposal for this Doctor finding. Do not change anything yet.
+@do:fix
 ```
 
-The Assistant must show the exact proposal and wait for confirmation. An authorized local agent may then apply the confirmed repair and rerun validation.
+You can also include a problem description after a blank line.
+
+`@do:fix` first checks whether the issue is usage confusion or a real current defect. Guidance-only problems are explained without a write. Real repairs must show the exact proposal, wait for explicit confirmation, re-check current state, apply only with real permission, and rerun the relevant validation/Doctor when possible.
+
+By default, repair targets your private `sot`. Fixing `sot public` is a separate explicit public-development task and follows the public repository branch/review rules.
 
 ## Web clients
 
