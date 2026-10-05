@@ -120,6 +120,7 @@ If something looks wrong:
 | Goal | Guide |
 |---|---|
 | Learn the normal workflow | [Beginner guide](guides/user/readme.md) |
+| All commands, Prompts, Profiles, presentation controls, and examples | [Cheat sheet](guides/user/cheatsheet.md) |
 | Install and set up | [Setup](guides/user/setup.md) |
 | Diagnose problems | [Doctor](guides/user/doctor.md) |
 | Update safely | [Update](guides/user/update.md) |
