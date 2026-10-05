@@ -1,76 +1,104 @@
 # Check Personal-SoT with Doctor
 
-Doctor gives you a read-only health report. It checks the setup but never changes your information or configuration.
-
-## Ask naturally
-
-Open your private `sot` in your local AI agent and say:
+Doctor answers one question:
 
 ```text
-Run Personal-SoT Doctor and explain the result in English.
+Is my Personal-SoT healthy enough to use?
 ```
 
-Or use the exact expert action:
+It is **read-only**. Doctor never repairs or changes your files.
+
+## Run Doctor
+
+Open your private `sot` in a local authorized AI client and run:
 
 ```text
 @do:doctor
 ```
 
-You can use any preferred language. You do not need to know repository paths, YAML, registries, or Git.
+You can also ask naturally:
 
-## Understand the report
+```text
+Run Personal-SoT Doctor and explain the result simply.
+```
 
-Doctor starts with a short status list:
+## Read the result
+
+A healthy result looks like:
 
 ```text
 ✓ Setup is ready
 ✓ Runtime entrypoint resolves correctly
 ✓ Personal workspace is valid
 ✓ Prompts are valid
-✓ Codex configuration detected
 ```
 
-Warnings describe a usable limitation:
+A warning means the system can still be usable but has a limitation:
 
 ```text
-⚠ ChatGPT is preview-only
+⚠ write capability is unavailable
 ```
 
-Errors mean an area needs attention:
+An error means something needs attention:
 
 ```text
-✗ Personal workspace has validation problems
+✗ Runtime connection is broken
 ```
 
-Every warning or error explains:
+Doctor explains:
 
-- what is wrong;
-- why it matters;
-- whether it blocks safe use;
-- exactly what to do next.
+```text
+what is wrong
+→ why it matters
+→ whether it blocks use
+→ what to do next
+```
 
-Technical paths and validator details stay in an optional `Advanced` section.
+## If Doctor finds a problem
 
-## Repairs are separate
-
-Doctor does not silently repair anything. If a finding needs action, use:
+Run:
 
 ```text
 @do:fix
 ```
 
-You can also include a problem description after a blank line.
+`@do:fix` does not blindly edit files.
 
-`@do:fix` first checks whether the issue is usage confusion or a real current defect. Guidance-only problems are explained without a write. Real repairs must show the exact proposal, wait for explicit confirmation, re-check current state, apply only with real permission, and rerun the relevant validation/Doctor when possible.
+```text
+usage confusion
+→ explain
+→ no write
 
-By default, repair targets your private `sot`. Fixing `sot public` is a separate explicit public-development task and follows the public repository branch/review rules.
+real defect
+→ diagnose current state
+→ show repair preview
+→ wait for confirmation
+→ apply with real permission
+→ validate
+```
+
+By default, repair targets your private `sot`.
+
+A change to `sot public` is a separate public-development task and must be requested explicitly.
+
+## If you only need help
+
+Use:
+
+```text
+@do:help
+```
+
+This is useful when the system may be fine and you only need to understand how a feature works.
 
 ## Web clients
 
-A web client can explain Doctor and guide a diagnosis. If it cannot run local commands, it must say that Doctor was not run there.
+A web client can explain a Doctor result. If it cannot run local commands, it must say that Doctor was not actually run there.
 
-If it cannot write the repository, it may prepare a repair proposal but must not claim that the repair was applied or validated.
+If it cannot write, it may prepare a repair preview but must not claim that the repair was applied.
 
 ## Privacy
 
-Doctor does not display secret values or canonical content. It does not quote `restricted` or `deny` content. Keep passwords, API tokens, private keys, recovery codes, one-time codes, and payment credentials outside Personal-SoT.
+Doctor should report status and diagnostics, not dump your Personal content or secret values.
+
+Keep credentials outside Personal-SoT.
