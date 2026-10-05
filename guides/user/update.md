@@ -19,7 +19,7 @@ Windows:
 install.bat
 ```
 
-A private Git installation routes to the canonical Git Safe Update and pushes only to private `origin`. A no-Git/Drive installation builds a validated side-by-side sibling and keeps the original folder unchanged. The launcher still shows a preview and asks for confirmation before applying the update.
+A private Git installation routes to the canonical Git Safe Update and pushes only to private `origin`. This also works after cloning the private repository on another machine when the local-only `upstream` remote is absent. A no-Git/Drive installation builds a validated side-by-side sibling and keeps the original folder unchanged. The launcher still shows a preview and asks for confirmation before applying the update.
 
 ## 1. Ask naturally
 
