@@ -98,6 +98,27 @@ class PublicValidationTests(unittest.TestCase):
         self.assertEqual(1, len(errors))
         self.assertIn("user-specific home path", errors[0])
 
+    def test_accepts_frozen_public_runtime_entrypoint(self):
+        errors = self.validate(
+            {
+                "workspace/adapters/runtime_entrypoint.md":
+                    validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
+            }
+        )
+        self.assertEqual([], errors)
+
+    def test_rejects_public_runtime_entrypoint_product_wiring_drift(self):
+        errors = self.validate(
+            {
+                "workspace/adapters/runtime_entrypoint.md": (
+                    validate_public.PUBLIC_RUNTIME_ENTRYPOINT
+                    + "another_product_workflow: system/assistant/example.md\n"
+                ),
+            }
+        )
+        self.assertEqual(1, len(errors))
+        self.assertIn("frozen deployment boundary", errors[0])
+
     def test_rejects_common_secret_assignments_and_private_key_blocks(self):
         errors = self.validate(
             {

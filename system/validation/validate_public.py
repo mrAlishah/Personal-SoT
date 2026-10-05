@@ -49,6 +49,24 @@ PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 ASSIGNMENT_RE = re.compile(r"^\s*[-*]?\s*([a-z0-9_]+)\s*[:=]\s*(.+?)\s*$", re.I)
 
 
+PUBLIC_RUNTIME_ENTRYPOINT_PATH = Path("workspace/adapters/runtime_entrypoint.md")
+PUBLIC_RUNTIME_ENTRYPOINT = (
+    "# Personal-SoT runtime\n"
+    "\n"
+    "deployment_config: workspace/adapters/public_bootstrap.md\n"
+    "runtime_contract: system/adapters/runtime_bootstrap.md\n"
+    "shared_instruction: system/adapters/base_instruction.md\n"
+    "assistant_contract: system/assistant/assistant_contract.md\n"
+    "guided_flow_contract: system/assistant/guided_flow_contract.md\n"
+    "safe_write_contract: system/assistant/safe_write_contract.md\n"
+    "setup_workflow: system/assistant/setup_workflow.md\n"
+    "update_workflow: system/assistant/update_workflow.md\n"
+    "fix_workflow: system/assistant/fix_workflow.md\n"
+    "project_workflow: system/assistant/project_workflow.md\n"
+    "doctor_contract: system/diagnostics/doctor_contract.md\n"
+)
+
+
 def secret_issues(source: str) -> list[tuple[int, str]]:
     """Value-free findings reusable by host-side content gates."""
     issues = []
@@ -85,6 +103,14 @@ def candidate_files(root: Path):
 
 def run(root: Path) -> list[str]:
     errors: list[str] = []
+    entrypoint = root / PUBLIC_RUNTIME_ENTRYPOINT_PATH
+    if entrypoint.is_file():
+        source = entrypoint.read_text(encoding="utf-8")
+        if source != PUBLIC_RUNTIME_ENTRYPOINT:
+            errors.append(
+                f"{PUBLIC_RUNTIME_ENTRYPOINT_PATH}: public runtime entrypoint is a frozen "
+                "deployment boundary; reusable product wiring belongs in system/"
+            )
     for path, relative in candidate_files(root):
         source = path.read_text(encoding="utf-8")
         for number, message in secret_issues(source):
