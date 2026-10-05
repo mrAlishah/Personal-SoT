@@ -1,56 +1,144 @@
 # Developer Guide
 
-## Repository boundaries
+This guide is for changing the **public Personal-SoT product**.
 
-```text
-workspace/  end-user managed canonical content/configuration
-system/     engine contracts, algorithms, validation and tests
-guides/     audience-specific documentation
-```
+If you only want to use the system, start with the [Beginner guide](../user/readme.md).
 
-Logical identifiers are decoupled from physical paths. Runtime mapping is:
+## 60-second workflow
 
-```text
-@ctx        -> workspace/context/
-@profile    -> workspace/profiles/
-@fmt        -> workspace/presentation/formats/
-@tone       -> workspace/presentation/tones/
-@depth      -> workspace/presentation/depth/
-language    -> workspace/presentation/languages/
-prompt path -> workspace/prompts/
-```
-
-The contracts that interpret those files live under `system/`.
-
-## Development flow
-
-Start from current `main` and follow
-`system/governance/branch_flow.md`:
-
-```text
-main
--> short-lived <type>_<scope>_<goal> branch
--> relevant tests, validators, and review
--> pull request
--> main
-```
-
-Reusable runtime semantics belong under `system/`. Personal facts and
-Personal-only content remain under `workspace/` and never become system
-contracts.
-
-## Validation
+Start from current `develop`:
 
 ```bash
-python3 system/validation/validate_v1.py --mode core
-python3 system/validation/validate_prompts.py
+git fetch origin
+git switch develop
+git pull --ff-only
+git switch -c <type>_<scope>_<goal>
 ```
 
-Personal:
+Make the smallest coherent change, then run:
 
 ```bash
-python3 system/validation/validate_v1.py --mode personal
-python3 system/validation/validate_prompts.py
+python3 -B -m unittest $(find system/tests -name 'test_*.py' | sed 's#/#.#g;s#\.py$##')
+python3 -B system/validation/validate_public.py
+python3 -B system/validation/validate_v1.py --mode core
+python3 -B system/validation/validate_prompts.py
+git diff --check <base>...HEAD
 ```
 
-Fake examples used by developers live under `guides/developer/examples/` and never become runtime canonical context.
+A zero-test run is not a pass.
+
+Canonical flow:
+
+```text
+develop
+→ short-lived branch
+→ tests + validators
+→ diff / ownership / privacy review
+→ PR to develop
+→ explicit release
+→ main
+```
+
+`develop` is integration. `main` is the stable release.
+
+## Repository map
+
+```text
+workspace/  user-owned canonical content/configuration
+system/     runtime contracts, routing, validation and tests
+guides/     user/developer documentation
+```
+
+Reusable runtime semantics belong in `system/`.
+
+Real Personal facts, credentials, private deployment state, user-specific paths, and Personal Git history do not belong in the public repository.
+
+## Find the semantic owner first
+
+Runtime starts from:
+
+```text
+workspace/adapters/runtime_entrypoint.md
+```
+
+Common owners:
+
+```text
+source/runtime access → system/adapters/
+Assistant workflows   → system/assistant/
+directives/routing    → system/routing/
+diagnostics           → system/diagnostics/
+updates               → system/update/
+validation            → system/validation/
+```
+
+Prefer:
+
+```text
+existing owner → smallest root-cause change
+```
+
+not duplicated wrapper logic.
+
+## Source roles
+
+```text
+sot        → user's private installation
+sot public → mrAlishah/Personal-SoT
+```
+
+Repository visibility is not authorization. Never move Personal/private state into `sot public`.
+
+## Runtime actions
+
+```text
+@do:sot     re-anchor runtime
+@do:setup   setup/resume/improve/update routing
+@do:doctor  read-only diagnosis
+@do:fix     guided safe repair
+@do:help    explain/discover/recommend
+@do:assist  create/change/customize
+```
+
+If behavior changes, update its canonical contract, relevant parser/tests, and the smallest affected guide.
+
+## Change discipline
+
+Before implementation:
+
+```text
+inspect current owner
+→ verify branch/ref
+→ check public/private boundary
+→ make smallest coherent change
+```
+
+For material writes preserve:
+
+```text
+preview → confirm → re-check → write → validate → truthful report
+```
+
+Never claim a test passed without actual output.
+
+## Documentation rule
+
+User docs should be:
+
+```text
+natural-language-first
+ELI5
+short path first
+advanced detail later
+```
+
+Do not copy full runtime contracts into guides. Summarize and link to the canonical owner.
+
+## References
+
+- `system/governance/public_v1_product_contract.md`
+- `system/governance/branch_flow.md`
+- `system/governance/development_conventions.md`
+- `system/assistant/safe_write_contract.md`
+- `system/adapters/source_access_contract.md`
+- `system/routing/switch_syntax.md`

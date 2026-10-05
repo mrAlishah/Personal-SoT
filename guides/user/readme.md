@@ -1,95 +1,122 @@
 # Beginner guide
 
-## What Personal-SoT is
+Personal-SoT helps your AI use the right information about you and your projects from one private source.
 
-Personal-SoT is a controlled memory and instruction system for AI. It is designed to help an AI use the right information about you and your projects without relying on scattered chats or repeated prompts.
-
-The intended beginner experience is conversational:
+## Remember this
 
 ```text
-You: I want to create a project for learning German.
+First time:
+install → @do:sot → @do:setup → real task
 
-Assistant:
-1. explains the short flow;
-2. asks one useful question at a time;
-3. gives examples and a recommendation;
-4. shows exactly what it proposes to save;
-5. waits for confirmation;
-6. writes and validates the smallest necessary project;
-7. teaches you what to ask next.
+Problem:
+@do:doctor → @do:fix
+
+Not sure what to do:
+@do:help
 ```
 
-## What works now
-
-The reusable SoT engine, safety validators, guided setup, Personal SoT Assistant contracts, and first Project Builder flow are present. The repository starts without real Personal facts and creates only the modules your confirmed setup or project actually needs.
-
-In user-facing source language, `sot` means your private Personal-SoT installation/repository. `sot public` means the upstream reusable product at `mrAlishah/Personal-SoT`. They are different source roles and the public repository must not receive your Personal facts.
-
-Start with [Set up Personal-SoT](setup.md).
-
-If setup or configuration seems wrong, run the [beginner-friendly Doctor](doctor.md).
-
-Open the repository in Codex or Claude Code and ask naturally:
+And:
 
 ```text
-Help me create my first Personal-SoT project.
-Please guide me in English.
+sot        → your private Personal-SoT
+sot public → mrAlishah/Personal-SoT
 ```
 
-The local agent can preview, confirm, write, and validate when its actual permissions allow it. ChatGPT and Claude Web can run the same questions and preview, but must tell you when they cannot write the repository.
+Your Personal data belongs in `sot`, not `sot public`.
 
-Then see [Create and use your first project](create_and_use_project.md) for the complete project flow.
+## Important commands
 
-To reuse an existing capability before creating one, see
-[Find and use an existing prompt](find_and_use_prompts.md).
+| Command | Meaning |
+|---|---|
+| `@do:sot` | Use/reload my canonical private SoT. |
+| `@do:setup` | Finish, improve, or update setup. |
+| `@do:doctor` | Check health; change nothing. |
+| `@do:fix` | Diagnose and repair safely. |
+| `@do:help` | Explain or recommend. |
+| `@do:assist` | Help create or change something safely. |
 
-If no current prompt fits, continue with
-[Build or improve a reusable prompt](build_a_prompt.md). The Assistant will
-search first, show a complete preview before any change, and tell you truthfully
-whether your client can write and validate it.
+You can also just ask naturally.
 
-To change response style or guidance in natural language, see
-[Customize responses](customize_responses.md). Existing capabilities are
-combined first; only a reusable Profile can be created or edited in Public V1.
+## First use
 
-To bring your installation up to date safely, see
-[Update Personal-SoT](update.md). The Assistant always previews before
-anything changes and asks you to confirm that exact preview first.
+1. [Install and set up](setup.md).
+2. Open your private `sot` in Codex or Claude Code.
+3. Run `@do:sot`.
+4. Run `@do:setup`.
+5. Start a real task.
 
-## Safety rule
-
-Do not put secrets here. Keep passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, and payment credentials in a password manager or another proper secret store.
-
-## Product journey
+Examples:
 
 ```text
-[1 Install]
-     ↓
-[2 Choose language]
-     ↓
-[3 Choose AI client]
-     ↓
-[4 Personal onboarding]
-     ↓
-[5 System check]
-     ↓
-[6 Meet Personal SoT Assistant]
-     ↓
-[7 First useful task]
+Create a project for learning German.
+
+Update my project. I passed A1.
+
+Find a prompt for reviewing code.
+
+Make my answers shorter.
+
+I don't know what I need — recommend one.
 ```
 
-Tell the Assistant what you want, or say “I don't know — recommend a starting
-point.” It selects the appropriate workflow internally. These categories are
-optional navigation, not a choice you must make before getting help:
+## How changes are saved
 
-- Discover — find the right existing capability.
-- Maintain — update your information or project state safely.
-- Create — build a project, goal, or reusable prompt.
-- Customize — adjust response style and behavior.
-- Explain — learn what a feature means and when to use it.
-- Diagnose — check the system and get beginner-friendly repair guidance.
+Material changes are not silent:
 
-Advanced directives such as `@ctx`, `@profile`, `@fmt`, `@tone`, `@depth`, `@run`, `@do:help`, `@do:assist`, `@do:setup`, `@do:doctor`, and `@do:fix` remain available, but they are optional. The Assistant should first complete or recommend the natural-language workflow, then show precise syntax only when useful.
+```text
+request
+→ preview
+→ you confirm
+→ re-check
+→ write
+→ validate
+→ report
+```
 
-See [Get help from the Assistant](assistant_guidance.md) for examples, trial
-customizations, and the difference between a suggestion, preview and saved change.
+So:
+
+```text
+Explain   → no change
+Recommend → suggestion
+Preview   → proposed saved change
+Apply     → only after confirmation + permission
+```
+
+## If something breaks
+
+Run:
+
+```text
+@do:doctor
+```
+
+Doctor is read-only. If it finds a real problem:
+
+```text
+@do:fix
+```
+
+See [Doctor](doctor.md).
+
+## Common tasks
+
+- Projects: [Create and use a project](create_and_use_project.md)
+- Existing prompts: [Find a prompt](find_and_use_prompts.md)
+- New prompts: [Build a prompt](build_a_prompt.md)
+- Response style: [Customize responses](customize_responses.md)
+- Updates: [Update Personal-SoT](update.md)
+- More examples: [Assistant guidance](assistant_guidance.md)
+
+## Local vs web clients
+
+A local authorized client may be able to:
+
+```text
+read → preview → confirm → write → validate
+```
+
+A web/read-only client can still explain and preview, but must say when it cannot write or run local validation.
+
+## Safety
+
+Do not store passwords, API keys, private keys, recovery codes, one-time codes, session cookies, or payment credentials in Personal-SoT.
