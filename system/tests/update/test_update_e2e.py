@@ -1,3 +1,4 @@
+import io
 import os
 import subprocess
 import tempfile
@@ -13,6 +14,7 @@ from system.tests.update.test_git_classification import (
 )
 from system.tests.update import test_side_by_side as _sbs_tests
 from system.tests.update.test_side_by_side import _base_target_files, _build_target_repo, _write_tree
+from system.update import cli as update_cli
 from system.update import git_update, side_by_side
 from system.update.target import TargetSnapshot
 
@@ -585,6 +587,39 @@ class GitWorkflowE2ETests(unittest.TestCase):
             self.assertNotIn(_SECRET, applied_result.beginner.headline)
             self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
             self.assertEqual(f'{_SECRET}\n', Path(root, 'workspace', 'note.md').read_text())
+
+    def test_noob_cli_completes_update_with_one_confirmation(self):
+        """Acceptance: a normal Git-backed update needs one command and
+        one yes/no confirmation; no digest/SHA/Git choreography is exposed.
+        The relative "." root also exercises the real root-normalization fix.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _git_base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, _base_sha, _current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            prompts = []
+            output = io.StringIO()
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                with mock.patch.object(
+                    git_update.target, 'resolve',
+                    return_value=TargetSnapshot(target_sha, 'main', 'test')
+                ), mock.patch.object(
+                    git_update.target, 'CANONICAL_URL', 'file://' + target_dir
+                ):
+                    rc = update_cli.run_interactive(
+                        '.',
+                        input_fn=lambda prompt: prompts.append(prompt) or 'yes',
+                        out=output,
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertEqual(0, rc)
+        self.assertEqual(1, len(prompts))
+        self.assertIn('Update applied and validation passed.', output.getvalue())
+        self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
 
     def test_git_e2e_conflict_blocks_apply(self):
         with tempfile.TemporaryDirectory() as workdir:
