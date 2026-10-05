@@ -27,6 +27,8 @@ In user-facing source language, `sot` means your private Personal-SoT installati
 
 Start with [Set up Personal-SoT](setup.md).
 
+If you start from a Git clone, the setup guide includes the cross-platform installer: `./install.sh` on Linux/macOS or `install.bat` on Windows. It can prepare a private GitHub-backed installation or a validated no-Git copy in a local Google Drive synced/mounted folder, then hands you to `@do:sot` and `@do:setup`.
+
 If setup or configuration seems wrong, run the [beginner-friendly Doctor](doctor.md).
 
 Open the repository in Codex or Claude Code and ask naturally:
