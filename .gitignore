@@ -1,2 +1,6 @@
 __pycache__/
 *.py[cod]
+
+# Local AI/worktree state
+.claude/settings.local.json
+.worktrees/
