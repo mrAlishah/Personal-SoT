@@ -105,6 +105,7 @@ See [Doctor](doctor.md).
 - New prompts: [Build a prompt](build_a_prompt.md)
 - Response style: [Customize responses](customize_responses.md)
 - Updates: [Update Personal-SoT](update.md)
+- All commands and examples: [Cheat sheet](cheatsheet.md)
 - More examples: [Assistant guidance](assistant_guidance.md)
 
 ## Local vs web clients
