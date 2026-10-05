@@ -14,6 +14,39 @@ or:
 
 Setup can route an existing installation into the Safe Update workflow.
 
+## Simplest local update
+
+If your AI client can run commands in your private `sot`, you should normally
+only need to say:
+
+```text
+Update my Personal-SoT.
+```
+
+The local agent should use the repository-owned Safe Update runner and show you
+one preview to confirm. You should not have to copy SHAs, digests, branch names,
+or Git commands.
+
+If you are working directly in a terminal, run one command from your private
+`sot`:
+
+Linux/macOS:
+
+```bash
+python3 update.py
+```
+
+Windows:
+
+```bat
+py -3 update.py
+```
+
+The runner inspects the installation, shows the beginner-safe preview, asks
+`Apply this update? [y/N]`, then applies and validates only after that
+confirmation. If the available update changes while you are confirming, it
+refreshes the preview and asks again instead of applying stale approval.
+
 ## What happens
 
 ```text
