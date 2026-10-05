@@ -4,6 +4,18 @@
 
 Doctor is the read-only Diagnose workflow for explaining whether Personal-SoT is ready and what a beginner should do next.
 
+## Expert entry action
+
+```text
+@do:doctor
+```
+
+`@do:doctor` is the exact read-only expert entry point into this contract. It executes Doctor when the current host can actually run local commands, using the active repository-owned adapter and the host's real write capability. It then reports the current system state in beginner language.
+
+Ordinary text after the action may describe a symptom or diagnostic focus. It never authorizes mutation and it does not convert Doctor into a repair workflow.
+
+When a finding needs repair, recommend or route to `system/assistant/fix_workflow.md` / `@do:fix`. Doctor itself remains read-only.
+
 ## Authority boundary
 
 `system/diagnostics/doctor.py` orchestrates existing canonical validators and presents their results. It does not reimplement validation owned by those validators.
@@ -66,7 +78,7 @@ diagnosis
 → report
 ```
 
-The write phase is a separate operation governed by `system/assistant/safe_write_contract.md`. A diagnosis is not confirmation and a failed check is not permission to repair.
+The write phase is a separate operation routed through `system/assistant/fix_workflow.md` and governed by `system/assistant/safe_write_contract.md`. A diagnosis is not confirmation and a failed check is not permission to repair.
 
 ## Acceptance
 
