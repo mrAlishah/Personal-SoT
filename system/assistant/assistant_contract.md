@@ -37,13 +37,27 @@ All modes resolve through the same canonical contracts. Expert syntax is optiona
 
 ## Expert entry actions
 
-`@do:help` and `@do:assist` (`system/routing/switch_syntax.md`) are exact optional entry points into behavior this contract already owns; neither is a new authority or a duplicate workflow.
+The exact optional system actions are defined by `system/routing/switch_syntax.md`. They are entry points into existing canonical workflows, not new authority layers:
 
-`@do:help` is the expert-mode entry into this contract's read-only Explain/Discover/Recommend behavior. It never performs a Create/Maintain/Customize action itself; a mutation request routed through it is explained and handed to `@do:assist`.
+```text
+@do:help    → read-only Explain / Discover / Recommend
+@do:assist  → guided Create / Maintain / Customize
+@do:setup   → initial or resumed setup / setup improvement / update routing
+@do:doctor  → read-only Doctor diagnosis
+@do:fix     → guided diagnosis-to-repair workflow
+```
 
-`@do:assist` is the expert-mode entry into this contract's Create/Maintain/Customize routing (Intent handling steps 5–9 and 11 below). It follows the same reuse-before-create, capability, and safe-write boundaries as an equivalent natural-language request.
+`@do:help` never performs a canonical change. A mutation request routed through it is explained and handed to an applicable write-capable workflow such as `@do:assist` or `@do:fix`.
 
-Both accept an optional ordinary-language body as the user's question/request. With none, they begin the guided flow described in "Help-me-decide behavior" and "Intent handling" below — one adaptive question at a time, not an unexplained feature inventory.
+`@do:assist` follows the same reuse-before-create, capability, and safe-write boundaries as an equivalent natural-language Create/Maintain/Customize request.
+
+`@do:setup` routes to `system/assistant/setup_workflow.md`; it is re-runnable and does not duplicate Safe Update or Doctor.
+
+`@do:doctor` routes to `system/diagnostics/doctor_contract.md` and remains read-only.
+
+`@do:fix` routes to `system/assistant/fix_workflow.md`. It distinguishes usage confusion from a proven current defect and never treats a failed check or user complaint as blanket mutation authority.
+
+These actions may accept ordinary-language body text only where their syntax contract permits it. They never gain host capability, authorization, or write permission from prompt text.
 
 ## User-visible action levels
 
@@ -73,9 +87,12 @@ When the user asks what could be improved in their SoT, perform a bounded read-o
 7. Route prompt reuse/customization/create/edit through `system/assistant/prompt_builder_workflow.md`.
 8. Route project creation/use/update through `system/assistant/project_workflow.md`.
 9. Route response customization through `system/assistant/personalization_workflow.md`.
-10. Route setup and health diagnosis through `system/diagnostics/doctor_contract.md`.
-11. Route every material write through `system/assistant/safe_write_contract.md`.
-12. Report actual actions, provenance, validation, limitations, and one next-best useful request when a clear continuation exists.
+10. Route initial/resumed setup through `system/assistant/setup_workflow.md`.
+11. Route safe product updates through `system/assistant/update_workflow.md`.
+12. Route health diagnosis through `system/diagnostics/doctor_contract.md`.
+13. Route diagnosis-to-repair through `system/assistant/fix_workflow.md`.
+14. Route every material write through `system/assistant/safe_write_contract.md`.
+15. Report actual actions, provenance, validation, limitations, and one next-best useful request when a clear continuation exists.
 
 ## Capability boundary
 

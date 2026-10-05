@@ -1,15 +1,37 @@
 # Set up Personal-SoT
 
+For this guide:
+
+```text
+sot
+→ your private Personal-SoT installation/repository
+
+sot public
+→ the upstream public product
+→ mrAlishah/Personal-SoT
+```
+
+The setup flow is safe to run again later. `@do:setup` does not blindly reinstall: it checks what already exists, resumes incomplete setup, recommends small setup improvements, or routes an existing installation through the safe update workflow when appropriate.
+
 You do not need to understand Git, YAML, prompt engineering, or the repository structure.
 
 ## 1. Get the repository
 
 Choose the simplest option that fits you:
 
-- **Download:** download the repository archive from [Personal-SoT on GitHub](https://github.com/mrAlishah/Personal-SoT), extract it, and keep the folder somewhere private on your computer.
-- **Clone:** if you already use Git, clone the repository so later updates are easier.
+- **Download:** download `sot public`, extract it, and create/use a private folder for your future `sot`.
+- **Clone:** if you already use Git, clone `sot public` so later updates are easier, then keep Personal work in a private installation/repository you control.
 
-The public repository contains no real Personal facts. Your local copy becomes personal only after you confirm information to save.
+The public repository contains no real Personal facts. Your private copy becomes `sot` only when it is the selected user-owned installation. Do not push Personal facts or private configuration to `sot public`.
+
+For a Git-backed installation, a common safe remote layout is:
+
+```text
+origin   → your private repository
+upstream → mrAlishah/Personal-SoT
+```
+
+The Assistant should verify real remotes/capabilities rather than inventing account names or URLs.
 
 ## 2. Open it with your AI client
 
@@ -19,6 +41,12 @@ Then ask naturally in your preferred language:
 
 ```text
 Help me set up Personal-SoT. Guide me one step at a time in English.
+```
+
+Or use the exact expert shortcut:
+
+```text
+@do:setup
 ```
 
 You can replace English with your preferred language. The Assistant should use that language immediately when your choice is clear.
@@ -59,6 +87,14 @@ what failed → affected area → smallest next action
 
 It must not call setup successful when a required check fails.
 
+You can request the same check directly with:
+
+```text
+@do:doctor
+```
+
+If Doctor finds a real problem, use `@do:fix` for guided diagnosis/repair. Doctor itself remains read-only.
+
 See [Check Personal-SoT with Doctor](doctor.md) for status meanings and safe repair guidance.
 
 ## Web clients
@@ -66,6 +102,25 @@ See [Check Personal-SoT with Doctor](doctor.md) for status meanings and safe rep
 ChatGPT and Claude Web can follow the same language choice, guided questions, recommendations, and previews when the repository is available to them.
 
 If the web client cannot write files or run local commands, it must say that nothing was written and the local system check was not run there. Use an authorized local agent to apply the confirmed preview and validate it.
+
+## Run setup again later
+
+You may run:
+
+```text
+@do:setup
+```
+
+at any later time. The Assistant should inspect current evidence and choose the smallest applicable path:
+
+```text
+incomplete setup → resume
+healthy but stale → safe update workflow
+healthy but improvable → recommend/preview improvement
+healthy and current → report ready
+```
+
+It must preserve valid Personal state and must not restart or overwrite setup merely because the command was invoked again.
 
 ## First useful task
 

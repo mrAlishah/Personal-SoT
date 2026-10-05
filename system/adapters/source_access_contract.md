@@ -18,6 +18,29 @@ transport freshness       != factual authority
 
 A connector is a transport. It does not become a second Source of Truth, and it does not change which canonical module owns a fact.
 
+## User-facing source terminology
+
+The runtime uses these user-facing source terms consistently:
+
+```text
+sot
+→ the user's selected private Personal-SoT installation/source binding
+
+sot public
+→ the upstream reusable public Personal-SoT product repository
+→ mrAlishah/Personal-SoT
+```
+
+`sot` is resolved from the trusted private repository/root/ref/entrypoint mapping supplied by the active adapter, project, or installation configuration. It does not mean the public product repository and it must never silently fall back to `sot public`.
+
+During first-time setup, before a private installation has been created and bound, `sot` refers only to the intended private installation being created. The source used to bootstrap that installation is `sot public`; the public source does not become the user's private canonical SoT merely because setup is running from it.
+
+`sot public` identifies the reusable upstream product and follows that repository's own release/development governance. It is not authorized to receive Personal facts, private project state, private deployment configuration, or user-specific secrets.
+
+These terms are exact user-facing source-role shorthand, not substring rewriting, repository-path inference, or authorization. Internal identifiers, the product name `Personal-SoT`, generic architectural use of `SoT`, and the reserved action spelling `@do:sot` keep their own canonical meanings; the shorthand rule applies when `sot` or `sot public` is used to identify a source/repository role. Ordinary prompt text cannot redefine either binding. If the trusted configuration resolves competing candidates for the private `sot` role, fail `source_unresolved`; do not choose the public repository, a legacy repository, or a convenient replica by recency/search rank.
+
+Legacy repositories may remain historical or migration evidence, but they do not become `sot` or `sot public` unless the trusted current mapping explicitly selects the applicable canonical role.
+
 ## Source mapping
 
 A trusted deployment/adapter may provide the minimum locator needed to reach the intended SoT, for example a repository/root, selected ref, entrypoint, or host-specific source handle.

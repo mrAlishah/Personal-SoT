@@ -45,6 +45,18 @@ Explain → Recommend → Preview → Apply
 
 so the user can tell when a change is merely being discussed versus actually applied. These are communication boundaries, not new authorities.
 
+Expert shortcuts may expose the same canonical workflows without changing the natural-language-first product model:
+
+```text
+@do:setup   initial/resumed setup and setup improvement/update routing
+@do:doctor  read-only current system diagnosis
+@do:fix     guided usage-help or confirmed repair
+```
+
+These shortcuts do not duplicate workflow logic and do not create capability. `@do:fix` is supervised repair, not hidden auto-repair or autonomous self-modification.
+
+User-facing source terminology distinguishes the user's private installation (`sot`) from the upstream reusable product (`sot public`, `mrAlishah/Personal-SoT`). The public source never silently substitutes for the user's private canonical source.
+
 Read-only discovery, explanation, recommendation, and bounded improvement review may run without confirmation. Creation and customization follow reuse-before-create:
 
 ```text
@@ -99,7 +111,7 @@ Reusable prompts remain fact-light. Durable Personal facts belong to separately 
 ## V1 scope
 V1 includes:
 - a safe public repository and clean reusable Core foundation;
-- beginner setup, multilingual onboarding, and AI-client connection guidance;
+- beginner setup, multilingual onboarding, AI-client connection guidance, and re-runnable `@do:setup` recovery/improvement routing;
 - the Personal SoT Assistant as a noob-first one-entry-point control plane, including auto-routing, help-me-decide guidance, clear Explain/Recommend/Preview/Apply effects, and next-best-action guidance;
 - basic Personal context onboarding;
 - adaptive project creation, project use, and current-state maintenance;
@@ -107,7 +119,7 @@ V1 includes:
 - guided prompt building with reuse-before-create and safe writes;
 - basic profile, format, tone, depth, and control guidance with transient try-before-save customization;
 - connector-backed read access to the selected canonical Personal SoT when the host exposes an authorized connector/source capability, with source freshness, no-leak access, and provenance semantics;
-- validation, beginner-friendly Doctor diagnostics, and a safe update path;
+- validation, beginner-friendly Doctor diagnostics (`@do:doctor`), a supervised guided repair path (`@do:fix`), and a safe update path;
 - beginner documentation and truthful capability reporting.
 
 ## V1 non-goals

@@ -47,3 +47,33 @@ Expected: explain the affected area and smallest next action in beginner languag
 Setup is connected and validation passed.
 
 Expected: introduce the Assistant categories in the selected language, recommend one based on the user's goal, and offer one concrete natural-language request before optional expert syntax.
+
+## Case 9: first-time private installation
+
+The user invokes `@do:setup` from `sot public` and no private `sot` exists.
+
+Expected: explain in ELI5-style language that `sot public` is the reusable source and the new private installation is the future `sot`; guide clone/archive plus private destination/remote as capability allows; never store Personal data in the public source.
+
+## Case 10: rerun after partial setup
+
+A private `sot` exists, but its client wiring or system check is incomplete.
+
+Expected: preserve valid existing state and resume from the smallest missing/broken setup step rather than restarting or overwriting the installation.
+
+## Case 11: rerun on stale healthy installation
+
+A private `sot` is healthy but an update from `sot public` is applicable.
+
+Expected: route to `system/assistant/update_workflow.md`; do not perform an ad-hoc merge/copy inside setup.
+
+## Case 12: rerun on healthy current installation
+
+The private `sot` is healthy and current.
+
+Expected: report ready, avoid unnecessary writes, and offer one useful next task.
+
+## Case 13: real setup defect
+
+Doctor reports a current blocking setup/runtime defect.
+
+Expected: setup explains the finding and routes repair to `system/assistant/fix_workflow.md`; setup itself does not silently repair.

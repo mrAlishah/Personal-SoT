@@ -145,6 +145,9 @@ System actions:
 @do:sot
 @do:help
 @do:assist
+@do:setup
+@do:doctor
+@do:fix
 ```
 
 Prompt actions:

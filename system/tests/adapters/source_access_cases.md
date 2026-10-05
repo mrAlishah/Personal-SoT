@@ -62,5 +62,21 @@ Expected: preserve source identity, selected ref/selector, optional actual revis
 Connector can inspect only part of the requested authorized source.
 Expected: report partial coverage and avoid universal claims based on inaccessible owners.
 
+## case_16_private_sot_term_does_not_fall_back_to_public
+Trusted configuration names a private `sot` source, but that source is unavailable while `mrAlishah/Personal-SoT` is reachable.
+Expected: report private source unavailable/unresolved; do not silently bind `sot` to `sot public`.
+
+## case_17_public_sot_term_is_explicit_upstream
+The user explicitly asks about `sot public`.
+Expected: resolve the upstream reusable public product role (`mrAlishah/Personal-SoT`) subject to actual source capability/governance; do not substitute the user's private `sot`.
+
+## case_18_first_setup_keeps_source_roles_separate
+No private `sot` exists yet and setup is running from `sot public`.
+Expected: the public source is only the reusable bootstrap/update source; the intended private destination is the future `sot`, and Personal data is never written to the public source merely to complete setup.
+
+## case_19_legacy_source_is_not_implicit_sot
+A reachable legacy repository contains a valid older runtime while the trusted current mapping selects a different private installation.
+Expected: legacy availability does not make it `sot`; current trusted private source binding wins, or resolution fails closed if ambiguous.
+
 ## exit_criterion
 Source access is contract-compliant when local and connector transports resolve one intended canonical source, preserve host plus canonical access before content exposure, perform minimum targeted retrieval without parallel authority, re-anchor freshness truthfully, retain provider-neutral provenance, and distinguish unavailable/unauthorized/partial access from canonical absence.
