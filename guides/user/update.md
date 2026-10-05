@@ -3,6 +3,24 @@
 You do not need to understand Git, commit SHAs, merge bases, or registry
 internals to update your installation safely.
 
+## Installer shortcut
+
+If your installation was created with the repository installer, you can rerun the launcher from the private installation:
+
+Linux/macOS:
+
+```bash
+./install.sh
+```
+
+Windows:
+
+```bat
+install.bat
+```
+
+A private Git installation routes to the canonical Git Safe Update and pushes only to private `origin`. A no-Git/Drive installation builds a validated side-by-side sibling and keeps the original folder unchanged. The launcher still shows a preview and asks for confirmation before applying the update.
+
 ## 1. Ask naturally
 
 ```text
