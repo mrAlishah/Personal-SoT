@@ -72,6 +72,17 @@ class PublicValidationTests(unittest.TestCase):
         self.assertEqual(1, len(errors))
         self.assertIn("possible raw secret", errors[0])
 
+    def test_scans_shell_and_batch_installer_files(self):
+        errors = self.validate(
+            {
+                "install.sh": "api_token=live_shell_value\n",
+                "install.bat": "client_secret: live_batch_value\n",
+            }
+        )
+
+        self.assertEqual(2, len(errors))
+        self.assertTrue(all("possible raw secret" in error for error in errors))
+
     def test_rejects_common_secret_assignments_and_private_key_blocks(self):
         errors = self.validate(
             {
