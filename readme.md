@@ -27,7 +27,27 @@ This repository currently contains the safe public foundation and the first runn
 - authorized local writes in Codex and Claude Code;
 - truthful preview-only behavior when a web client cannot write the repository.
 
-The guided onboarding and first create → use → update project workflow are available through a local agent opened at the repository root. A one-click installer is not included.
+The guided onboarding and first create → use → update project workflow are available through a local agent opened at the repository root. A cross-platform one-click installer is included for users who start from a Git clone: `install.sh` on Linux/macOS and `install.bat` on Windows.
+
+## Quick install
+
+Clone the stable public product, then run the launcher for your OS:
+
+```bash
+git clone https://github.com/mrAlishah/Personal-SoT.git
+cd Personal-SoT
+./install.sh
+```
+
+Windows:
+
+```bat
+git clone https://github.com/mrAlishah/Personal-SoT.git
+cd Personal-SoT
+install.bat
+```
+
+The installer can convert the clone to a private GitHub-backed `sot`, or create a validated no-Git copy in a local Google Drive synced/mounted folder. Successful completion tells you to open the private installation and run `@do:sot`, then `@do:setup`.
 
 ## Start here
 
