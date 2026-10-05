@@ -147,6 +147,25 @@ class ClassificationTests(unittest.TestCase):
         self.assertIn('a.md', plan.upstream_only)
         self.assertIn('b.md', plan.user_only)
 
+    def test_relative_root_matches_absolute_root(self):
+        """A selected root of "." must classify exactly like its absolute
+        pathname. Relative .git/object paths must never be interpreted from
+        the updater's ephemeral target repository.
+        """
+        with tempfile.TemporaryDirectory() as workdir:
+            root, target_dir, _base_sha, _current_sha, target_sha = _diverging_repos(
+                workdir, {'a.md': 'base\n'}, {'local.md': 'mine\n'}, {'a.md': 'target\n'})
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                relative = _classify('.', target_dir, target_sha)
+                absolute = _classify(str(Path.cwd()), target_dir, target_sha)
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertIsNone(relative.blocked)
+        self.assertEqual(absolute, relative)
+
     def test_no_op_when_diverged_commits_converge_on_same_tree(self):
         """C and T are separate commits (different SHAs, both diverged from
         B) that independently reach byte-identical trees; no target-driven
