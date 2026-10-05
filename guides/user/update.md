@@ -1,115 +1,80 @@
 # Update Personal-SoT
 
-You do not need to understand merge bases, commit SHAs, or registry internals.
-
 Start with:
 
 ```text
 Update my Personal-SoT.
 ```
 
-You may also run:
+or:
 
 ```text
 @do:setup
 ```
 
-Setup is re-runnable and can route an existing installation into the Safe Update workflow.
+Setup can route an existing installation into the Safe Update workflow.
 
-## The update flow
+## What happens
 
 ```text
-1. inspect current installation
-2. compare with sot public
-3. show a preview
-4. you confirm
-5. apply safely
-6. validate
-7. report the real result
+inspect installation
+→ compare with sot public
+→ show preview
+→ you confirm
+→ apply
+→ validate
+→ report
 ```
 
 Nothing material is applied before you confirm the exact preview.
 
 ## Git installation
 
-For a Git-backed private `sot`, the updater preserves user-owned changes and applies reusable product updates only when it can classify them safely.
+For a Git-backed private `sot`:
 
-If you have unsaved local changes, save them first with a **local commit**.
+- user-owned changes are preserved when they can be classified safely;
+- product updates come from `sot public`;
+- unsaved local work must be saved first with a local commit;
+- the updater does not silently commit, stash, reset, or clean your work.
 
-Do not push Personal commits to:
+Never push Personal commits to:
 
 ```text
 mrAlishah/Personal-SoT
 ```
 
-That repository is `sot public`, not your private storage.
+That is `sot public`, not your private storage.
 
-The updater does not silently commit, stash, reset, or clean your work.
+## No-Git installation
 
-## Downloaded / no-Git installation
-
-For an installation without Git, Safe Update creates a new side-by-side folder.
+For a downloaded/no-Git installation:
 
 ```text
-old folder
-→ remains untouched
-
-new folder
-→ updated candidate
+old folder stays unchanged
+→ new side-by-side folder is built
 → validate
 → use only if ready
 ```
 
-A failed update must never be reported as successful.
+## If something is blocked
 
-## Preview means preview
+A conflict or validation failure is not forced through and is not reported as success.
 
-Before writing anything, the Assistant shows what will happen.
-
-Typical result:
-
-```text
-preserve these private/user-owned items
-update these reusable product files
-these conflicts need a decision
-validation that will run
-```
-
-If the installation changes after the preview, the old confirmation is no longer valid. A new preview is required.
-
-## What success means
-
-```text
-Applied + validation passed
-→ update is ready
-
-Already current
-→ nothing changed
-
-Blocked / conflict
-→ nothing unsafe is forced through
-
-Validation failed
-→ do not call the system ready
-```
-
-If an update is blocked, use:
+Use:
 
 ```text
 @do:fix
 ```
 
+If the installation changes after a preview, the old confirmation becomes invalid and a new preview is required.
+
 ## Web/read-only clients
 
-A client that cannot run local commands cannot honestly inspect or update your real installation.
+A client that cannot run local commands cannot honestly inspect, apply, or validate your real update. Use an authorized local environment for the actual update.
 
-It may explain the process, but a real preview/apply/validation must happen in an authorized local environment.
-
-## Simple rule
+## Remember
 
 ```text
 private sot = your data and working state
 sot public  = reusable product source
 ```
-
-Never push Personal data to `sot public`.
