@@ -104,6 +104,18 @@ class InstallerSafetyTests(unittest.TestCase):
             self.assertEqual(root / "Personal-SoT-updated-2", destination)
             self.assertFalse(destination.exists())
 
+    @patch("system.install.installer._remote_url")
+    @patch("system.install.installer._is_git_root", return_value=True)
+    def test_private_clone_without_upstream_is_recognized(self, _git_root, remote_url):
+        remote_url.side_effect = (
+            lambda _root, name, push=False:
+            "git@github.com:alice/private-sot.git"
+            if name == "origin" and not push
+            else None
+        )
+
+        self.assertTrue(installer._git_private_topology(Path(".")))
+
     @patch("system.install.installer._git")
     def test_git_url_rewrite_rules_fail_closed(self, git):
         git.return_value = installer.CommandResult(
