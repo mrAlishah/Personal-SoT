@@ -77,6 +77,17 @@ class InstallerSafetyTests(unittest.TestCase):
             self.assertEqual(root / "Personal-SoT-updated-2", destination)
             self.assertFalse(destination.exists())
 
+    @patch("system.install.installer._git")
+    def test_git_url_rewrite_rules_fail_closed(self, git):
+        git.return_value = installer.CommandResult(
+            0, "url.ssh://example.invalid/.insteadof https://github.com/\n"
+        )
+
+        with self.assertRaises(installer.InstallError) as raised:
+            installer._reject_git_url_rewrites(Path("."))
+
+        self.assertIn("rewrite", str(raised.exception).lower())
+
     @patch("system.install.installer._anonymous_github_visibility", return_value="public")
     @patch("system.install.installer.shutil.which", return_value=None)
     @patch("system.install.installer._git")
@@ -84,6 +95,7 @@ class InstallerSafetyTests(unittest.TestCase):
         self, git, _which, _visibility
     ):
         git.side_effect = [
+            installer.CommandResult(1, ""),
             installer.CommandResult(0, "refs/heads/main\n"),
         ]
 
@@ -101,6 +113,7 @@ class InstallerSafetyTests(unittest.TestCase):
         self, git, _which, _visibility
     ):
         git.side_effect = [
+            installer.CommandResult(1, ""),
             installer.CommandResult(0, "refs/heads/main\n"),
             installer.CommandResult(1, "", "denied"),
         ]
@@ -118,9 +131,10 @@ class InstallerSafetyTests(unittest.TestCase):
     def test_first_github_install_requires_empty_destination(
         self, git, _which, _visibility
     ):
-        git.return_value = installer.CommandResult(
-            0, "deadbeef\trefs/heads/main\n"
-        )
+        git.side_effect = [
+            installer.CommandResult(1, ""),
+            installer.CommandResult(0, "deadbeef\trefs/heads/main\n"),
+        ]
 
         with self.assertRaises(installer.InstallError) as raised:
             installer._verify_private_github_destination(
