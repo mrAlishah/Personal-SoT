@@ -324,6 +324,7 @@ def _rollback_remote_conversion(root: Path) -> None:
         _git(root, "remote", "remove", "origin")
     if _remote_url(root, "upstream") is not None:
         _git(root, "config", "--unset-all", "remote.upstream.pushurl")
+        _git(root, "config", "--unset-all", "remote.pushDefault")
         _git(root, "remote", "rename", "upstream", "origin")
 
 
@@ -349,12 +350,15 @@ def _install_github(root: Path, destination: str, *, assume_yes: bool) -> None:
     if renamed.returncode != 0:
         raise InstallError("Could not rename public origin to upstream.")
     try:
-        protected = _git(root, "config", "remote.upstream.pushurl", "DISABLED")
+        protected = _git(root, "config", "remote.upstream.pushurl", destination)
         if protected.returncode != 0:
-            raise InstallError("Could not disable accidental pushes to sot public.")
+            raise InstallError("Could not redirect upstream pushes to the private destination.")
         added = _git(root, "remote", "add", "origin", destination)
         if added.returncode != 0:
             raise InstallError("Could not add the private origin.")
+        defaulted = _git(root, "config", "remote.pushDefault", "origin")
+        if defaulted.returncode != 0:
+            raise InstallError("Could not make private origin the default push target.")
         pushed = _git(root, "push", "-u", "origin", f"{PUBLIC_REF}:{PUBLIC_REF}", timeout=180)
         if pushed.returncode != 0:
             raise InstallError("Initial push to the private repository failed.")
@@ -366,8 +370,8 @@ def _install_github(root: Path, destination: str, *, assume_yes: bool) -> None:
         raise InstallError("Post-install verification failed: upstream is not sot public.")
     if _github_slug(_remote_url(root, "origin") or "") != slug:
         raise InstallError("Post-install verification failed: origin is not the private destination.")
-    if _remote_url(root, "upstream", push=True) != "DISABLED":
-        raise InstallError("Post-install verification failed: public push protection is missing.")
+    if _github_slug(_remote_url(root, "upstream", push=True) or "") != slug:
+        raise InstallError("Post-install verification failed: upstream push guard is not private.")
 
     _doctor(root)
     _print_ready(root, provider="github")
