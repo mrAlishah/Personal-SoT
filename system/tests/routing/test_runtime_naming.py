@@ -183,8 +183,8 @@ class SystemActionTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(classify_system_action(text))
 
-    def test_bare_help_and_assist_do_not_normalize(self):
-        for text in ("@help", "@assist"):
+    def test_bare_system_shortcuts_do_not_normalize(self):
+        for text in ("@help", "@assist", "@setup", "@doctor", "@fix"):
             with self.subTest(text=text):
                 self.assertIsNone(classify_system_action(text))
 
@@ -295,6 +295,12 @@ class PromptActionTests(unittest.TestCase):
             "@do:assist\n@run:ai/recap",
             "@run:ai/recap\n@do:sot",
             "@do:sot\n@run:ai/recap",
+            "@run:ai/recap\n@do:setup",
+            "@do:setup\n@run:ai/recap",
+            "@run:ai/recap\n@do:doctor",
+            "@do:doctor\n@run:ai/recap",
+            "@run:ai/recap\n@do:fix",
+            "@do:fix\n@run:ai/recap",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
