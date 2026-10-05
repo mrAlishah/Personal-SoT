@@ -99,8 +99,10 @@ class WorkflowResult:
     """The one object `run_update_workflow` returns. `digest` is the
     FRESH preview digest for this call — pass it back as
     `confirm_digest` on a subsequent call to actually apply/migrate;
-    passing a stale one is always refused. `applied` means the update
-    actually became the installed/ready result, never merely that
+    passing a stale one is always refused. `confirmation_required` is
+    true only when the FRESH preview is actionable and may be confirmed;
+    `applied` means the update actually became the installed/ready result,
+    never merely that
     `apply`/`migrate` was invoked. Carries no raw header, module body,
     or unauthorized Personal path — Advanced detail is built separately
     by `advanced_report`, only after a real `access.permitted` call.
@@ -111,6 +113,7 @@ class WorkflowResult:
     applied: bool
     beginner: BeginnerReport
     failure: str | None = None
+    confirmation_required: bool = False
 
 
 # --- install-type routing -------------------------------------------------
@@ -616,6 +619,19 @@ def _no_local_command_report() -> BeginnerReport:
         ('nothing was written', 'validation was not run here'))
 
 
+def _stale_preview_report(report: BeginnerReport) -> BeginnerReport:
+    """Render a stale confirmation as a fresh, actionable preview.
+
+    The old digest is still refused. This only packages the newly computed
+    beginner-safe report so a human/agent runner can request confirmation
+    again without falling back to ad-hoc Git commands.
+    """
+    return BeginnerReport(
+        'The available update changed; review the refreshed preview before confirming.',
+        (report.headline,) + report.details,
+    )
+
+
 # --- Advanced authorization -------------------------------------------------
 
 def _read_frontmatter_only(pin: _PinnedReadRoot, path: str) -> str:
@@ -776,20 +792,24 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) 
         base_report = git_beginner_report(plan, preview.summary, None)
         return WorkflowResult('git', fresh_digest, False, False, _with_no_write_notice(base_report))
 
-    if confirm_digest is None:
-        return WorkflowResult('git', fresh_digest, False, False,
+    # A blocked/conflicting/no-op fresh state is authoritative regardless
+    # of any caller-held digest. In particular, "already current" needs no
+    # confirmation and a real conflict must never become actionable.
+    if plan.blocked is not None or plan.conflict or plan.no_op:
+        return WorkflowResult('git', fresh_digest, plan.no_op, False,
                                git_beginner_report(plan, preview.summary, None))
+
+    if confirm_digest is None:
+        return WorkflowResult(
+            'git', fresh_digest, False, False,
+            git_beginner_report(plan, preview.summary, None),
+            confirmation_required=True)
 
     if not confirmed:
         return WorkflowResult(
             'git', fresh_digest, False, False,
-            BeginnerReport('The installation changed since your last preview. '
-                            'Please review a new preview before confirming.'),
-            failure='stale_state')
-
-    if plan.blocked is not None or plan.conflict or plan.no_op:
-        return WorkflowResult('git', fresh_digest, plan.no_op, False,
-                               git_beginner_report(plan, preview.summary, None))
+            _stale_preview_report(git_beginner_report(plan, preview.summary, None)),
+            failure='stale_state', confirmation_required=True)
 
     result = git_update.apply(root, plan, fresh_digest)
     succeeded = _git_apply_succeeded(result)
@@ -814,18 +834,19 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
         base_report = zip_beginner_report(plan, None)
         return WorkflowResult('zip', fresh_digest, False, False, _with_no_write_notice(base_report))
 
-    if confirm_digest is None:
+    if plan.blocked is not None or plan.conflicts or plan.registry.conflicts or plan.rejected_unsafe:
         return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
+
+    if confirm_digest is None:
+        return WorkflowResult(
+            'zip', fresh_digest, False, False, zip_beginner_report(plan, None),
+            confirmation_required=True)
 
     if not confirmed:
         return WorkflowResult(
             'zip', fresh_digest, False, False,
-            BeginnerReport('The installation changed since your last preview. '
-                            'Please review a new preview before confirming.'),
-            failure='stale_state')
-
-    if plan.blocked is not None or plan.conflicts or plan.registry.conflicts or plan.rejected_unsafe:
-        return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
+            _stale_preview_report(zip_beginner_report(plan, None)),
+            failure='stale_state', confirmation_required=True)
 
     result = side_by_side.migrate(root, destination, plan, fresh_digest, exclude=exclude)
     return WorkflowResult('zip', fresh_digest, result.ready, result.ready,
