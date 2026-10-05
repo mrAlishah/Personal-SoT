@@ -80,6 +80,29 @@ existing owner → smallest root-cause change
 
 not duplicated wrapper logic.
 
+### Keep the runtime entrypoint stable
+
+`workspace/adapters/runtime_entrypoint.md` is the public deployment boundary.
+Do not use it as a feature registry. Private deployments intentionally diverge
+there, so changing the public file can manufacture a both-changed Safe Update
+conflict for otherwise unrelated product work.
+
+Add reusable behavior to the appropriate `system/` owner and its already
+referenced contracts instead. `validate_public.py` intentionally rejects
+public runtime-entrypoint drift.
+
+Safe Update UX acceptance for the normal Git path is:
+
+```text
+one command/request
+→ one preview
+→ one confirmation
+→ apply + validators + report
+```
+
+The E2E suite must preserve that path while stale previews and genuine
+conflicts continue to fail closed.
+
 ## Source roles
 
 ```text
