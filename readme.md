@@ -1,39 +1,53 @@
 # Personal-SoT
 
-Personal-SoT gives your AI one controlled place to understand your goals, projects, preferences, and current situation.
+**A private source of truth for your AI.**
 
-The product goal is simple:
+Personal-SoT keeps your projects, preferences, reusable prompts, profiles, and current state in one controlled place so an AI can use the right context without relying on scattered chats.
+
+You do **not** need to learn Git, YAML, repository paths, or prompt engineering for normal use.
+
+## Start in 30 seconds
+
+If this is your first install:
 
 ```text
-install → choose your language → connect your AI
-→ meet the Personal SoT Assistant → complete a useful task
+1. Clone sot public
+2. Run install.sh / install.bat
+3. Open your private sot in your AI client
+4. Run @do:sot
+5. Run @do:setup
+6. Start a real task
 ```
 
-You should not need to understand Git, YAML, prompt engineering, repository paths, or SoT architecture for normal use.
+The two source roles are simple:
 
-## Current milestone
+```text
+sot
+→ your private Personal-SoT installation
 
-This repository currently contains the safe public foundation and the first runnable Personal SoT Assistant flow:
+sot public
+→ the reusable public product
+→ mrAlishah/Personal-SoT
+```
 
-- generic, client-neutral SoT contracts;
-- no real Personal data or private configuration;
-- local structural, prompt, and public-distribution validation;
-- a minimal workspace that creates Personal modules only when needed;
-- client-neutral guided setup from repository connection to first useful task;
-- a read-only beginner Doctor for setup, workspace, reference and client diagnostics;
-- client-neutral guided project creation and current-state maintenance;
-- on-demand prompt discovery and reuse-first guided prompt creation;
-- natural-language personalization with Profile-only safe creation and editing;
-- authorized local writes in Codex and Claude Code;
-- truthful preview-only behavior when a web client cannot write the repository.
+Never store your Personal data in `sot public`.
 
-The guided onboarding and first create → use → update project workflow are available through a local agent opened at the repository root. A small cross-platform bootstrap installer is included for users who start from a Git clone.
+## Important commands
+
+| Command | Use it for |
+|---|---|
+| `@do:sot` | Reconnect/re-anchor the current chat to your canonical private SoT. |
+| `@do:setup` | First setup, resume incomplete setup, improve configuration, or route an update. |
+| `@do:doctor` | Read-only health check. Nothing is changed. |
+| `@do:fix` | Diagnose a real problem and guide a safe repair. |
+| `@do:help` | Explain features, discover capabilities, or recommend what to do next. |
+| `@do:assist` | Safely create, change, maintain, or customize your Personal-SoT. |
+
+You can also speak naturally. The commands are shortcuts, not a requirement.
 
 ## Quick install
 
-Clone `sot public` and run the launcher for your OS:
-
-Linux/macOS:
+### Linux / macOS
 
 ```bash
 git clone https://github.com/mrAlishah/Personal-SoT.git
@@ -41,7 +55,7 @@ cd Personal-SoT
 ./install.sh
 ```
 
-Windows:
+### Windows
 
 ```bat
 git clone https://github.com/mrAlishah/Personal-SoT.git
@@ -49,36 +63,150 @@ cd Personal-SoT
 install.bat
 ```
 
-The installer can prepare either an empty private GitHub repository or an empty local folder already synchronized by Google Drive. It runs the public/core/prompt checks plus Doctor, then tells you to open the private copy and run `@do:sot` followed by `@do:setup`.
+The installer can prepare:
 
-## Start here
+- an empty **private GitHub repository**; or
+- an empty **local folder already synced by Google Drive**.
 
-- New user: [Setup guide](guides/user/setup.md)
-- Product tour: [Beginner guide](guides/user/readme.md)
-- Diagnose a problem: [Personal-SoT Doctor](guides/user/doctor.md)
-- Create and use a project: [First project guide](guides/user/create_and_use_project.md)
-- Find an existing prompt: [Prompt Explorer guide](guides/user/find_and_use_prompts.md)
-- Build or improve a prompt: [Prompt Builder guide](guides/user/build_a_prompt.md)
-- Customize responses: [Personalization guide](guides/user/customize_responses.md)
-- Developer or contributor: [Developer guide](guides/developer/readme.md)
-- Migration decisions: [Public V1 inventory](guides/developer/migration/public_v1_inventory.md)
-
-## Safety
-
-Never store passwords, API tokens, private keys, recovery codes, session cookies, one-time codes, or other credentials in Personal-SoT.
-
-Before any public release, run:
-
-```bash
-python3 system/validation/validate_v1.py
-python3 system/validation/validate_prompts.py
-python3 system/validation/validate_public.py
-```
-
-Personal-SoT keeps the canonical three-root model:
+It runs the core checks and Doctor. When it finishes successfully, open the resulting private `sot` in Codex or Claude Code and run:
 
 ```text
-workspace/  your content and configuration
-system/     shared contracts and validation
-guides/     beginner and developer documentation
+@do:sot
 ```
+
+then:
+
+```text
+@do:setup
+```
+
+See [Setup](guides/user/setup.md) for the step-by-step version.
+
+## How it works
+
+```text
+sot public
+    │
+    │ install / reusable product updates
+    ▼
+your private sot
+    │
+    │ open in an authorized AI client
+    ▼
+@do:sot
+    │
+    ▼
+@do:setup
+    │
+    ├── projects
+    ├── current state
+    ├── prompts
+    ├── profiles
+    └── preferences
+```
+
+The design principle is:
+
+```text
+simple outside + rigorous inside
+```
+
+You tell the Assistant what you want. Internally it resolves the right context, reuses existing capabilities, previews material changes, waits for confirmation, writes only with real permission, validates, and reports what actually happened.
+
+## Use it well
+
+For normal use, start with the outcome instead of the feature name:
+
+```text
+Create a project for learning German.
+
+Update my project. I finished A1 and now practise twice a week.
+
+Find a reusable prompt for reviewing a code change.
+
+Make my answers shorter and more structured.
+
+I don't know what I need — recommend a useful starting point.
+```
+
+When something looks wrong:
+
+```text
+@do:doctor
+```
+
+If Doctor finds a real problem:
+
+```text
+@do:fix
+```
+
+If you are unsure what Personal-SoT can do:
+
+```text
+@do:help
+```
+
+## User guides
+
+| Goal | Guide |
+|---|---|
+| First install and setup | [Setup](guides/user/setup.md) |
+| Learn the normal workflow | [Beginner guide](guides/user/readme.md) |
+| Check system health | [Doctor](guides/user/doctor.md) |
+| Update Personal-SoT | [Update](guides/user/update.md) |
+| Create and maintain a project | [First project](guides/user/create_and_use_project.md) |
+| Find an existing prompt | [Prompt discovery](guides/user/find_and_use_prompts.md) |
+| Build or improve a prompt | [Prompt builder](guides/user/build_a_prompt.md) |
+| Change response style | [Customize responses](guides/user/customize_responses.md) |
+
+## Developers
+
+Start with [Developer Guide](guides/developer/readme.md).
+
+The short version:
+
+```text
+develop
+→ short-lived branch
+→ tests + validators + review
+→ develop
+→ explicit release
+→ main
+```
+
+Reusable runtime semantics belong under `system/`. Real Personal facts and private deployment state never belong in the public product repository.
+
+## Safety and privacy
+
+Keep these **outside** Personal-SoT:
+
+- passwords;
+- API tokens and private keys;
+- recovery codes and one-time codes;
+- session cookies;
+- payment credentials.
+
+A material saved change follows this rule:
+
+```text
+understand
+→ preview
+→ confirm
+→ re-check
+→ write
+→ validate
+→ report
+```
+
+A web/read-only client may explain and preview, but it must not claim that it wrote files or ran local validation when it could not.
+
+## Repository map
+
+```text
+workspace/  user-owned content and configuration
+system/     runtime contracts, algorithms, validation and tests
+guides/     user and developer documentation
+```
+
+For the complete beginner journey, continue with [guides/user/readme.md](guides/user/readme.md).
