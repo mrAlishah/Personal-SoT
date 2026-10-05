@@ -158,3 +158,46 @@ workspace/  user-owned content/configuration
 system/     runtime + validation + tests
 guides/     user/developer documentation
 ```
+
+## Quick reference
+
+| What you want | Command / example |
+|---|---|
+| Reconnect this chat to your private SoT | `@do:sot` |
+| Finish or improve setup | `@do:setup` |
+| Check system health | `@do:doctor` |
+| Diagnose and repair a problem | `@do:fix` |
+| Ask the system what to use or do next | `@do:help` |
+| Create/change something through guided workflows | `@do:assist` |
+| Use a specific context/project | `@ctx:<path>` |
+| Use a saved response profile | `@profile:<name>` |
+| Run a reusable prompt | `@run:<prompt_path>` |
+| Recap recent conversation exchanges | `@recap:<count>` |
+
+You normally do not need expert syntax. Start in natural language and use these shortcuts when you want precise control.
+
+## Why use Personal-SoT?
+
+| Goal | Without a Personal SoT | With Personal-SoT | Value |
+|---|---|---|---|
+| Continue a long-running project | Re-explain goals, constraints, decisions, and current state in new chats. | Keep the project state in one canonical private context and update it as things change. | Less repetition and fewer context mistakes. |
+| Learn something over weeks or months | Each chat may treat you like a new learner. | Keep goals, level, constraints, and current progress in a project. | Advice can start from your actual current state. |
+| Reuse a good AI workflow | Copy/paste the same long prompt repeatedly. | Save or reuse a validated prompt and call it when needed. | More consistent results with less prompt maintenance. |
+| Keep response style consistent | Repeatedly ask for the same tone, depth, and format. | Reuse a Profile or explicit presentation controls. | Consistent output without repeating preferences. |
+| Maintain trustworthy context | Old chat history and current facts can get mixed together. | Separate durable context, project current state, prompts, and presentation settings by owner. | Clearer source of truth and less stale-context drift. |
+| Diagnose a broken setup | Guess whether the problem is configuration, usage, or runtime. | Run `@do:doctor`, then `@do:fix` only when repair is actually needed. | Safer troubleshooting without blind edits. |
+
+A simple example:
+
+```text
+You: Create a project for preparing for an AWS certification.
+
+Later:
+You: Update my AWS project. I finished networking and IAM.
+
+Later in another task:
+You: Using my AWS project, what should I study next?
+```
+
+The value is not that the AI "remembers everything." The value is that **you control a private, explicit, updateable source of truth that the AI can resolve and use when relevant.**
+
