@@ -44,6 +44,9 @@ Switch-like text after the body starts, or inside bullets/quotes/code fences, is
 @do:sot
 @do:help
 @do:assist
+@do:setup
+@do:doctor
+@do:fix
 @run:<path>
 @edit:<path>
 @delete:<path>
@@ -53,7 +56,7 @@ Switch-like text after the body starts, or inside bullets/quotes/code fences, is
 @recap:<positive_integer>
 ```
 
-`@do:sot`, `@do:help`, and `@do:assist` are reserved literal runtime spellings. Their exact case is canonical and none is a repository-owned identifier subject to lowercase_snake_case naming.
+`@do:sot`, `@do:help`, `@do:assist`, `@do:setup`, `@do:doctor`, and `@do:fix` are reserved literal runtime spellings. Their exact case is canonical and none is a repository-owned identifier subject to lowercase_snake_case naming.
 
 Bare `@prompt:<path>`, bare `@help`, and bare `@assist` are unsupported because action intent must be explicit. The legacy `@do:prompt:<path>`, `@edit:prompt:<path>`, `@delete:prompt:<path>`, and `@confirm:delete:prompt:<path>` spellings from before this grammar are not canonical and do not resolve; they are not maintained as aliases.
 
@@ -164,7 +167,7 @@ No control value can disable external mandatory constraints, host/tool permissio
 
 ## high_level_action_exclusivity
 
-At most one high-level action may appear in one control block: one system action (`@do:sot`, `@do:help`, `@do:assist`), one prompt action (`@run`, `@edit`, `@delete`), or one recap action. Combining high-level actions is invalid.
+At most one high-level action may appear in one control block: one system action (`@do:sot`, `@do:help`, `@do:assist`, `@do:setup`, `@do:doctor`, `@do:fix`), one prompt action (`@run`, `@edit`, `@delete`), or one recap action. Combining high-level actions is invalid.
 
 ## sot_action
 
@@ -174,7 +177,7 @@ At most one high-level action may appear in one control block: one system action
 
 Invokes `system/adapters/runtime_bootstrap.md` semantics. It accepts no `@param`, needs no body, and every invocation performs the same resolve + reload + re-anchor operation for the current accessible chat. It may be used at chat start or later after drift.
 
-Do not combine `@do:sot` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, `@do:help`, `@do:assist`, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
+Do not combine `@do:sot` with `@ctx`, `@profile`, presentation switches (including `@start`), `@control`, any other `@do:*` system action, prompt actions, `@param`, or `@recap`; effective defaults/configuration are resolved from the active deployment/bootstrap according to the runtime contract.
 
 For migration compatibility only, the exact legacy literal
 `@do:initialSoT` resolves to this action and emits a deprecation diagnostic
@@ -203,6 +206,40 @@ A guided entry point that helps the user safely create, change, maintain, or cus
 It accepts no `@param` and no companion selector, control, or other high-level action in the same control block. Ordinary text after the control block's blank-line separator is an optional description of the requested outcome. With no request, it starts a guided interaction — one material question at a time — to learn what the user wants to create/change/customize.
 
 Every resulting canonical write still follows `system/assistant/safe_write_contract.md`: preview, explicit confirmation, current-state re-check, authorized apply only when host capability exists, and truthful reporting. A no-write host completes discovery/preview and states plainly that nothing was written.
+
+## setup_action
+
+```text
+@do:setup
+```
+
+A guided setup/maintenance entry point owned by `system/assistant/setup_workflow.md`. It is intentionally re-runnable: on a new installation it guides initial private `sot` creation/configuration from `sot public`; on a partial or existing installation it inspects current evidence, resumes missing setup, recommends bounded improvements, and routes safe product updates through `system/assistant/update_workflow.md` instead of duplicating update logic.
+
+Setup guidance is beginner-first and uses concise ELI5-style explanations, current progress, already-known information, and one material question at a time. It must not ask the user to restate facts or capabilities the host can already prove.
+
+It accepts no `@param` and no companion selector, presentation switch, control, or other high-level action in the same control block. Ordinary text after the blank-line separator is an optional setup goal or problem description. Any material write still follows the safe-write contract.
+
+## doctor_action
+
+```text
+@do:doctor
+```
+
+A read-only diagnostic entry point owned by `system/diagnostics/doctor_contract.md`. On a host with local-command capability it runs the canonical Doctor with the active repository-owned adapter and the host's actual write capability, then reports ready/warning/error state in beginner language. It never repairs or mutates the installation.
+
+It accepts no `@param` and no companion selector, presentation switch, control, or other high-level action in the same control block. Ordinary text after the blank-line separator may describe the symptom or requested diagnostic focus; it does not authorize a write.
+
+## fix_action
+
+```text
+@do:fix
+```
+
+A guided repair entry point owned by `system/assistant/fix_workflow.md`. It distinguishes usage confusion from a real current defect. Usage confusion is explained and guided without mutation. A suspected installation/runtime defect is re-diagnosed from current evidence, then the smallest supported repair is proposed, previewed, explicitly confirmed, re-checked, applied only with real capability, validated, and reported truthfully.
+
+By default `@do:fix` targets the user's private `sot`. It never mutates `sot public` merely because a private installation exposes a product defect. Public-product changes require an explicit `sot public` target plus that repository's own development/branch governance.
+
+It accepts no `@param` and no companion selector, presentation switch, control, or other high-level action in the same control block. Ordinary text after the blank-line separator is the user's optional problem description.
 
 ## prompt_action
 

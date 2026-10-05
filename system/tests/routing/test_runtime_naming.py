@@ -4,9 +4,12 @@ from system.routing.runtime_naming import (
     ASSIST_ACTION,
     CANONICAL_BOOTSTRAP_ACTION,
     DELETE_ACTION,
+    DOCTOR_ACTION,
     EDIT_ACTION,
+    FIX_ACTION,
     HELP_ACTION,
     RUN_ACTION,
+    SETUP_ACTION,
     classify_bootstrap_invocation,
     classify_prompt_action,
     classify_system_action,
@@ -40,6 +43,9 @@ class BootstrapNamingTests(unittest.TestCase):
             "@do:sot=value",
             "@do:sot\n@param:name=[value]",
             "@do:sot\n@run:ai/recap",
+            "@run:ai/recap\n@do:setup",
+            "@do:doctor\n@run:ai/recap",
+            "@run:ai/recap\n@do:fix",
             "@do:sot\n@recap:2",
             "@do:sot\n\nordinary body",
         ):
@@ -57,8 +63,8 @@ class BootstrapNamingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     classify_bootstrap_invocation(text)
 
-    def test_help_and_assist_are_not_bootstrap_invocations(self):
-        for text in ("@do:help", "@do:assist"):
+    def test_non_bootstrap_system_actions_are_not_bootstrap_invocations(self):
+        for text in ("@do:help", "@do:assist", "@do:setup", "@do:doctor", "@do:fix"):
             with self.subTest(text=text):
                 self.assertIsNone(classify_bootstrap_invocation(text))
 
@@ -96,38 +102,59 @@ class SystemActionTests(unittest.TestCase):
         self.assertEqual(ASSIST_ACTION, result.action)
         self.assertIn("Profile", result.body)
 
+    def test_setup_doctor_and_fix_resolve_with_optional_body(self):
+        cases = (
+            ("@do:setup", SETUP_ACTION, ""),
+            ("@do:setup\n\nContinue my installation.", SETUP_ACTION, "Continue my installation."),
+            ("@do:doctor", DOCTOR_ACTION, ""),
+            ("@do:doctor\n\nCheck the setup failure.", DOCTOR_ACTION, "Check the setup failure."),
+            ("@do:fix", FIX_ACTION, ""),
+            ("@do:fix\n\nDoctor says the runtime is broken.", FIX_ACTION, "Doctor says the runtime is broken."),
+        )
+        for text, action, body in cases:
+            with self.subTest(text=text):
+                result = classify_system_action(text)
+                self.assertEqual(action, result.action)
+                self.assertEqual(body, result.body)
+
     def test_sot_rejects_body(self):
         with self.assertRaises(ValueError):
             classify_system_action("@do:sot\n\nordinary body")
 
-    def test_help_and_assist_reject_inline_payload_on_action_line(self):
-        for text in ("@do:help=value", "@do:help unexpected",
-                     "@do:assist=value", "@do:assist unexpected"):
+    def test_body_capable_system_actions_reject_inline_payload_on_action_line(self):
+        for action in ("@do:help", "@do:assist", "@do:setup", "@do:doctor", "@do:fix"):
+            for text in (f"{action}=value", f"{action} unexpected"):
+                with self.subTest(text=text):
+                    with self.assertRaises(ValueError):
+                        classify_system_action(text)
+
+    def test_body_capable_system_actions_reject_param_companions(self):
+        for action in ("@do:help", "@do:assist", "@do:setup", "@do:doctor", "@do:fix"):
+            text = f"{action}\n@param:x=[1]"
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
                     classify_system_action(text)
 
-    def test_help_and_assist_reject_param_companions(self):
-        for text in ("@do:help\n@param:x=[1]", "@do:assist\n@param:x=[1]"):
-            with self.subTest(text=text):
-                with self.assertRaises(ValueError):
-                    classify_system_action(text)
-
-    def test_help_and_assist_reject_selector_and_control_companions(self):
+    def test_body_capable_system_actions_reject_selector_and_control_companions(self):
         for text in (
             "@do:help\n@profile:code/review",
             "@do:assist\n@ctx:personal",
             "@do:help\n@control:learning=on",
+            "@do:setup\n@profile:code/review",
+            "@do:doctor\n@ctx:personal",
+            "@do:fix\n@control:learning=on",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
                     classify_system_action(text)
 
-    def test_help_and_assist_reject_a_second_high_level_action(self):
+    def test_system_actions_reject_a_second_high_level_action(self):
         for text in (
             "@do:help\n@do:assist",
             "@do:assist\n@do:sot",
-            "@do:help\n@run:ai/recap",
+            "@do:setup\n@do:doctor",
+            "@do:doctor\n@do:fix",
+            "@do:fix\n@run:ai/recap",
             "@do:assist\n@recap:2",
         ):
             with self.subTest(text=text):
@@ -143,6 +170,9 @@ class SystemActionTests(unittest.TestCase):
             "@run:ai/recap\n@do:help",
             "@recap:2\n@do:assist",
             "@profile:code/review\n@do:sot",
+            "@profile:code/review\n@do:setup",
+            "@ctx:personal\n@do:doctor",
+            "@recap:2\n@do:fix",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
@@ -153,13 +183,13 @@ class SystemActionTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(classify_system_action(text))
 
-    def test_bare_help_and_assist_do_not_normalize(self):
-        for text in ("@help", "@assist"):
+    def test_bare_system_shortcuts_do_not_normalize(self):
+        for text in ("@help", "@assist", "@setup", "@doctor", "@fix"):
             with self.subTest(text=text):
                 self.assertIsNone(classify_system_action(text))
 
     def test_case_variants_do_not_normalize(self):
-        for text in ("@do:HELP", "@do:Assist", "@DO:help"):
+        for text in ("@do:HELP", "@do:Assist", "@do:Setup", "@do:Doctor", "@do:Fix", "@DO:help"):
             with self.subTest(text=text):
                 self.assertIsNone(classify_system_action(text))
 
@@ -265,6 +295,12 @@ class PromptActionTests(unittest.TestCase):
             "@do:assist\n@run:ai/recap",
             "@run:ai/recap\n@do:sot",
             "@do:sot\n@run:ai/recap",
+            "@run:ai/recap\n@do:setup",
+            "@do:setup\n@run:ai/recap",
+            "@run:ai/recap\n@do:doctor",
+            "@do:doctor\n@run:ai/recap",
+            "@run:ai/recap\n@do:fix",
+            "@do:fix\n@run:ai/recap",
         ):
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):
@@ -299,7 +335,7 @@ class ControlBlockBoundaryTests(unittest.TestCase):
     later switch-looking line in that body is not executable."""
 
     def test_ordinary_text_before_system_action_leaves_it_unresolved(self):
-        for action in ("@do:sot", "@do:help", "@do:assist"):
+        for action in ("@do:sot", "@do:help", "@do:assist", "@do:setup", "@do:doctor", "@do:fix"):
             with self.subTest(action=action):
                 self.assertIsNone(classify_system_action(f"ordinary request\n{action}"))
 
