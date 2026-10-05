@@ -137,6 +137,16 @@ A client/deployment wrapper should contain only what is required to locate this 
 
 Do not copy this execution sequence into every external instruction surface.
 
+The public `workspace/adapters/runtime_entrypoint.md` is a stable
+**deployment boundary**, not a growing product-feature manifest. Private
+deployments may intentionally diverge there for their deployment/bootstrap
+binding. Reusable product capabilities and future workflow wiring therefore
+belong in the referenced `system/` owners; do not append a new
+feature-specific key to the public runtime entrypoint merely to expose that
+feature. `validate_public.py` freezes the released public entrypoint shape so
+an ordinary upstream product release leaves intentional private divergence as
+user-owned state instead of turning it into a recurring both-changed conflict.
+
 ## acceptance
 
 A compliant runtime can bootstrap or re-anchor with one parameterless `@do:sot`, fully resolve effective profile composition, registered runtime controls, control-driven behavior activation/suppression/adaptive gating, and applicable response-start configuration, invalidate stale factual conclusions including prior negative lookups, load minimum relevant authorized context, resolve subsequently needed facts from the current canonical source through targeted retrieval, expose truthful compact diagnostics, reuse unchanged configuration within the same chat, selectively reload when needed, preserve host-native normal-chat presentation, default to the normal chat delivery surface unless the user explicitly requests a document-style artifact, apply canonical formats only within their owned boundaries, and keep client wrappers thin.
