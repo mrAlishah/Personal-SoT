@@ -82,13 +82,27 @@ def check_public_clone() -> None:
 
 def run_checks(root: Path) -> None:
     commands = (
-        [sys.executable, "-B", "system/validation/validate_public.py", "--root", str(root)],
-        [sys.executable, "-B", "system/validation/validate_v1.py", "--mode", "core", "--root", str(root)],
-        [sys.executable, "-B", "system/validation/validate_prompts.py", "--root", str(root)],
         [
             sys.executable,
             "-B",
-            "system/diagnostics/doctor.py",
+            str(root / "system/validation/validate_public.py"),
+            "--root",
+            str(root),
+        ],
+        [
+            sys.executable,
+            "-B",
+            str(root / "system/validation/validate_v1.py"),
+            "--mode",
+            "core",
+            "--root",
+            str(root),
+        ],
+        [sys.executable, "-B", str(root / "system/validation/validate_prompts.py")],
+        [
+            sys.executable,
+            "-B",
+            str(root / "system/diagnostics/doctor.py"),
             "--root",
             str(root),
             "--write-capability",
@@ -96,7 +110,7 @@ def run_checks(root: Path) -> None:
         ],
     )
     for command in commands:
-        result = run(command, cwd=ROOT)
+        result = run(command, cwd=root)
         if result.stdout:
             print(result.stdout.rstrip())
         if result.returncode != 0:
