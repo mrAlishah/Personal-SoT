@@ -541,4 +541,3 @@ private canonical context
 ```
 
 The value is not that the AI "remembers everything." The value is that **you control a private, explicit, updateable source of truth that the AI can resolve and use when relevant.**
-
