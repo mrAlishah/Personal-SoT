@@ -23,6 +23,40 @@ apply/recovery, and migration semantics it routes to, and
 This is the same `Explain → Recommend → Preview → Apply` pattern as every
 other guided flow (`system/assistant/guided_flow_contract.md`).
 
+## Executable local entry point
+
+On an authorized local host, the normal beginner path is intentionally:
+
+```text
+one update request/command
+→ one exact preview
+→ one confirmation
+→ apply + validate + report
+```
+
+The repository-owned executable entry point is `update.py`, backed by
+`system/update/cli.py`. It is thin orchestration over
+`run_update_workflow(...)`: it never implements a second classifier, merge
+engine, validator, or recovery path.
+
+For a human at a terminal:
+
+```text
+python3 update.py
+```
+
+A capable local AI agent should keep those mechanics out of the conversation:
+build a preview with `python3 update.py --preview`, present the beginner-safe
+summary, and after explicit approval call
+`python3 update.py --confirm-digest <exact_digest>`. It must not replace this
+with an ad-hoc sequence of `git restore`, manual tree construction, branch
+movement, or copied Python snippets.
+
+If the target/current state changes between preview and confirmation, the old
+digest remains invalid. The runner returns the fresh preview/digest; interactive
+mode shows it and asks again. A genuine unresolved conflict still fails closed
+and routes to repair/decision handling rather than being guessed through.
+
 ## Install-type routing
 
 Step 1 determines whether the installation is a real Git clone/worktree or a
