@@ -1,92 +1,115 @@
 # Update Personal-SoT
 
-You do not need to understand Git, commit SHAs, merge bases, or registry
-internals to update your installation safely.
+You do not need to understand merge bases, commit SHAs, or registry internals.
 
-## 1. Ask naturally
+Start with:
 
 ```text
 Update my Personal-SoT.
 ```
 
-The Assistant checks your actual installation and tells you what kind of
-update applies — you do not need to say whether you cloned the repository or
-downloaded an archive; the Assistant can tell from your installation itself.
+You may also run:
 
-## 2. Clone vs. downloaded archive
+```text
+@do:setup
+```
 
-- **Cloned with Git:** your installation updates in place, through a safe,
-  confirmed flow — nothing is applied until you confirm an exact preview.
-- **Downloaded archive (no Git):** the update is built as a new,
-  side-by-side folder next to your original. Your original archive
-  installation is never changed, on success or on failure.
+Setup is re-runnable and can route an existing installation into the Safe Update workflow.
 
-## 3. Preview before anything happens
+## The update flow
 
-Before anything is written, the Assistant shows a preview: what would be
-preserved, what would be updated, and whether anything needs your decision
-(a conflict, or an unsafe item that needs attention). Building this preview
-never changes anything.
+```text
+1. inspect current installation
+2. compare with sot public
+3. show a preview
+4. you confirm
+5. apply safely
+6. validate
+7. report the real result
+```
 
-## 4. Confirm the exact preview
+Nothing material is applied before you confirm the exact preview.
 
-Nothing is applied or migrated until you explicitly confirm that exact
-preview. If your installation changes in the meantime — including if you
-change which files to keep — the Assistant builds a new preview instead of
-applying the old one.
+## Git installation
 
-## 5. If your Git clone has unsaved local changes
+For a Git-backed private `sot`, the updater preserves user-owned changes and applies reusable product updates only when it can classify them safely.
 
-If you cloned with Git and have local changes the updater cannot safely
-classify yet, the Assistant will tell you to save them first:
+If you have unsaved local changes, save them first with a **local commit**.
 
-- Save your local changes with a local Git commit.
-- Do **not** push those local commits to the public
-  [mrAlishah/Personal-SoT](https://github.com/mrAlishah/Personal-SoT)
-  repository — they are yours, not the shared product.
-- The Assistant/updater never commits, stashes, resets, or cleans your
-  changes for you.
+Do not push Personal commits to:
 
-## 6. Web clients and other no-write hosts
+```text
+mrAlishah/Personal-SoT
+```
 
-A host that can read your installation and run local commands, but cannot
-write or validate, still builds the real preview and shows it to you — on
-the very first check, not only once you try to confirm — but adds plainly
-that nothing was written and that validation was not run there.
+That repository is `sot public`, not your private storage.
 
-ChatGPT, Claude Web, and similar clients typically cannot run local commands
-at all, so they cannot actually check your installation or build that
-preview themselves. They can explain the workflow in plain language and hand
-off to a local agent, but they must not claim to have checked or previewed
-your actual installation when they have not. Use an authorized local agent
-(Claude Code, Codex) to build a real preview, apply a confirmed one, and
-actually validate it.
+The updater does not silently commit, stash, reset, or clean your work.
 
-## 7. What success means
+## Downloaded / no-Git installation
 
-- **Clone, applied:** "Update applied and validation passed." means the
-  update was written AND the real validators actually passed against it.
-- **Archive, migrated:** "Updated side-by-side copy is ready. Your original
-  folder was not changed." — your new, updated copy is ready to use; your
-  original archive folder is untouched.
-- **Already current:** "You're already current." — nothing needed to
-  change.
-- **Blocked:** if something failed validation, or the updater could not
-  safely finish, it reports that honestly as a failure, never as a
-  successful update — a clone update is only ever reported as applied when
-  it actually produced a real result, not just because the validators
-  happened to run. If it already started changing things and then hit a
-  problem, it tells you whether it was able to safely restore your prior
-  state.
-- **Archive, didn't finish:** if a side-by-side update fails partway
-  through, your original folder is still untouched, but the Assistant will
-  never say "nothing changed" — it will say plainly that the new copy did
-  not finish and is not ready to use.
+For an installation without Git, Safe Update creates a new side-by-side folder.
 
-## 8. Advanced detail is optional and still access-controlled
+```text
+old folder
+→ remains untouched
 
-If you ask for Advanced/technical detail, you may see implementation detail
-like commit SHAs or recovery flags — that detail was never Personal to begin
-with. A path under your personal context is only ever named in that detail
-when the Assistant can actually prove you are authorized to see it named;
-asking for "Advanced" by itself never proves that.
+new folder
+→ updated candidate
+→ validate
+→ use only if ready
+```
+
+A failed update must never be reported as successful.
+
+## Preview means preview
+
+Before writing anything, the Assistant shows what will happen.
+
+Typical result:
+
+```text
+preserve these private/user-owned items
+update these reusable product files
+these conflicts need a decision
+validation that will run
+```
+
+If the installation changes after the preview, the old confirmation is no longer valid. A new preview is required.
+
+## What success means
+
+```text
+Applied + validation passed
+→ update is ready
+
+Already current
+→ nothing changed
+
+Blocked / conflict
+→ nothing unsafe is forced through
+
+Validation failed
+→ do not call the system ready
+```
+
+If an update is blocked, use:
+
+```text
+@do:fix
+```
+
+## Web/read-only clients
+
+A client that cannot run local commands cannot honestly inspect or update your real installation.
+
+It may explain the process, but a real preview/apply/validation must happen in an authorized local environment.
+
+## Simple rule
+
+```text
+private sot = your data and working state
+sot public  = reusable product source
+```
+
+Never push Personal data to `sot public`.
