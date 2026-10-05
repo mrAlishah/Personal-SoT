@@ -229,6 +229,34 @@ def _anonymous_github_visibility(slug: str) -> str:
         return "unknown"
 
 
+def _prove_existing_private_github_origin(root: Path, url: str) -> str:
+    slug = _github_slug(url)
+    if slug is None or slug.casefold() == PUBLIC_REPOSITORY.casefold():
+        raise InstallError("Private origin is not a valid non-public GitHub repository.")
+
+    access = _git(root, "ls-remote", url, timeout=60)
+    if access.returncode != 0:
+        raise InstallError("Private origin is not reachable with your current Git credentials.")
+
+    visibility = "unknown"
+    if shutil.which("gh"):
+        check = _run(("gh", "api", f"repos/{slug}", "--jq", ".private"), timeout=30)
+        if check.returncode == 0:
+            visibility = "private" if check.stdout.strip().casefold() == "true" else "public"
+    if visibility == "unknown":
+        visibility = _anonymous_github_visibility(slug)
+
+    if visibility == "public":
+        raise InstallError("origin is public. Refusing to push private Personal-SoT state.")
+    if visibility not in {"private", "private_or_hidden"}:
+        raise InstallError("Private origin visibility could not be proven.")
+
+    dry_run = _git(root, "push", "--dry-run", url, "HEAD:refs/heads/main", timeout=60)
+    if dry_run.returncode != 0:
+        raise InstallError("Write access to the private origin could not be verified.")
+    return slug
+
+
 def _verify_private_github_destination(root: Path, url: str) -> str:
     slug = _github_slug(url)
     if slug is None:
@@ -326,6 +354,11 @@ def _update_git(root: Path, *, assume_yes: bool) -> None:
     if not _git_private_topology(root):
         raise InstallError("This Git installation does not have private origin + public upstream topology.")
 
+    origin = _remote_url(root, "origin")
+    if origin is None:
+        raise InstallError("Private origin is missing.")
+    _prove_existing_private_github_origin(root, origin)
+
     plan = git_update.classify(root)
     preview = git_update.preview(plan)
     if plan.blocked is not None:
@@ -387,7 +420,10 @@ def _initial_drive_install(
         raise InstallError("Use a Google Drive folder URL such as https://drive.google.com/drive/folders/<id>.")
 
     _sync_fresh_public_clone(public_root)
-    destination = destination.expanduser().resolve()
+    destination_input = destination.expanduser()
+    if destination_input.is_symlink():
+        raise InstallError("The Drive local destination itself may not be a symlink.")
+    destination = destination_input.resolve()
 
     if destination.exists() and any(destination.iterdir()):
         if all((destination / marker).is_file() for marker in REQUIRED_MARKERS) and not (destination / ".git").exists():
