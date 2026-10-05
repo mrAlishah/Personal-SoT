@@ -378,6 +378,15 @@ def _install_github(root: Path, destination: str, *, assume_yes: bool) -> None:
 
 
 def _git_private_topology(root: Path) -> bool:
+    """Recognize an installed private Git clone without requiring local-only
+    remotes to survive a re-clone on another machine.
+
+    A private clone always needs a GitHub-shaped non-public `origin`.
+    `upstream` is optional because Git remotes are local configuration and
+    are not transferred when the private repository is cloned elsewhere.
+    When present, upstream must still be the canonical public repository.
+    Actual origin privacy/write access is re-proven inside `_update_git`.
+    """
     if not _is_git_root(root):
         return False
     origin = _remote_url(root, "origin")
@@ -386,14 +395,14 @@ def _git_private_topology(root: Path) -> bool:
         origin is not None
         and _github_slug(origin) is not None
         and not _is_public_remote(origin)
-        and _is_public_remote(upstream)
+        and (upstream is None or _is_public_remote(upstream))
     )
 
 
 def _update_git(root: Path, *, assume_yes: bool) -> None:
     _require_markers(root)
     if not _git_private_topology(root):
-        raise InstallError("This Git installation does not have private origin + public upstream topology.")
+        raise InstallError("This Git installation does not have a recognizable private GitHub origin/public update topology.")
 
     origin = _remote_url(root, "origin")
     if origin is None:
