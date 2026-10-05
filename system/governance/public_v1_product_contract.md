@@ -108,10 +108,22 @@ Authorization is resolved before loading, and diagnostics or discovery must not 
 
 Reusable prompts remain fact-light. Durable Personal facts belong to separately resolved canonical context rather than reusable prompt bodies.
 
+## Installation surface
+
+Public V1 includes a cross-platform clone-to-private installer:
+
+```text
+install.sh  → Linux/macOS launcher
+install.bat → Windows launcher
+            → system/install/installer.py
+```
+
+The launchers are thin; `system/install/install_contract.md` owns semantics. GitHub installation creates a private-origin/public-upstream topology. Google Drive installation is no-Git and requires a real local synced/mounted folder; a Drive URL alone is never treated as credential or filesystem capability. Repeat installer runs reuse the canonical Safe Update owners rather than implementing a second updater.
+
 ## V1 scope
 V1 includes:
 - a safe public repository and clean reusable Core foundation;
-- beginner setup, multilingual onboarding, AI-client connection guidance, and re-runnable `@do:setup` recovery/improvement routing;
+- cross-platform clone-to-private installation (`install.sh` / `install.bat`) plus beginner setup, multilingual onboarding, AI-client connection guidance, and re-runnable `@do:setup` recovery/improvement routing;
 - the Personal SoT Assistant as a noob-first one-entry-point control plane, including auto-routing, help-me-decide guidance, clear Explain/Recommend/Preview/Apply effects, and next-best-action guidance;
 - basic Personal context onboarding;
 - adaptive project creation, project use, and current-state maintenance;
