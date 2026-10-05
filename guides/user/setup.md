@@ -17,6 +17,43 @@ You do not need to understand Git, YAML, prompt engineering, or the repository s
 
 ## 1. Get the repository
 
+### Fast path: clone + installer
+
+For Linux/macOS:
+
+```bash
+git clone https://github.com/mrAlishah/Personal-SoT.git
+cd Personal-SoT
+./install.sh
+```
+
+For Windows:
+
+```bat
+git clone https://github.com/mrAlishah/Personal-SoT.git
+cd Personal-SoT
+install.bat
+```
+
+The launcher asks where your private `sot` should live:
+
+- **GitHub Private:** enter an empty private GitHub repository URL. The installer verifies privacy/write access, changes the clone to `origin=private` + `upstream=sot public`, disables accidental pushes to the public upstream, pushes the initial copy, and runs Doctor.
+- **Google Drive:** enter the Drive folder URL and the matching local folder already synchronized or mounted by Google Drive Desktop, rclone mount, or equivalent tooling. The installer never stores OAuth credentials and does not pretend Drive is a Git remote. You must verify in Google Drive that the folder is not publicly shared.
+
+After a successful install, open/connect the private copy in your AI client and run:
+
+```text
+@do:sot
+```
+
+then:
+
+```text
+@do:setup
+```
+
+### Manual path
+
 Choose the simplest option that fits you:
 
 - **Download:** download `sot public`, extract it, and create/use a private folder for your future `sot`.
