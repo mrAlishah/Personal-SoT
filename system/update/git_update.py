@@ -111,7 +111,7 @@ class ApplyResult:
 
 def classify(root) -> Plan:
     """Resolve C, T, B and classify every path per the design's state table."""
-    root = str(root)
+    root = os.path.abspath(os.fspath(root))
     blocked = _preflight(root)
     if blocked is not None:
         return blocked
@@ -881,7 +881,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
     trigger the recovery path; any other exception propagates uncaught,
     exactly as a real process kill/crash would).
     """
-    root = str(root)
+    root = os.path.abspath(os.fspath(root))
     fresh_plan = classify(root)
     fresh_preview = preview(fresh_plan)
     if fresh_preview.digest != digest:
