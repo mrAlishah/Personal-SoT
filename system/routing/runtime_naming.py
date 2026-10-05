@@ -10,12 +10,23 @@ CANONICAL_BOOTSTRAP_ACTION = "@do:sot"
 LEGACY_BOOTSTRAP_ACTION = "@do:initialSoT"
 HELP_ACTION = "@do:help"
 ASSIST_ACTION = "@do:assist"
+SETUP_ACTION = "@do:setup"
+DOCTOR_ACTION = "@do:doctor"
+FIX_ACTION = "@do:fix"
 
 RUN_ACTION = "@run"
 EDIT_ACTION = "@edit"
 DELETE_ACTION = "@delete"
 
-_SYSTEM_ACTIONS = (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION, HELP_ACTION, ASSIST_ACTION)
+_SYSTEM_ACTIONS = (
+    CANONICAL_BOOTSTRAP_ACTION,
+    LEGACY_BOOTSTRAP_ACTION,
+    HELP_ACTION,
+    ASSIST_ACTION,
+    SETUP_ACTION,
+    DOCTOR_ACTION,
+    FIX_ACTION,
+)
 _BODILESS_SYSTEM_ACTIONS = (CANONICAL_BOOTSTRAP_ACTION, LEGACY_BOOTSTRAP_ACTION)
 _PROMPT_ACTION_KEYWORDS = (RUN_ACTION, EDIT_ACTION, DELETE_ACTION)
 
@@ -130,7 +141,7 @@ def classify_bootstrap_invocation(text: str) -> Optional[BootstrapInvocation]:
     """Backward-compatible bootstrap-only view; see `classify_system_action`.
 
     Existing callers (e.g. `system/connectors/source.py`) resolve only
-    `@do:sot`/`@do:initialSoT` through this name; `@do:help`/`@do:assist`
+    `@do:sot`/`@do:initialSoT` through this name; `@do:help`/`@do:assist`/`@do:setup`/`@do:doctor`/`@do:fix`
     correctly resolve to `None` here even though `classify_system_action`
     recognizes them, since they are not bootstrap/re-anchor invocations.
     """
