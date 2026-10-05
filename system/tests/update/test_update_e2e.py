@@ -17,6 +17,7 @@ from system.tests.update.test_side_by_side import _base_target_files, _build_tar
 from system.update import cli as update_cli
 from system.update import git_update, side_by_side
 from system.update.target import TargetSnapshot
+from system.validation import validate_public
 
 _READ_ONLY = HostCapability(can_read=True, can_write=False, can_run_local_commands=False)
 _FULL = HostCapability(can_read=True, can_write=True, can_run_local_commands=True)
@@ -117,7 +118,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             root = str(Path(workdir, 'root'))
             _init_repo(root)
-            _apply_files(root, {'workspace/adapters/runtime_entrypoint.md': 'x\n'})
+            _apply_files(root, {'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT})
             _commit(root, 'initial')
             self.assertEqual('unknown', update_reporting.detect_install_type(root, _FULL))
 
@@ -206,7 +207,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             real_root = Path(workdir, 'real_archive')
             _write_tree(real_root, {
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                 'system/validation/validate_v1.py': 'x\n',
             })
             selected = Path(workdir, 'selected_link')
@@ -331,11 +332,11 @@ class InstallTypeRoutingTests(unittest.TestCase):
             root_b_parked = Path(workdir, 'root_b_parked')
 
             _write_tree(selected, {
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                 'system/validation/validate_v1.py': 'x\n',
             })
             _write_tree(root_b_parked, {
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                 'system/validation/validate_v1.py': 'x\n',
             })
             subprocess.run(['git', 'init', '-q', str(root_b_parked)], check=True)
@@ -390,7 +391,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workdir:
             root = Path(workdir, 'root')
             _write_tree(root, {
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                 'system/validation/validate_v1.py': 'x\n',
             })
             outside_git = Path(workdir, 'outside_dotgit')
@@ -410,7 +411,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as workdir:
                     root = Path(workdir, 'root')
                     _write_tree(root, {
-                        'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                        'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                         'system/validation/validate_v1.py': 'x\n',
                         '.git': content,
                     })
@@ -449,7 +450,7 @@ class InstallTypeRoutingTests(unittest.TestCase):
             root = Path(workdir, 'archive')
             _write_tree(root, {
                 'a.md': 'x\n',
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
                 'system/validation/validate_v1.py': 'x\n',
             })
             self.assertEqual('zip', update_reporting.detect_install_type(str(root), _FULL))
@@ -616,10 +617,10 @@ class GitWorkflowE2ETests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
-        self.assertEqual(0, rc)
-        self.assertEqual(1, len(prompts))
-        self.assertIn('Update applied and validation passed.', output.getvalue())
-        self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
+            self.assertEqual(0, rc)
+            self.assertEqual(1, len(prompts))
+            self.assertIn('Update applied and validation passed.', output.getvalue())
+            self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
 
     def test_git_e2e_conflict_blocks_apply(self):
         with tempfile.TemporaryDirectory() as workdir:
@@ -768,7 +769,7 @@ class GitWorkflowE2ETests(unittest.TestCase):
 
 
 _ARCHIVE_MARKER_FILES = {
-    'workspace/adapters/runtime_entrypoint.md': 'x\n',
+    'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
     'system/validation/validate_v1.py': _sbs_tests._VALIDATOR_FILES['system/validation/validate_v1.py'],
 }
 
@@ -777,7 +778,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
     def test_zip_initial_no_write_preview_states_capability_limit(self):
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             }))
             current_root = Path(workdir, 'current')
             _write_tree(current_root, {**_ARCHIVE_MARKER_FILES, 'workspace/a.md': 'kept a\n'})
@@ -803,7 +804,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
             files = _base_target_files({
                 'system/routing/context_registry.md':
                     _sbs_tests.SideBySideRegistryTests._registry_text([]),
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             })
             target_dir, target_sha = _build_target_repo(workdir, files)
             current_root = Path(workdir, 'current')
@@ -838,7 +839,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
         import os
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             }))
             current_root = Path(workdir, 'current')
             _write_tree(current_root, dict(_ARCHIVE_MARKER_FILES))
@@ -870,7 +871,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
                 'system/routing/context_registry.md':
                     _sbs_tests.SideBySideRegistryTests._registry_text([('alpha_scope', 'workspace/context/shared')]),
                 'workspace/context/shared/x.md': 'a\n',
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             })
             target_dir, target_sha = _build_target_repo(workdir, files)
             current_root = Path(workdir, 'current')
@@ -900,7 +901,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
     def test_zip_e2e_stale_preview_requires_new_preview(self):
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             }))
             current_root = Path(workdir, 'current')
             _write_tree(current_root, {**_ARCHIVE_MARKER_FILES, 'workspace/a.md': 'kept a\n'})
@@ -935,7 +936,7 @@ class ZipWorkflowE2ETests(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as workdir:
             target_dir, target_sha = _build_target_repo(workdir, _base_target_files({
-                'workspace/adapters/runtime_entrypoint.md': 'x\n',
+                'workspace/adapters/runtime_entrypoint.md': validate_public.PUBLIC_RUNTIME_ENTRYPOINT,
             }))
             current_root = Path(workdir, 'current')
             _write_tree(current_root, {
