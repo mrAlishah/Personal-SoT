@@ -376,7 +376,12 @@ component of the verified pre-update boundary can never be completed by
 this updater, and `rollback_completed` means the *complete* boundary,
 not merely "the touched files were restored." The resulting commit's
 two parents are exactly `C` and `T`, and its tree is exactly the
-validated candidate tree.
+validated candidate tree. Because this provenance commit is created by
+Safe Update rather than authored by the user, its one `git commit-tree`
+invocation pins the product-owned identity `Personal-SoT Safe Update
+<safe-update@personal-sot.invalid>` for both author and committer. It
+does not read, require, or persist the user's Git identity, and it does
+not modify repository/global Git configuration.
 
 Recovery exists only while `apply` is running, covers every touched path
 (including one never actually reached before a sibling path's mutation
