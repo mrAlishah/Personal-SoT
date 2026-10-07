@@ -4,6 +4,19 @@ This guide is the beginner path for installing Personal-SoT on Windows, macOS, o
 
 Use it when you are creating a **new private Personal-SoT installation**. If you already have a private `myPersonal-SoT` repository and only want to use it on another computer, jump to [Existing private installation](#existing-private-installation).
 
+## Fast path
+
+```text
+install Git + Python 3
+→ create an empty private GitHub repository
+→ clone mrAlishah/Personal-SoT
+→ run install.bat / install.sh with --github
+→ open the resulting private sot
+→ @do:sot
+→ @do:setup
+```
+
+If this is your first install, follow the steps below in order.
 ## What you need
 
 Before installing:
