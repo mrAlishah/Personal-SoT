@@ -64,11 +64,13 @@ this same primitive, supplying its own working directory inside the real
 checkout, and adds only what apply additionally needs there; it does not
 define a second controlled-execution mechanism.
 
-On native Windows, the same wrapper additionally pins
-`core.autocrlf=true` as a fixed built-in Git setting. Ambient/global Git
-configuration remains isolated and no user-controlled value is imported.
-This lets a normal CRLF worktree compare cleanly against canonical LF index
-blobs without enabling any executable filter or helper authority.
+On native Windows, the same wrapper preserves the host `SystemRoot` because
+Windows subprocess/runtime facilities require that OS location when a custom
+environment replaces normal inheritance. This is the only additional parent
+environment value imported; ambient Git authority/configuration remains
+isolated. The wrapper also pins `core.autocrlf=true` as a fixed built-in Git
+setting. This lets a normal CRLF worktree compare cleanly against canonical LF
+index blobs without enabling any executable filter or helper authority.
 
 ## failure_vocabulary
 
