@@ -66,7 +66,10 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     built. This is a fixed, closed allowlist, not a general environment-
     extension mechanism.
 
-    `input`/`text` pass through to the underlying `subprocess.run` call
+    On Windows, the wrapper also pins `core.autocrlf=true` as a fixed
+    built-in normalization rule. This keeps a normal CRLF worktree clean after
+    ambient/global Git config is isolated; the value is not read from user
+    configuration and cannot introduce an executable helper.\n\n    `input`/`text` pass through to the underlying `subprocess.run` call
     unchanged (Loop 3's object-transfer step feeds NUL-separated tree
     entries and binary pack data through this same primitive rather than a
     second wrapper); omitting them preserves every existing caller's
@@ -94,8 +97,16 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
         if extra_env:
             env.update(extra_env)
+        platform_args = ()
+        if os.name == 'nt':
+            # A Windows checkout commonly contains CRLF worktree text even
+            # though the index stores canonical LF blobs. Ambient/global Git
+            # config is intentionally isolated above, so pin the built-in
+            # normalization explicitly rather than inheriting user config.
+            # This is a fixed Git builtin setting, not executable authority.
+            platform_args = ('-c', 'core.autocrlf=true')
         full_args = ('git', '-c', 'core.hooksPath=' + empty_hooks,
-                     '-c', 'core.fsmonitor=false') + args
+                     '-c', 'core.fsmonitor=false') + platform_args + args
         return runner(full_args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        input=input, text=text, timeout=30, check=False)
