@@ -663,7 +663,15 @@ def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
             'hash-object', '--no-filters', '--', path, cwd=root, extra_env=extra_env)
         if result.returncode != 0:
             return None
-        mode = '100755' if os.access(file_path, os.X_OK) else '100644'
+        if os.name == 'nt':
+            # NTFS has no Git-compatible executable bit to inspect here.
+            # Git's index is the authoritative mode on Windows; content
+            # identity remains the raw worktree hash so byte-level concurrent
+            # edits are still detected independently of the index.
+            indexed = _identify_index_entry(root, path, extra_env)
+            mode = indexed[0] if indexed is not None else '100644'
+        else:
+            mode = '100755' if os.access(file_path, os.X_OK) else '100644'
         return (mode, (result.stdout or '').strip())
     return None
 
