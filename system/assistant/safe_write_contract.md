@@ -9,7 +9,7 @@ Define the client-neutral boundary for creating or changing canonical SoT state.
 ```text
 understand intent
 → resolve scope
-→ classify semantics and access
+→ classify semantics and access through `system/governance/change_classification.md`
 → inspect current owners
 → detect duplication, conflict and stale evidence
 → build proposal
@@ -32,8 +32,9 @@ A proposal binds confirmation to one concrete change set. It includes:
 - concise before/after or complete new content;
 - excluded or deferred candidate facts;
 - access metadata;
-- validation commands available after apply;
-- a clear statement of actual host write capability.
+- the resolved change class from `system/governance/change_classification.md`;
+- validation/checks required by that class and any stricter active-repository governance;
+- a clear statement of actual host write capability and, separately, local-command/validator capability when relevant.
 
 Preview paths are supporting detail. Explain the user-visible meaning first.
 
@@ -53,7 +54,11 @@ Apply the confirmed files and registry entry as one coherent patch when the host
 
 Write only the confirmed semantic owners. Preserve explicit `ai_access`, naming, registry, prompt/profile, and access contracts.
 
-Run the strongest relevant repository validators actually available after the write. A failed validator means the operation is not reported as successful. Report the failure and the affected files; repair requires a new bounded proposal unless the correction is purely mechanical and cannot change meaning.
+Resolve validation rigor from `system/governance/change_classification.md` plus any stricter rule owned by the active repository. Do not automatically escalate an ordinary private context update or docs/help-only change to the full Python test suite.
+
+Write capability and local-command capability are independent. A host with real authorized repository write capability may complete a confirmed class whose required checks do not need unavailable local commands. Conversely, when the resolved class requires validators/tests the host cannot run, do not claim the candidate is validated or accepted merely because the write succeeded.
+
+A failed required validator means the operation is not reported as successful. Report the failure and the affected files; repair requires a new bounded proposal unless the correction is purely mechanical and cannot change meaning.
 
 ## No-write hosts
 
