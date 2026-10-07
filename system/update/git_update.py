@@ -1084,7 +1084,8 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     # overall recovery boundary can never be reported
                     # complete here, regardless of how much of the
                     # touched-path state was restorable.
-                    _attempt_recovery(ephemeral, root, record, extra_env)
+                    _attempt_recovery(
+                        ephemeral, root, record, verified_worktree, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=False,
