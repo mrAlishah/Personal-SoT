@@ -70,7 +70,7 @@ request
 → you confirm
 → re-check
 → write
-→ validate
+→ validate if required
 → report
 ```
 
@@ -115,10 +115,10 @@ See [Doctor](doctor.md).
 A local authorized client may be able to:
 
 ```text
-read → preview → confirm → write → validate
+read → preview → confirm → write → validate if required
 ```
 
-A web/read-only client can still explain and preview, but must say when it cannot write or run local validation.
+A web/read-only client can still explain and preview. It must say when it cannot write, and it reports whether validation is required or unavailable for the selected change class.
 
 ## Safety
 
