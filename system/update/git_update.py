@@ -46,6 +46,14 @@ _ATTRIBUTE_SCAN_KEYS = (
 # never be derived from a user-controlled filename or directory name, so a
 # user-only path can never leak into the summary via its own area label.
 _KNOWN_AREAS = frozenset({'workspace', 'system', 'guides'})
+# Provenance commits are updater-owned implementation records, not user-authored
+# commits. Pin a non-personal product identity on the one `commit-tree` call so
+# Safe Update never depends on, imports, or impersonates the user's Git identity.
+_PROVENANCE_GIT_IDENTITY = (
+    '-c', 'user.name=Personal-SoT Safe Update',
+    '-c', 'user.email=safe-update@personal-sot.invalid',
+    '-c', 'user.useConfigOnly=true',
+)
 
 
 @dataclass(frozen=True)
@@ -952,6 +960,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         validation_ran=True, validation_passed=True, failure='object_transfer_failed')
 
                 commit_result = controlled_git(
+                    *_PROVENANCE_GIT_IDENTITY,
                     'commit-tree', candidate_tree_sha, '-p', current, '-p', commit_t,
                     cwd=root, extra_env=extra_env, input=_provenance_message(current, commit_t))
                 if commit_result.returncode != 0:
