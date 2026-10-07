@@ -41,7 +41,7 @@ You can also just ask naturally.
 
 1. [Install Personal-SoT](install.md).
 2. [Finish setup](setup.md).
-3. Connect your AI client to the private `sot`. For ChatGPT Web, use [ChatGPT Web setup](chatgpt_web.md).
+3. Connect your AI client to the private `sot`. For GitHub-backed web clients, use [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md).
 4. Run `@do:sot`.
 5. Run `@do:setup`.
 6. Start a real task.
@@ -102,7 +102,8 @@ See [Doctor](doctor.md).
 ## Common tasks
 
 - Installation: [Install on Windows, macOS, or Linux](install.md)
-- ChatGPT Web: [Authorize the private repo and configure Personalization](chatgpt_web.md)
+- GitHub AI clients: [Install/authorize ChatGPT, Codex, and Claude GitHub access](github_ai_connections.md)
+- ChatGPT Web: [Configure Personalization](chatgpt_web.md)
 - Projects: [Create and use a project](create_and_use_project.md)
 - Existing prompts: [Find a prompt](find_and_use_prompts.md)
 - New prompts: [Build a prompt](build_a_prompt.md)

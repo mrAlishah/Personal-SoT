@@ -53,7 +53,7 @@ Then connect your AI client to the private `sot` and run:
 @do:setup
 ```
 
-For ChatGPT Web with a private GitHub repository, first authorize that repository in the ChatGPT GitHub connection and add the Personalization locator. See [ChatGPT Web setup](guides/user/chatgpt_web.md).
+For GitHub-backed web clients, first install/connect the provider's GitHub integration and authorize the private repository. See [GitHub access for ChatGPT, Codex, and Claude](guides/user/github_ai_connections.md). For ChatGPT Web, then add the Personalization locator in [ChatGPT Web setup](guides/user/chatgpt_web.md).
 
 See the [Install guide](guides/user/install.md) for prerequisites and OS-specific steps, then [Setup](guides/user/setup.md).
 
@@ -141,6 +141,7 @@ If something looks wrong:
 | Learn the normal workflow | [Beginner guide](guides/user/readme.md) |
 | All commands, Profiles, prompts, controls, and examples | [Cheat sheet](guides/user/cheatsheet.md) |
 | Install on Windows, macOS, or Linux | [Install](guides/user/install.md) |
+| Connect ChatGPT, Codex, or Claude to a private GitHub SoT | [GitHub AI connections](guides/user/github_ai_connections.md) |
 | Use a private SoT from ChatGPT Web | [ChatGPT Web](guides/user/chatgpt_web.md) |
 | Finish setup | [Setup](guides/user/setup.md) |
 | Diagnose problems | [Doctor](guides/user/doctor.md) |

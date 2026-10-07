@@ -12,7 +12,7 @@ install Git + Python 3
 → clone mrAlishah/Personal-SoT
 → run install.bat / install.sh with --github
 → connect your AI client to the private sot
-→ ChatGPT Web: authorize the private repo + add the Personalization locator
+→ Web clients: install/authorize the required GitHub App + select the private repo
 → @do:sot
 → @do:setup
 ```
@@ -231,16 +231,14 @@ git status --short --branch
 
 For an authorized local client such as Codex or Claude Code, open the resulting private `sot` repository/folder.
 
-For **ChatGPT Web + a private GitHub repository**, connecting GitHub is a separate authorization step. The installer can create and push the private `sot`, but it cannot grant ChatGPT access to that repository.
+For **ChatGPT/Codex or Claude Web + a private GitHub repository**, connecting GitHub is a separate authorization step. The installer can create and push the private `sot`, but it cannot install an AI provider's GitHub App or grant that app access to your private repository.
 
-Before running `@do:sot` in ChatGPT Web:
+Use [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md) to install/connect the correct provider app and select the private repository.
 
-1. connect GitHub in ChatGPT;
-2. authorize the specific private repository in the ChatGPT GitHub app/repository settings;
-3. add the Personal-SoT repository locator to ChatGPT Personalization;
-4. verify that the current ChatGPT surface can actually read the private repository.
+Then:
 
-Use the exact walkthrough and copyable Personalization template in [ChatGPT Web setup](chatgpt_web.md).
+- ChatGPT Web: use [ChatGPT Web setup](chatgpt_web.md) for the copyable Personalization locator.
+- Claude Web: add the repository to the Claude Project and use the Claude Project instruction shown in the GitHub access guide.
 
 Then run:
 
@@ -333,7 +331,7 @@ A Personalization locator does not grant GitHub access. If the repository exists
 
 Do not make the private repository public as a workaround. After fixing repository authorization, run `@do:sot` again so the chat re-resolves the source.
 
-See [ChatGPT Web setup](chatgpt_web.md) for the full checklist.
+See [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md) and [ChatGPT Web setup](chatgpt_web.md) for the full checklist.
 
 ### `The public clone has local changes`
 

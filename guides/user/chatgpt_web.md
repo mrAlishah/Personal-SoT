@@ -22,35 +22,21 @@ private sot exists on GitHub
 → @do:setup
 ```
 
-## 1. Connect GitHub to ChatGPT
+## 1. Connect GitHub and authorize the private repository
 
-In ChatGPT Web, open:
+First complete the GitHub App connection and repository authorization in [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md).
 
-```text
-Settings
-→ Plugins
-→ GitHub
-```
+For ChatGPT/Codex, that guide covers:
 
-Connect the GitHub account that owns or can read your private Personal-SoT repository.
+- `Settings → Plugins → GitHub`;
+- the official `ChatGPT Codex Connector` GitHub App;
+- selecting the private Personal-SoT repository;
+- organization approval and newly created repositories;
+- the read/write capability boundary.
 
-ChatGPT's GitHub availability can vary by plan, workspace, and product surface. Use a ChatGPT surface where the GitHub connection is actually available.
+Do not continue to the Personalization step until the current ChatGPT surface can actually read the intended private repository.
 
-Official reference: https://help.openai.com/en/articles/11145903-connecting-github-to-chatgpt
-
-## 2. Authorize the private repository
-
-Opening a GitHub connection is not enough when repository access is restricted.
-
-From the GitHub plugin/app settings in ChatGPT, open the available repository-management option. In GitHub, verify that the ChatGPT app is installed for the correct account or organization and that your private Personal-SoT repository is selected/approved.
-
-For a newly created private repository, you may need to add it to the existing ChatGPT GitHub app installation.
-
-If the repository belongs to an organization, organization policy may require an administrator to approve the app or repository.
-
-Do not make the private repository public just to make ChatGPT see it.
-
-## 3. Add the Personalization locator
+## 2. Add the Personalization locator
 
 Add this template to ChatGPT Personalization and replace only the repository placeholder:
 
@@ -84,7 +70,7 @@ workspace/adapters/chatgpt_project_[instructions.md](https://instructions.md/)
 
 The Personalization text configures source selection. It does not grant GitHub permissions and it does not create write capability.
 
-## 4. Re-anchor the chat
+## 3. Re-anchor the chat
 
 Run:
 
@@ -108,7 +94,7 @@ and follow the referenced canonical contracts.
 
 `@do:sot` is also the freshness boundary. If you just changed GitHub repository authorization, run it again rather than relying on an earlier 404/not-found result.
 
-## 5. Finish setup
+## 4. Finish setup
 
 After `@do:sot` resolves successfully, run:
 

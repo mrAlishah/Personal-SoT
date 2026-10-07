@@ -8,4 +8,4 @@ Treat the connected/synced repository root as the canonical SoT root. Before SoT
 
 Resolve capabilities from the tools actually available in this chat. When repository write capability is unavailable, complete the canonical guided flow and preview but state that nothing was written and validation was not run here.
 
-For ChatGPT Web repository authorization and the copyable Personalization locator, see `guides/user/chatgpt_web.md`. The locator identifies the intended source but does not grant provider access.
+For GitHub App installation/repository authorization, see `guides/user/github_ai_connections.md`. For the copyable ChatGPT Personalization locator, see `guides/user/chatgpt_web.md`. The locator identifies the intended source but does not grant provider access.

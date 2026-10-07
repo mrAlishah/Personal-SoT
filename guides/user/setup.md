@@ -46,9 +46,11 @@ The installer runs the core checks and Doctor before it reports success.
 
 For a local authorized client such as Codex or Claude Code, open the resulting private repository/folder directly.
 
-For ChatGPT Web with a GitHub-backed private `sot`, first authorize that specific private repository in the ChatGPT GitHub connection and add the repository locator to Personalization. A locator identifies the intended source; it does not grant provider access.
+For a web client with a GitHub-backed private `sot`, first install/connect the provider's GitHub integration and authorize that specific private repository. A locator or project instruction identifies the intended source; it does not grant provider access.
 
-Use [ChatGPT Web setup](chatgpt_web.md) for the exact repository-authorization steps and the copyable Personalization instruction.
+Use [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md) for GitHub App installation and repository access.
+
+Then use [ChatGPT Web setup](chatgpt_web.md) for the ChatGPT Personalization locator, or the Claude Web project-instruction template in the GitHub access guide.
 
 Remember:
 
