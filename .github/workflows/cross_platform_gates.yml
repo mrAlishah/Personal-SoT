@@ -57,6 +57,7 @@ jobs:
           system.tests.update.test_windows_install_detection
           system.tests.update.test_update_cli
           system.tests.update.test_update_e2e.GitWorkflowE2ETests
+          system.tests.update.test_git_apply.ApplyCandidateTests.test_apply_needs_no_user_git_identity
 
       - name: Validate public distribution
         run: python -B system/validation/validate_public.py
