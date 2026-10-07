@@ -18,6 +18,13 @@ change class
 
 Use the strongest class when one proposal contains more than one class.
 
+| Change class | Branch | Validation | Normal target |
+|---|---|---|---|
+| `help_docs` | No | hygiene only | public `develop` by default; explicit docs-only `main` allowed |
+| `private_context_content` | No | none | private `main` |
+| `private_context_structure` | No by default | targeted if available | private `main` |
+| `system_change` | Yes | full relevant | engineered public/private flow |
+
 ## Classes
 
 ### help_docs
