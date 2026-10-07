@@ -56,10 +56,12 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     `update-index`/`write-tree`/`ls-files --stage`, not only `status`. This
     applies uniformly to every caller, not only Loop 3's apply step, since
     read-only Loop 1/2 calls have no reason to risk it either. On native
-    Windows it additionally pins `core.autocrlf=true`: Git for Windows often
-    supplies that normalization from system/global config, which this wrapper
-    intentionally hides; restoring the non-authority normalization explicitly
-    prevents a clean CRLF checkout from being falsely classified as dirty.
+    Windows it preserves only the host `SystemRoot` required by Windows
+    subprocess/runtime facilities, while still excluding ambient Git authority,
+    and additionally pins `core.autocrlf=true`: Git for Windows often supplies
+    that normalization from system/global config, which this wrapper intentionally
+    hides; restoring the non-authority normalization explicitly prevents a clean
+    CRLF checkout from being falsely classified as dirty.
     An individual call site may still pass its own `-c core.fsmonitor=false`
     (harmless duplication; Git accepts repeated `-c` for the same key).
 
@@ -93,6 +95,15 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
             'GIT_CONFIG_NOSYSTEM': '1',
             'GIT_CONFIG_GLOBAL': global_config,
         }
+        if os.name == 'nt':
+            # Python replaces the entire child environment when env= is
+            # supplied. Windows subprocesses require a valid SystemRoot for
+            # OS/runtime facilities used by programs such as Git for Windows.
+            # Import only this required host-runtime value; do not copy the
+            # ambient environment or any Git authority/configuration.
+            system_root = os.environ.get('SystemRoot')
+            if system_root:
+                env['SystemRoot'] = system_root
         if cwd is None:
             cwd = controlled_home
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
