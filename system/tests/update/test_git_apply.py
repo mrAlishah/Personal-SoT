@@ -367,11 +367,10 @@ class ApplyHardeningTests(unittest.TestCase):
                 workdir, base, {}, {'system/a.md': 'shipped v2\n'})
             plan, digest = _confirm(root, target_dir, target_sha)
             real_controlled_git = git_update.controlled_git
-            subcommands = []
+            invocations = []
 
             def spy(*args, **kwargs):
-                if args:
-                    subcommands.append(args[0])
+                invocations.append(args)
                 return real_controlled_git(*args, **kwargs)
 
             with mock.patch.object(git_update, 'controlled_git', spy):
@@ -379,7 +378,10 @@ class ApplyHardeningTests(unittest.TestCase):
 
             self.assertTrue(result.mutation_started)
             for expected in ('commit-tree', 'update-ref', 'write-tree', 'mktree'):
-                self.assertIn(expected, subcommands)
+                self.assertTrue(
+                    any(expected in args for args in invocations),
+                    f'{expected} was not routed through controlled_git',
+                )
 
     def test_target_introduced_filter_on_touched_path_blocks_before_mutation(self):
         with tempfile.TemporaryDirectory() as workdir:
