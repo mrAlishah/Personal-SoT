@@ -579,10 +579,24 @@ class GitWorkflowE2ETests(unittest.TestCase):
             self.assertFalse(preview_result.applied)
             self.assertNotIn(_SECRET, preview_result.beginner.headline + ' '.join(preview_result.beginner.details))
 
-            applied_result = _git_run(
-                root, target_dir, target_sha, capability=_FULL, confirm_digest=preview_result.digest)
+            archive_calls = []
+            real_controlled_git = git_update.controlled_git
 
-            self.assertTrue(applied_result.applied, repr(applied_result))
+            def capture_archive(*args, **kwargs):
+                result = real_controlled_git(*args, **kwargs)
+                if 'archive' in args:
+                    archive_calls.append((result.returncode, result.stderr))
+                return result
+
+            with mock.patch.object(git_update, 'controlled_git', side_effect=capture_archive):
+                applied_result = _git_run(
+                    root, target_dir, target_sha, capability=_FULL,
+                    confirm_digest=preview_result.digest)
+
+            self.assertTrue(
+                applied_result.applied,
+                f'{applied_result!r}; archive_calls={archive_calls!r}',
+            )
             self.assertTrue(applied_result.ready, repr(applied_result))
             self.assertEqual('Update applied and validation passed.', applied_result.beginner.headline)
             self.assertNotIn(_SECRET, applied_result.beginner.headline)
