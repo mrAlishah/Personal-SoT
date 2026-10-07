@@ -659,8 +659,20 @@ def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
             return None
         return ('120000', (result.stdout or '').strip())
     if file_path.is_file():
-        result = controlled_git(
-            'hash-object', '--no-filters', '--', path, cwd=root, extra_env=extra_env)
+        if os.name == 'nt':
+            # Preflight and the final attribute-safety recheck have already
+            # proved that no configured external filter/diff helper is
+            # selected for tracked paths. Use Git's built-in path
+            # normalization here so a normal CRLF worktree compares to the
+            # canonical LF blob identity instead of looking like a concurrent
+            # edit. POSIX keeps the stricter raw-byte comparison below.
+            result = controlled_git(
+                'hash-object', '--path=' + path, '--', path,
+                cwd=root, extra_env=extra_env)
+        else:
+            result = controlled_git(
+                'hash-object', '--no-filters', '--', path,
+                cwd=root, extra_env=extra_env)
         if result.returncode != 0:
             return None
         mode = '100755' if os.access(file_path, os.X_OK) else '100644'
