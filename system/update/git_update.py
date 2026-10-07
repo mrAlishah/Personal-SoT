@@ -510,11 +510,21 @@ def _build_tree(entries: dict[str, tuple[str, str]], ephemeral, extra_env) -> st
             else:
                 mode, sha = value
                 lines.append(f'{mode} blob {sha}\t{name}')
+        # mktree consumes a Git plumbing protocol whose record terminator is
+        # LF, not the host platform's text newline. Passing a str through
+        # subprocess text mode on Windows translates LF to CRLF; mktree then
+        # treats the stray CR bytes as part of path components and creates a
+        # tree that git archive rejects as an invalid Windows path. Send the
+        # protocol as bytes so its framing is identical on every platform.
+        payload = ('\n'.join(lines) + '\n').encode('utf-8')
         result = controlled_git(
-            'mktree', cwd=ephemeral, extra_env=extra_env, input='\n'.join(lines) + '\n')
+            'mktree', cwd=ephemeral, extra_env=extra_env, input=payload, text=False)
         if result.returncode != 0:
             raise TargetMaterializationError('candidate_tree_build_failed')
-        return (result.stdout or '').strip()
+        try:
+            return (result.stdout or b'').decode('ascii').strip()
+        except UnicodeDecodeError as error:
+            raise TargetMaterializationError('candidate_tree_build_failed') from error
 
     return build(root)
 
