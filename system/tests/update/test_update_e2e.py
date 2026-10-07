@@ -582,8 +582,8 @@ class GitWorkflowE2ETests(unittest.TestCase):
             applied_result = _git_run(
                 root, target_dir, target_sha, capability=_FULL, confirm_digest=preview_result.digest)
 
-            self.assertTrue(applied_result.applied)
-            self.assertTrue(applied_result.ready)
+            self.assertTrue(applied_result.applied, repr(applied_result))
+            self.assertTrue(applied_result.ready, repr(applied_result))
             self.assertEqual('Update applied and validation passed.', applied_result.beginner.headline)
             self.assertNotIn(_SECRET, applied_result.beginner.headline)
             self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
@@ -617,7 +617,7 @@ class GitWorkflowE2ETests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
-            self.assertEqual(0, rc)
+            self.assertEqual(0, rc, output.getvalue())
             self.assertEqual(1, len(prompts))
             self.assertIn('Update applied and validation passed.', output.getvalue())
             self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
