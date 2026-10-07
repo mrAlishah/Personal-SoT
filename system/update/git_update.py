@@ -659,20 +659,8 @@ def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
             return None
         return ('120000', (result.stdout or '').strip())
     if file_path.is_file():
-        if os.name == 'nt':
-            # Preflight and the final attribute-safety recheck have already
-            # proved that no configured external filter/diff helper is
-            # selected for tracked paths. Use Git's built-in path
-            # normalization here so a normal CRLF worktree compares to the
-            # canonical LF blob identity instead of looking like a concurrent
-            # edit. POSIX keeps the stricter raw-byte comparison below.
-            result = controlled_git(
-                'hash-object', '--path=' + path, '--', path,
-                cwd=root, extra_env=extra_env)
-        else:
-            result = controlled_git(
-                'hash-object', '--no-filters', '--', path,
-                cwd=root, extra_env=extra_env)
+        result = controlled_git(
+            'hash-object', '--no-filters', '--', path, cwd=root, extra_env=extra_env)
         if result.returncode != 0:
             return None
         mode = '100755' if os.access(file_path, os.X_OK) else '100644'
@@ -974,14 +962,31 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         validation_ran=True, validation_passed=True,
                         failure='concurrent_change_pre_mutation', concurrent_change=True)
 
-                # Record every touched path's (before, written) tree
-                # identity up front — including paths not yet reached if
-                # a sibling path's write fails below — so recovery can
-                # treat "never actually mutated" as a trivially safe
-                # no-op via the same before/written comparison, rather
-                # than losing track of what happened on a partial failure.
+                # Record every touched path's (before, written) Git-tree
+                # identity up front for recovery. Separately snapshot the
+                # exact live worktree/index identities AFTER the final clean
+                # recheck. The worktree snapshot deliberately uses raw
+                # --no-filters bytes: on Windows a clean CRLF worktree may
+                # hash differently from its canonical LF index blob, so the
+                # safe concurrency question is whether those live bytes
+                # changed after this verified snapshot, not whether their raw
+                # hash equals the repository blob.
                 record = {path: (current_tree.get(path), target_tree.get(path))
                           for path in touched_paths}
+                verified_live = {
+                    path: (
+                        _identify_worktree_entry(root, path, extra_env),
+                        _identify_index_entry(root, path, extra_env),
+                    )
+                    for path in touched_paths
+                }
+                if any(
+                    verified_live[path][1] != current_tree.get(path)
+                    for path in touched_paths
+                ):
+                    return ApplyResult(
+                        validation_ran=True, validation_passed=True,
+                        failure='concurrent_change_pre_mutation', concurrent_change=True)
 
                 write_ok = True
                 mutation_started = False
@@ -989,12 +994,16 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 for path in touched_paths:
                     if _before_path is not None:
                         _before_path(path)
-                    before_entry, written_entry = record[path]
+                    _before_entry, written_entry = record[path]
+                    verified_worktree, verified_index = verified_live[path]
                     # Per-path concurrency check: a single check at the
                     # top of this function cannot see a LATER path change
-                    # while an EARLIER path is still being written.
-                    if (_identify_worktree_entry(root, path, extra_env) != before_entry
-                            or _identify_index_entry(root, path, extra_env) != before_entry):
+                    # while an EARLIER path is still being written. Compare
+                    # exact live identities to the post-recheck snapshot,
+                    # keeping CRLF/LF normalization out of this security
+                    # boundary and never invoking a configured clean filter.
+                    if (_identify_worktree_entry(root, path, extra_env) != verified_worktree
+                            or _identify_index_entry(root, path, extra_env) != verified_index):
                         per_path_concurrent = True
                         write_ok = False
                         break
