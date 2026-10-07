@@ -19,15 +19,6 @@ _LS_REMOTE_RE = re.compile(r'([0-9a-f]{40})\trefs/heads/' + re.escape(CANONICAL_
 
 
 _ALLOWED_EXTRA_ENV = frozenset({'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NO_REPLACE_OBJECTS'})
-# Git for Windows commonly obtains core.autocrlf=true from system/global
-# configuration. controlled_git deliberately isolates both scopes, so without
-# an explicit replacement a normal CRLF worktree can be misreported as dirty
-# against an LF index. Keep the controlled environment deterministic while
-# restoring that platform normalization; repository attributes still take
-# precedence for paths with explicit text/eol policy.
-_PLATFORM_GIT_CONFIG = ('-c', 'core.autocrlf=true') if os.name == 'nt' else ()
-
-
 @dataclass(frozen=True)
 class TargetSnapshot:
     commit: str
@@ -67,8 +58,7 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     supplies that normalization from system/global config, which this wrapper
     intentionally hides; restoring the non-authority normalization explicitly
     prevents a clean CRLF checkout from being falsely classified as dirty.
-    An
-    individual call site may still pass its own `-c core.fsmonitor=false`
+    An individual call site may still pass its own `-c core.fsmonitor=false`
     (harmless duplication; Git accepts repeated `-c` for the same key).
 
     `extra_env` may add only `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
@@ -78,10 +68,7 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     built. This is a fixed, closed allowlist, not a general environment-
     extension mechanism.
 
-    On Windows, the wrapper also pins `core.autocrlf=true` as a fixed
-    built-in normalization rule. This keeps a normal CRLF worktree clean after
-    ambient/global Git config is isolated; the value is not read from user
-    configuration and cannot introduce an executable helper.\n\n    `input`/`text` pass through to the underlying `subprocess.run` call
+    `input`/`text` pass through to the underlying `subprocess.run` call
     unchanged (Loop 3's object-transfer step feeds NUL-separated tree
     entries and binary pack data through this same primitive rather than a
     second wrapper); omitting them preserves every existing caller's
