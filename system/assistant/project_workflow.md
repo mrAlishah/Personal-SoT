@@ -56,16 +56,17 @@ Preview the understood project, proposed identifier, semantic modules, access st
 
 ### Write and validate
 
-On a capable authorized local host, revalidate and apply project files plus registry mapping as one coherent patch. Run:
+Project creation changes owner/registry structure, so classify it as a structural context change through `system/governance/change_classification.md`.
+
+On an authorized write-capable host, revalidate and apply project files plus registry mapping as one coherent patch. In a private Personal-SoT workspace, run the targeted Personal structural validator:
 
 ```text
-python3 system/validation/validate_v1.py --mode personal
-python3 system/validation/validate_public.py
+python3 -B system/validation/validate_v1.py --mode personal
 ```
 
-Run prompt validation too when prompt files changed. Never claim project creation if the patch or required validation failed.
+Do not run `validate_public.py` merely because a private project was created; public-distribution certification is a different concern. Run another validator only when the confirmed proposal also changes the domain it owns. Never claim project creation if the patch or required validation failed.
 
-On a no-write host, return the same proposal, say nothing was written and validation was not run, and provide apply guidance without changing semantics.
+On a host that can write but cannot run the required targeted validator, leave the change in the reviewable state required by active repository governance and report validation as unavailable; do not claim accepted success. On a no-write host, return the same proposal, say nothing was written and validation was not run, and provide apply guidance without changing semantics.
 
 ## Use
 
@@ -94,11 +95,12 @@ An explicit valid scope remains authoritative.
 5. Keep `current_state.md` as current effective state, not an append-only activity log.
 6. Reconcile duplicates and conflicts with existing owners.
 7. Preview the exact diff and exclusions.
-8. Confirm, revalidate, write, and run Personal/public validators through the safe-write contract.
-9. Report the update and one useful next request.
+8. Classify the proposal through `system/governance/change_classification.md`. An ordinary edit to existing owners is a context update; creating/removing owners, changing registry/routing, or changing `ai_access` is a structural context change.
+9. Confirm, revalidate, and write through the safe-write contract. For an ordinary private context update, no Python validator is required solely for the content edit. For a structural context change, run only the targeted structural validator(s).
+10. Report the update and one useful next request.
 
 Do not silently change objectives, constraints, decisions, or access state while updating current state. If such a change is justified, show it as a separate owner in the same proposal or defer it for clarification.
 
 ## Acceptance
 
-A compliant vertical slice can create the minimum valid project and registry entry, resolve and use it by natural language, update current effective state without ownership drift, validate real local writes, and preserve identical preview semantics on clients that cannot write.
+A compliant vertical slice can create the minimum valid project and registry entry, resolve and use it by natural language, update current effective state without ownership drift, classify creation as structural and ordinary state maintenance as a context update, apply only the checks required by that class, and preserve identical preview semantics on clients that cannot write.
