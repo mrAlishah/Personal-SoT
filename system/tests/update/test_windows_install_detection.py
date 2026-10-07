@@ -54,6 +54,27 @@ class WindowsInstallDetectionTests(unittest.TestCase):
             self.assertEqual('zip', update_reporting.detect_install_type(root, _FULL))
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
+    def test_windows_marker_reparse_point_cannot_prove_installation(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            root.mkdir()
+            (root / 'system' / 'validation').mkdir(parents=True)
+            (root / 'system' / 'validation' / 'validate_v1.py').write_text('x\\n')
+            outside = Path(workdir, 'outside_workspace')
+            (outside / 'adapters').mkdir(parents=True)
+            (outside / 'adapters' / 'runtime_entrypoint.md').write_text('x\\n')
+            linked = subprocess.run(
+                ['cmd', '/c', 'mklink', '/J', str(root / 'workspace'), str(outside)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if linked.returncode != 0:
+                self.skipTest('junction creation unavailable on this Windows host')
+
+            self.assertEqual('unknown', update_reporting.detect_install_type(root, _FULL))
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
     def test_windows_git_reparse_point_is_not_followed(self):
         with tempfile.TemporaryDirectory() as workdir:
             root = Path(workdir, 'root')
