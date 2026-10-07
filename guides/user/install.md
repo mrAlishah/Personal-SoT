@@ -11,12 +11,14 @@ install Git + Python 3
 → create an empty private GitHub repository
 → clone mrAlishah/Personal-SoT
 → run install.bat / install.sh with --github
-→ open the resulting private sot
+→ connect your AI client to the private sot
+→ ChatGPT Web: authorize the private repo + add the Personalization locator
 → @do:sot
 → @do:setup
 ```
 
 If this is your first install, follow the steps below in order.
+
 ## What you need
 
 Before installing:
@@ -225,9 +227,20 @@ git remote -v
 git status --short --branch
 ```
 
-## 6. Finish setup
+## 6. Connect your AI client and finish setup
 
-Open the resulting private `sot` in an authorized local AI client such as Codex or Claude Code.
+For an authorized local client such as Codex or Claude Code, open the resulting private `sot` repository/folder.
+
+For **ChatGPT Web + a private GitHub repository**, connecting GitHub is a separate authorization step. The installer can create and push the private `sot`, but it cannot grant ChatGPT access to that repository.
+
+Before running `@do:sot` in ChatGPT Web:
+
+1. connect GitHub in ChatGPT;
+2. authorize the specific private repository in the ChatGPT GitHub app/repository settings;
+3. add the Personal-SoT repository locator to ChatGPT Personalization;
+4. verify that the current ChatGPT surface can actually read the private repository.
+
+Use the exact walkthrough and copyable Personalization template in [ChatGPT Web setup](chatgpt_web.md).
 
 Then run:
 
@@ -236,7 +249,7 @@ Then run:
 @do:setup
 ```
 
-`@do:setup` finishes the user-specific configuration. The installer itself only prepares and verifies the private installation destination.
+`@do:sot` re-resolves the configured private source using the access actually available in that chat. `@do:setup` then finishes user-specific configuration. The installer itself only prepares and verifies the private installation destination.
 
 ## Existing private installation
 
@@ -313,6 +326,14 @@ The initial GitHub installer intentionally refuses a destination that already ha
 ### GitHub asks for credentials
 
 For HTTPS, complete the GitHub/Git Credential Manager sign-in flow. For SSH, keep the SSH key passphrase and use `ssh-agent` rather than removing the passphrase just to avoid repeated prompts.
+
+### ChatGPT Web gets `404 Not Found` for the private repository
+
+A Personalization locator does not grant GitHub access. If the repository exists but ChatGPT returns 404, first check that the ChatGPT GitHub connection is using the correct GitHub account or organization and that the specific private repository is selected in the GitHub app's repository access.
+
+Do not make the private repository public as a workaround. After fixing repository authorization, run `@do:sot` again so the chat re-resolves the source.
+
+See [ChatGPT Web setup](chatgpt_web.md) for the full checklist.
 
 ### `The public clone has local changes`
 

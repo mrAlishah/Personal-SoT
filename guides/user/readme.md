@@ -41,7 +41,7 @@ You can also just ask naturally.
 
 1. [Install Personal-SoT](install.md).
 2. [Finish setup](setup.md).
-3. Open your private `sot` in Codex or Claude Code.
+3. Connect your AI client to the private `sot`. For ChatGPT Web, use [ChatGPT Web setup](chatgpt_web.md).
 4. Run `@do:sot`.
 5. Run `@do:setup`.
 6. Start a real task.
@@ -102,6 +102,7 @@ See [Doctor](doctor.md).
 ## Common tasks
 
 - Installation: [Install on Windows, macOS, or Linux](install.md)
+- ChatGPT Web: [Authorize the private repo and configure Personalization](chatgpt_web.md)
 - Projects: [Create and use a project](create_and_use_project.md)
 - Existing prompts: [Find a prompt](find_and_use_prompts.md)
 - New prompts: [Build a prompt](build_a_prompt.md)
@@ -118,7 +119,7 @@ A local authorized client may be able to:
 read → preview → confirm → write → validate
 ```
 
-A web/read-only client can still explain and preview, but must say when it cannot write or run local validation.
+A web/read-only client can still explain and preview when it can read the private source, but must say when it cannot write or run local validation. Configuring a repository locator does not grant repository access.
 
 ## Safety
 

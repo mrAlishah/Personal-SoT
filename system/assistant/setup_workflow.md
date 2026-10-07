@@ -88,7 +88,7 @@ Linux/macOS → ./install.sh
 Windows     → install.bat
 ```
 
-The bootstrap installer prepares a private GitHub destination or an empty local Google Drive-synced folder, runs the repository checks and Doctor, then hands the user back to `@do:sot` and `@do:setup`. It does not own later Safe Update behavior.
+The bootstrap installer prepares a private GitHub destination or an empty local Google Drive-synced folder, runs the repository checks and Doctor, then hands the user back to the client connection step, `@do:sot`, and `@do:setup`. For a connector-backed web client, creating the private destination does not authorize that provider connection; repository authorization must be established before `@do:sot`. The installer does not own later Safe Update behavior.
 
 When the user has no private `sot` yet:
 
@@ -144,6 +144,19 @@ web or read-only client
 ```
 
 Client choice changes only capability wiring. It does not change onboarding questions, ownership, proposal semantics, source roles, or validation requirements.
+
+For connector-backed clients, keep source mapping separate from provider authorization:
+
+```text
+configured repository locator
+≠ provider repository access
+```
+
+A Personalization/project instruction that names a private repository does not prove that the current chat can read it. Before continuing SoT-dependent setup, prove the configured private source is readable through the host capability actually available.
+
+If a private repository is expected to exist but the provider returns not-found or unauthorized, use the failure semantics from `system/adapters/source_access_contract.md`. Explain the provider-access limitation and the smallest authorization step; do not infer that the canonical source is absent, do not fall back to `sot public`, and do not reconstruct private state from chat memory.
+
+After the user changes provider/repository authorization, re-run `@do:sot` so the source is re-resolved before resuming `@do:setup`.
 
 ## 4. Optional personal context
 
