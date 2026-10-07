@@ -579,63 +579,11 @@ class GitWorkflowE2ETests(unittest.TestCase):
             self.assertFalse(preview_result.applied)
             self.assertNotIn(_SECRET, preview_result.beginner.headline + ' '.join(preview_result.beginner.details))
 
-            archive_calls = []
-            recheck_diagnostics = {
-                'preflight': [],
-                'current': [],
-                'configured': [],
-                'attribute_unsafe': [],
-            }
-            real_controlled_git = git_update.controlled_git
-            real_preflight = git_update._preflight
-            real_current = git_update._current_commit
-            real_configured = git_update._configured_drivers
-            real_attribute_unsafe = git_update._candidate_attribute_unsafe
+            applied_result = _git_run(
+                root, target_dir, target_sha, capability=_FULL, confirm_digest=preview_result.digest)
 
-            def capture_archive(*args, **kwargs):
-                result = real_controlled_git(*args, **kwargs)
-                if 'archive' in args:
-                    archive_calls.append((result.returncode, result.stderr))
-                return result
-
-            def capture_preflight(*args, **kwargs):
-                result = real_preflight(*args, **kwargs)
-                recheck_diagnostics['preflight'].append(result)
-                return result
-
-            def capture_current(*args, **kwargs):
-                result = real_current(*args, **kwargs)
-                recheck_diagnostics['current'].append(result)
-                return result
-
-            def capture_configured(*args, **kwargs):
-                result = real_configured(*args, **kwargs)
-                recheck_diagnostics['configured'].append(result)
-                return result
-
-            def capture_attribute_unsafe(*args, **kwargs):
-                result = real_attribute_unsafe(*args, **kwargs)
-                recheck_diagnostics['attribute_unsafe'].append(result)
-                return result
-
-            with mock.patch.object(git_update, 'controlled_git', side_effect=capture_archive), \
-                 mock.patch.object(git_update, '_preflight', side_effect=capture_preflight), \
-                 mock.patch.object(git_update, '_current_commit', side_effect=capture_current), \
-                 mock.patch.object(git_update, '_configured_drivers', side_effect=capture_configured), \
-                 mock.patch.object(
-                     git_update, '_candidate_attribute_unsafe',
-                     side_effect=capture_attribute_unsafe,
-                 ):
-                applied_result = _git_run(
-                    root, target_dir, target_sha, capability=_FULL,
-                    confirm_digest=preview_result.digest)
-
-            self.assertTrue(
-                applied_result.applied,
-                f'{applied_result!r}; archive_calls={archive_calls!r}; '
-                f'rechecks={recheck_diagnostics!r}',
-            )
-            self.assertTrue(applied_result.ready, repr(applied_result))
+            self.assertTrue(applied_result.applied)
+            self.assertTrue(applied_result.ready)
             self.assertEqual('Update applied and validation passed.', applied_result.beginner.headline)
             self.assertNotIn(_SECRET, applied_result.beginner.headline)
             self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
@@ -669,7 +617,7 @@ class GitWorkflowE2ETests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
-            self.assertEqual(0, rc, output.getvalue())
+            self.assertEqual(0, rc)
             self.assertEqual(1, len(prompts))
             self.assertIn('Update applied and validation passed.', output.getvalue())
             self.assertEqual('shipped v2\n', Path(root, 'system/a.md').read_text())
@@ -876,8 +824,8 @@ class ZipWorkflowE2ETests(unittest.TestCase):
                 current_root, destination, target_dir, target_sha, capability=_FULL,
                 confirm_digest=preview_result.digest)
 
-            self.assertTrue(applied_result.applied, repr(applied_result))
-            self.assertTrue(applied_result.ready, repr(applied_result))
+            self.assertTrue(applied_result.applied)
+            self.assertTrue(applied_result.ready)
             self.assertEqual(
                 'Updated side-by-side copy is ready. Your original folder was not changed.',
                 applied_result.beginner.headline)
