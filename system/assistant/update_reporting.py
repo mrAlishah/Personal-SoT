@@ -222,7 +222,7 @@ def _root_anchored_parts(relative: str) -> list[str] | None:
     if not parts:
         return None
     for part in parts:
-        if part in ('.', '..') or not part or '/' in part:
+        if part in ('.', '..') or not part or '/' in part or '\\' in part:
             return None
     return list(parts)
 
@@ -437,24 +437,23 @@ def detect_install_type(root, capability: HostCapability) -> str:
     closed to `'unknown'` without proven read AND local-command
     capability (every check here is itself a local-command operation).
 
-    The selected root is pinned ONCE for this entire proof — markers
-    AND the Git-vs-no-Git determination are both evaluated against
-    that SAME physical directory, by reading through the pinned fd
-    exclusively, never re-deriving evidence from the pathname at any
-    point. This is deliberately not "one more pathname check before
-    and after": a Git subprocess necessarily runs against whatever the
-    pathname names at the moment it runs, and an ABA swap — replace,
-    probe, restore — leaves every pathname-based identity check before
-    or after it looking at the correctly-restored original, while the
-    probe itself ran against something else entirely. Reading `.git`
-    through the pin instead removes that pathname step altogether, so
-    there is nothing for an ABA swap to intercept. The pathname's
-    identity is reverified once more immediately before returning the
-    route, in case the caller's own pathname has since drifted for an
-    unrelated reason; any drift fails this closed to `'unknown'`.
+    The selected root is pinned ONCE for this entire proof. POSIX hosts
+    use the openat/O_NOFOLLOW fd boundary below. Native Windows, where
+    Python does not expose those primitives, routes through
+    `windows_install_detection`, which uses Win32 handles that reject
+    reparse points and pin accepted components against rename/delete.
+    In both cases the markers and Git-vs-no-Git evidence come from one
+    bounded physical installation, and root drift fails closed.
     """
     if capability.can_read is not True or capability.can_run_local_commands is not True:
         return 'unknown'
+
+    if not _NOFOLLOW_SUPPORTED:
+        if os.name == 'nt':
+            from system.assistant.windows_install_detection import detect as detect_windows
+            return detect_windows(root, _ARCHIVE_MARKERS)
+        return 'unknown'
+
     pin = _pin_read_root(root)
     if pin is None:
         return 'unknown'
