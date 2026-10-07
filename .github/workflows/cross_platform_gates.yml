@@ -1,0 +1,48 @@
+name: Cross-platform system gates
+
+on:
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run full unit suite
+        run: >-
+          python -c "import pathlib,subprocess,sys;
+          mods=['.'.join(p.with_suffix('').parts) for p in pathlib.Path('system/tests').rglob('test_*.py')];
+          print(f'{len(mods)} test modules');
+          raise SystemExit(subprocess.call([sys.executable,'-B','-m','unittest',*mods]))"
+
+      - name: Validate public distribution
+        run: python -B system/validation/validate_public.py
+
+      - name: Validate core
+        run: python -B system/validation/validate_v1.py --mode core
+
+      - name: Validate prompts
+        run: python -B system/validation/validate_prompts.py
+
+      - name: Check diff hygiene
+        run: git diff --check origin/develop...HEAD
