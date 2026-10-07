@@ -68,7 +68,7 @@ exact existing capability
 
 When response customization can be used transiently, try the existing composition before persisting a new Profile unless the user explicitly asks to save it.
 
-Material canonical writes follow the client-neutral safe-write contract:
+Material canonical writes follow the client-neutral safe-write contract and the risk-based change classification in `system/governance/change_classification.md`:
 
 ```text
 understand and classify intent
@@ -78,9 +78,11 @@ understand and classify intent
 → explicit confirmation
 → re-read/version check
 → authorized write
-→ validation
+→ class-required validation/checks
 → truthful report
 ```
+
+An ordinary private Personal-context update does not require the full Python test/validator suite solely because canonical content changed. Structural Personal-context changes use targeted validation, while reusable system/runtime/governance changes retain governed branch and full-check discipline.
 
 No ambiguous or guessed value becomes canonical truth. Guided questions adapt to the user's answers instead of imposing a fixed universal questionnaire.
 
@@ -88,6 +90,7 @@ The canonical owners for these runtime semantics are:
 - `system/assistant/assistant_contract.md`
 - `system/assistant/guided_flow_contract.md`
 - `system/assistant/safe_write_contract.md`
+- `system/governance/change_classification.md`
 - `system/adapters/source_access_contract.md`
 - `system/diagnostics/doctor_contract.md`
 - `system/prompts/prompt_contract.md`
@@ -97,7 +100,7 @@ Canonical behavior remains client-neutral and adapters remain thin. Local filesy
 
 Clients with authorized local or connector-backed read capability may resolve the same canonical source and perform targeted authorized retrieval. A configured repository/source mapping is not proof that the source was actually resolved.
 
-Clients with authorized write capability may apply a confirmed change only through the applicable safe-write workflow and run the real validators when the host can actually execute them. Web or other no-write clients provide the same questions, recommendations, and preview, but explicitly state that nothing was written and must not claim that local validation ran.
+Clients with authorized write capability may apply a confirmed change only through the applicable safe-write workflow. Write capability and local-command/validator capability are independent: a connector-backed or web host with real repository write capability may complete a private change whose resolved class requires no unavailable local validator, while a class that requires validators/tests cannot be reported as validated when the host cannot actually execute them. A genuinely no-write client provides the same questions, recommendations, and preview, explicitly states that nothing was written, and must not claim that local validation ran.
 
 V1 requires a truthful connector-backed read path where the host exposes an authorized source/connector capability. It does not require building a custom connector server. Future helpers or additional connector providers implement the same contracts without changing their semantics.
 
@@ -130,7 +133,7 @@ Public Personal-SoT V1 is complete when evidence shows that:
 1. a beginner can follow the target journey through the Assistant without learning repository internals, feature categories, or expert directives;
 2. the Assistant auto-routes ordinary-language requests through the approved categories/modes, safely handles `I don't know — recommend one`, distinguishes Explain/Recommend/Preview/Apply effects, and offers a useful next action when clear;
 3. project create/use/update and prompt discover/reuse/build flows work end to end with honest client capability boundaries;
-4. every material write is previewed, confirmed, current-state checked, authorized, validated, and truthfully reported;
+4. every material write is previewed, confirmed, current-state checked, authorized, receives the validation/checks required by its resolved change class and active repository governance, and is truthfully reported;
 5. read-only discovery, recommendation, and explanation are usable without unnecessary confirmation;
 6. multilingual guidance, adaptive questions, help-me-decide recommendations, examples, try-before-save customization, and progressive disclosure are present where required;
 7. public/private, source-access, canonical access, secret, and fact-ownership boundaries are preserved;
