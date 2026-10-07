@@ -10,15 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  gates:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-    runs-on: ${{ matrix.os }}
-
+  canonical-gates:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,3 +39,33 @@ jobs:
 
       - name: Check diff hygiene
         run: git diff --check origin/develop...HEAD
+
+  windows-update:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Windows Safe Update regressions
+        run: >-
+          python -B -m unittest
+          system.tests.update.test_windows_install_detection
+          system.tests.update.test_update_e2e.GitWorkflowE2ETests.test_git_e2e_full_update_success
+          system.tests.update.test_update_e2e.GitWorkflowE2ETests.test_noob_cli_completes_update_with_one_confirmation
+
+      - name: Validate public distribution
+        run: python -B system/validation/validate_public.py
+
+      - name: Validate core
+        run: python -B system/validation/validate_v1.py --mode core
+
+      - name: Validate prompts
+        run: python -B system/validation/validate_prompts.py
