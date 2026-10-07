@@ -6,6 +6,7 @@ import unittest
 
 from system.assistant import update_reporting, windows_install_detection
 from system.assistant.update_reporting import HostCapability
+from system.update import git_update
 
 
 _FULL = HostCapability(can_read=True, can_write=True, can_run_local_commands=True)
@@ -28,6 +29,31 @@ class WindowsInstallDetectionTests(unittest.TestCase):
             'unknown',
             windows_install_detection.detect('.', update_reporting._ARCHIVE_MARKERS),
         )
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
+    def test_controlled_git_keeps_normal_crlf_checkout_clean(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            subprocess.run(['git', 'init', '-q', '-b', 'main', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'x@example.com'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'x'], check=True)
+            text_path = root / 'sample.txt'
+            text_path.write_bytes(b'line one\\r\\nline two\\r\\n')
+            subprocess.run(
+                ['git', '-C', str(root), '-c', 'core.autocrlf=true', 'add', 'sample.txt'],
+                check=True,
+            )
+            subprocess.run(
+                ['git', '-C', str(root), 'commit', '-q', '-m', 'initial'],
+                check=True,
+            )
+
+            status = git_update.controlled_git(
+                'status', '--porcelain=v2', '-z', '--untracked-files=all',
+                cwd=str(root),
+            )
+            self.assertEqual(0, status.returncode)
+            self.assertEqual('', status.stdout)
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
     def test_valid_windows_git_install_routes_to_git_without_posix_openat(self):
