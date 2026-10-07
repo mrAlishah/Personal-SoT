@@ -4,6 +4,8 @@
 
 Define the client-neutral create, use, and current-state maintenance flow for Personal projects.
 
+Git/validation routing follows `system/governance/change_policy.md`.
+
 ## Create
 
 ### Discover
@@ -50,22 +52,29 @@ Every created context module requires explicit `ai_access`. Do not create empty 
 
 ### Register and preview
 
-The same proposal adds the exact scope mapping to `system/routing/context_registry.md`. Check for duplicate scope, target, identifier, or overlapping ownership first.
+The same proposal adds the exact Personal/project scope mapping to `system/routing/context_registry.md`. Check for duplicate scope, target, identifier, or overlapping ownership first.
 
-Preview the understood project, proposed identifier, semantic modules, access state, registry mapping, complete new content, excluded items, and validation command. Then request explicit confirmation through `system/assistant/safe_write_contract.md`.
+Creating project modules plus their private scope registration is `private_context_structure`, not a reusable registry-system change.
 
-### Write and validate
+Preview the understood project, proposed identifier, semantic modules, access state, registry mapping, complete new content, and excluded items. Then request explicit confirmation through `system/assistant/safe_write_contract.md`.
 
-On a capable authorized local host, revalidate and apply project files plus registry mapping as one coherent patch. Run:
+### Write and persist
+
+On a host with real write capability, re-check current owners/ref and apply the confirmed project files plus registry mapping directly to the current private `main`; a short-lived branch is not required for this private context structure.
+
+Full unit tests and `validate_public.py` are not required for project creation.
+
+When local-command capability exists, run the targeted structural validator:
 
 ```text
-python3 system/validation/validate_v1.py --mode personal
-python3 system/validation/validate_public.py
+python3 -B system/validation/validate_v1.py --mode personal
 ```
 
-Run prompt validation too when prompt files changed. Never claim project creation if the patch or required validation failed.
+When a web/remote client can write but cannot run local Python, it may still apply the confirmed structural change and must report that targeted validation was unavailable.
 
-On a no-write host, return the same proposal, say nothing was written and validation was not run, and provide apply guidance without changing semantics.
+Persist with commit + push when the host exposes those capabilities. A remote provider commit directly to private `main` is already persisted remotely.
+
+On a no-write host, return the same proposal and say nothing was written.
 
 ## Use
 
@@ -89,16 +98,39 @@ An explicit valid scope remains authoritative.
 
 1. Resolve exactly one registered project.
 2. Read the minimum current project owners.
-3. Ask what changed when the evidence is not already clear.
+3. Ask what changed only when the evidence is not already clear.
 4. Classify each candidate as current state, objective, constraint, decision, temporary history, or unresolved.
 5. Keep `current_state.md` as current effective state, not an append-only activity log.
 6. Reconcile duplicates and conflicts with existing owners.
-7. Preview the exact diff and exclusions.
-8. Confirm, revalidate, write, and run Personal/public validators through the safe-write contract.
-9. Report the update and one useful next request.
+7. Classify the Git/validation flow:
+   - existing-module content only → `private_context_content`;
+   - new/deleted/moved module, registry change, or `ai_access`/frontmatter identity change → `private_context_structure`;
+   - any runtime/product semantic change → `system_change`.
+8. Preview the exact diff and exclusions.
+9. After explicit confirmation, re-read the affected owners/current ref.
+10. For `private_context_content`, write directly to private `main`, commit/push when capable, and do not run Python tests or validators.
+11. For `private_context_structure`, write directly to private `main`, commit/push when capable, and run only the targeted Personal validator when local-command capability exists.
+12. Report the update and one useful next request.
 
-Do not silently change objectives, constraints, decisions, or access state while updating current state. If such a change is justified, show it as a separate owner in the same proposal or defer it for clarification.
+Do not silently change objectives, constraints, decisions, access state, registration, or ownership while updating current state. If such a change is justified, show it explicitly in the same proposal or defer it.
+
+## Web clients
+
+A web client with verified repository write capability may perform the same confirmed direct-private-main update. Do not require a local branch merely because the client is web-based.
+
+If the web client has read-only access, return the preview; confirmation does not create write permission.
 
 ## Acceptance
 
-A compliant vertical slice can create the minimum valid project and registry entry, resolve and use it by natural language, update current effective state without ownership drift, validate real local writes, and preserve identical preview semantics on clients that cannot write.
+A compliant project flow keeps ordinary project updates simple:
+
+```text
+request
+→ preview
+→ confirm
+→ private main update
+→ commit/push
+→ report
+```
+
+It escalates only structural context to targeted validation and only real system/product changes to the engineered branch/full-validation flow.
