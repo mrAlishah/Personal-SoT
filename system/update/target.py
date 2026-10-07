@@ -19,6 +19,13 @@ _LS_REMOTE_RE = re.compile(r'([0-9a-f]{40})\trefs/heads/' + re.escape(CANONICAL_
 
 
 _ALLOWED_EXTRA_ENV = frozenset({'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NO_REPLACE_OBJECTS'})
+# Git for Windows commonly obtains core.autocrlf=true from system/global
+# configuration. controlled_git deliberately isolates both scopes, so without
+# an explicit replacement a normal CRLF worktree can be misreported as dirty
+# against an LF index. Keep the controlled environment deterministic while
+# restoring that platform normalization; repository attributes still take
+# precedence for paths with explicit text/eol policy.
+_PLATFORM_GIT_CONFIG = ('-c', 'core.autocrlf=true') if os.name == 'nt' else ()
 
 
 @dataclass(frozen=True)
@@ -55,7 +62,12 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     real fsmonitor script do not fire under this override, including for
     `update-index`/`write-tree`/`ls-files --stage`, not only `status`. This
     applies uniformly to every caller, not only Loop 3's apply step, since
-    read-only Loop 1/2 calls have no reason to risk it either — an
+    read-only Loop 1/2 calls have no reason to risk it either. On native
+    Windows it additionally pins `core.autocrlf=true`: Git for Windows often
+    supplies that normalization from system/global config, which this wrapper
+    intentionally hides; restoring the non-authority normalization explicitly
+    prevents a clean CRLF checkout from being falsely classified as dirty.
+    An
     individual call site may still pass its own `-c core.fsmonitor=false`
     (harmless duplication; Git accepts repeated `-c` for the same key).
 
