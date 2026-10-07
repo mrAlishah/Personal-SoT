@@ -16,7 +16,7 @@ understand the goal or uncertainty
 → preview any material change
 → confirm when required
 → apply only when capable and authorized
-→ validate when applied
+→ validate when the resolved change policy requires
 → teach or suggest one next-best useful request when a clear continuation exists
 ```
 
