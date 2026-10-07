@@ -2,13 +2,13 @@
 
 ## What you need
 
-Open the Personal-SoT repository in Codex or Claude Code. The local agent needs permission to read and write this repository and run its validators.
+Use Personal-SoT from an AI client that can read your private repository. To let the Assistant save changes for you, the current client also needs real write access to that private repository.
 
-You do not need to know the folder structure, YAML, schemas, or runtime directives.
+You do not need to know the folder structure, YAML, schemas, branches, or test commands.
 
 ## 1. Ask for a project
 
-Say what you want in your preferred language:
+Say what you want naturally:
 
 ```text
 I want a project for learning German. Guide me step by step in English.
@@ -21,31 +21,34 @@ Create a German-learning project for me.
 I am at A1, want to handle daily conversations, and can study four hours per week.
 ```
 
-The Assistant will reuse what you already said and ask only questions that materially affect the project. When useful, it gives examples, recommends an answer, and lets you say:
-
-```text
-I don't know — recommend one.
-```
+The Assistant reuses what you already said and asks only questions that materially affect the project.
 
 ## 2. Review before anything changes
 
-The Assistant summarizes what it understood and previews the complete proposed change, including the friendly project name, internal identifier, information it will store, anything it excluded, and the validation it will run.
+The Assistant shows a concise preview of what it understood and the exact Personal/project information it proposes to save.
 
-Nothing should be written before you explicitly confirm that preview. If you change the proposal, the Assistant shows a new preview before asking again.
+Nothing is written before you explicitly confirm the preview.
 
-## 3. Confirm and validate
+If the proposal changes, you get a new preview before confirming again.
 
-After confirmation, a capable local agent rechecks the current repository, writes the smallest necessary project, registers it for use, and runs the repository validators.
+## 3. Confirm
 
-The result must distinguish:
+For a new project, the Assistant creates the minimum project structure and registration after confirmation.
+
+This is a private-context structural change:
 
 ```text
-written files
-validation that actually ran and passed or failed
-deferred or ambiguous information
+preview
+→ confirm
+→ update private main
+→ commit/push
+→ targeted Personal validation when available
+→ report
 ```
 
-If validation fails, the Assistant reports the failure instead of claiming that the project is ready.
+A short-lived branch and full Python test suite are not required.
+
+If the current web client can write the private repository but cannot run local Python, it may still save the confirmed project and must say that targeted validation was unavailable.
 
 ## 4. Use the project
 
@@ -55,7 +58,7 @@ Ask naturally:
 Using my German-learning project, what should I study next?
 ```
 
-Other useful examples:
+Other examples:
 
 ```text
 Summarize the current state of my German-learning project.
@@ -63,31 +66,37 @@ Create a two-week plan from my current state.
 What is blocking my progress?
 ```
 
-If you want precise expert control, the Assistant may also show an optional form such as:
+Expert scope syntax remains optional:
 
 ```text
 @ctx:personal/projects/german_learning
 ```
 
-You do not need this syntax for normal use.
-
 ## 5. Update current state
 
-Tell the Assistant what changed:
+Just tell the Assistant what changed:
 
 ```text
 Update my German-learning project. I completed A1 and now practise conversation twice a week.
 ```
 
-The Assistant reads the current project, separates effective current state from goals, constraints, decisions, and temporary history, then previews the exact update. It writes only after confirmation and runs validation again.
+For a normal content-only update to existing project files, the flow is deliberately simple:
+
+```text
+read current project
+→ preview exact change
+→ confirm
+→ update private main
+→ commit/push
+→ report
+```
+
+No branch and no Python tests/validators are required for that routine content update.
+
+If the change also creates/deletes/moves modules, changes registration, or changes `ai_access`, the Assistant treats it as a structural context change and uses only targeted Personal validation when command capability exists.
 
 ## Web clients
 
-ChatGPT and Claude Web follow the same guided questions, recommendations, classification, and preview when they can read the repository. If they do not have repository write capability, they must state:
+ChatGPT or Claude Web can use the same direct-private-main flow when the connected repository tool actually exposes write capability.
 
-```text
-nothing was written
-validation was not run here
-```
-
-You can take that preview to an authorized local agent for application. A future helper or connector may automate this handoff without changing the Assistant workflow.
+If the web client is read-only, it still shows the same preview but must state that nothing was written. User confirmation does not create write permission.
