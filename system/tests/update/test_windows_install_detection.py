@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -55,6 +56,37 @@ class WindowsInstallDetectionTests(unittest.TestCase):
             )
             self.assertEqual(0, status.returncode)
             self.assertEqual('', status.stdout)
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
+    def test_raw_worktree_identity_never_executes_configured_clean_filter(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            subprocess.run(['git', 'init', '-q', '-b', 'main', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'x@example.com'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'x'], check=True)
+            (root / '.gitattributes').write_text('sample.txt filter=evil\n')
+            (root / 'sample.txt').write_bytes(b'line one\r\nline two\r\n')
+            subprocess.run(['git', '-C', str(root), 'add', '-A'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-q', '-m', 'initial'], check=True)
+
+            sentinel = Path(workdir, 'filter-ran')
+            helper = Path(workdir, 'filter.py')
+            helper.write_text(
+                'import pathlib,sys\n'
+                'pathlib.Path(sys.argv[1]).write_text("ran")\n'
+                'sys.stdout.buffer.write(sys.stdin.buffer.read())\n'
+            )
+            command = f'"{sys.executable}" "{helper}" "{sentinel}"'
+            subprocess.run(
+                ['git', '-C', str(root), 'config', 'filter.evil.clean', command],
+                check=True,
+            )
+
+            entry = git_update._identify_worktree_entry(
+                str(root), 'sample.txt', {'GIT_NO_REPLACE_OBJECTS': '1'}
+            )
+            self.assertIsNotNone(entry)
+            self.assertFalse(sentinel.exists())
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
     def test_valid_windows_git_install_routes_to_git_without_posix_openat(self):
