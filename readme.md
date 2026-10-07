@@ -53,7 +53,7 @@ Then open the private `sot` in a supported local AI client and run:
 @do:setup
 ```
 
-See [Setup](guides/user/setup.md).
+See the [Install guide](guides/user/install.md) for prerequisites and OS-specific steps, then [Setup](guides/user/setup.md).
 
 ## Important commands
 
@@ -138,7 +138,8 @@ If something looks wrong:
 | Reach your goals with Personal-SoT | [Goals guide](guides/user/goals.md) |
 | Learn the normal workflow | [Beginner guide](guides/user/readme.md) |
 | All commands, Profiles, prompts, controls, and examples | [Cheat sheet](guides/user/cheatsheet.md) |
-| Install and set up | [Setup](guides/user/setup.md) |
+| Install on Windows, macOS, or Linux | [Install](guides/user/install.md) |
+| Finish setup | [Setup](guides/user/setup.md) |
 | Diagnose problems | [Doctor](guides/user/doctor.md) |
 | Update safely | [Update](guides/user/update.md) |
 | Create a project | [First project](guides/user/create_and_use_project.md) |

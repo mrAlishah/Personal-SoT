@@ -5,6 +5,9 @@ import unittest
 from system.install import install
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
+
 class InstallTests(unittest.TestCase):
     def test_github_slug_accepts_https_and_ssh(self):
         self.assertEqual(
@@ -18,6 +21,12 @@ class InstallTests(unittest.TestCase):
 
     def test_github_slug_rejects_other_hosts(self):
         self.assertIsNone(install.github_slug("https://example.com/alice/repo.git"))
+
+    def test_windows_launcher_forces_utf8_for_python_subprocesses(self):
+        launcher = (REPOSITORY_ROOT / "install.bat").read_text(encoding="utf-8")
+        self.assertIn('set "PYTHONUTF8=1"', launcher)
+        self.assertIn('set "PYTHONIOENCODING=utf-8"', launcher)
+        self.assertLess(launcher.index('set "PYTHONUTF8=1"'), launcher.index("where py"))
 
     def test_drive_copy_excludes_git_and_local_state(self):
         with TemporaryDirectory() as directory:
