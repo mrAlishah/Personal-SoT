@@ -92,13 +92,13 @@ When the user asks what could be improved in their SoT, perform a bounded read-o
 12. Route health diagnosis through `system/diagnostics/doctor_contract.md`.
 13. Route diagnosis-to-repair through `system/assistant/fix_workflow.md`.
 14. Route every material write through `system/assistant/safe_write_contract.md`.
-15. Report actual actions, provenance, validation, limitations, and one next-best useful request when a clear continuation exists.
+15. Report actual actions, provenance, the resolved validation requirement/result, limitations, and one next-best useful request when a clear continuation exists.
 
 ## Capability boundary
 
 Read-only discovery, explanation, and recommendation may execute when their sources are accessible.
 
-A host without canonical write capability may complete questions and preview, but must state that nothing was written and validators were not run. User confirmation never creates host permission.
+A host without canonical write capability may complete questions and preview, but must state that nothing was written and report the validation requirement truthfully. User confirmation never creates host permission.
 
 A host with authorized write capability may apply a confirmed proposal only within its existing filesystem, sandbox, access, and Git boundaries.
 
