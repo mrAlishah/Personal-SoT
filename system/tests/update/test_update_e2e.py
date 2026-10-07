@@ -824,8 +824,8 @@ class ZipWorkflowE2ETests(unittest.TestCase):
                 current_root, destination, target_dir, target_sha, capability=_FULL,
                 confirm_digest=preview_result.digest)
 
-            self.assertTrue(applied_result.applied)
-            self.assertTrue(applied_result.ready)
+            self.assertTrue(applied_result.applied, repr(applied_result))
+            self.assertTrue(applied_result.ready, repr(applied_result))
             self.assertEqual(
                 'Updated side-by-side copy is ready. Your original folder was not changed.',
                 applied_result.beginner.headline)
