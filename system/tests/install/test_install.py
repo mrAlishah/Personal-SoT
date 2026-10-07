@@ -28,7 +28,8 @@ class InstallTests(unittest.TestCase):
         self.assertIn('set "PYTHONIOENCODING=utf-8"', launcher)
         self.assertLess(launcher.index('set "PYTHONUTF8=1"'), launcher.index("where py"))
 
-    def test_drive_copy_excludes_git_and_local_state(self):        with TemporaryDirectory() as directory:
+    def test_drive_copy_excludes_git_and_local_state(self):
+        with TemporaryDirectory() as directory:
             base = Path(directory)
             source = base / "source"
             destination = base / "drive"
