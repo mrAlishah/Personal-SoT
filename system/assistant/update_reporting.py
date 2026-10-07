@@ -222,7 +222,7 @@ def _root_anchored_parts(relative: str) -> list[str] | None:
     if not parts:
         return None
     for part in parts:
-        if part in ('.', '..') or not part or '/' in part or '\\' in part:
+        if part in ('.', '..') or not part or '/' in part:
             return None
     return list(parts)
 
