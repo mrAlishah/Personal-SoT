@@ -77,11 +77,14 @@ installation, and a linked worktree — whose `.git` is a file, not a
 directory — is still correctly recognized as its own root).
 
 Installation proof pins the selected root to ONE physical directory for the
-whole transaction. Both the markers and the Git-vs-archive determination are
-read entirely through that pin — including Git routing evidence itself: the
-pinned root's own `.git` metadata (a real directory for a normal clone, or a
-linked worktree's `gitdir:` pointer file, bounded-read through the same
-pin), never a Git subprocess run against a pathname. A subprocess necessarily
+whole transaction. POSIX hosts use the root-anchored `openat` /
+`O_NOFOLLOW` boundary; native Windows uses Win32 handles opened with
+`FILE_FLAG_OPEN_REPARSE_POINT` and without `FILE_SHARE_DELETE`, rejecting
+symlinks/junctions while pinning accepted components against rename/delete.
+Both the markers and the Git-vs-archive determination are read through the
+active platform's pin — including the root's own `.git` metadata (a real
+directory for a normal clone, or a linked worktree's `gitdir:` pointer
+file), never a Git subprocess used merely to decide the route. A subprocess necessarily
 operates on whatever physical directory the pathname names at the moment it
 runs, and a pathname that is temporarily replaced, probed, and then restored
 before any pathname-based identity check (an "ABA" swap) would pass every

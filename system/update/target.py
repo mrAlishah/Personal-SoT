@@ -55,8 +55,12 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
     real fsmonitor script do not fire under this override, including for
     `update-index`/`write-tree`/`ls-files --stage`, not only `status`. This
     applies uniformly to every caller, not only Loop 3's apply step, since
-    read-only Loop 1/2 calls have no reason to risk it either — an
-    individual call site may still pass its own `-c core.fsmonitor=false`
+    read-only Loop 1/2 calls have no reason to risk it either. On native
+    Windows it additionally pins `core.autocrlf=true`: Git for Windows often
+    supplies that normalization from system/global config, which this wrapper
+    intentionally hides; restoring the non-authority normalization explicitly
+    prevents a clean CRLF checkout from being falsely classified as dirty.
+    An individual call site may still pass its own `-c core.fsmonitor=false`
     (harmless duplication; Git accepts repeated `-c` for the same key).
 
     `extra_env` may add only `GIT_ALTERNATE_OBJECT_DIRECTORIES` and
@@ -94,8 +98,16 @@ def controlled_git(*args, cwd=None, extra_env=None, runner=subprocess.run, input
             env['GIT_CEILING_DIRECTORIES'] = os.path.dirname(os.path.realpath(controlled_home))
         if extra_env:
             env.update(extra_env)
+        platform_args = ()
+        if os.name == 'nt':
+            # A Windows checkout commonly contains CRLF worktree text even
+            # though the index stores canonical LF blobs. Ambient/global Git
+            # config is intentionally isolated above, so pin the built-in
+            # normalization explicitly rather than inheriting user config.
+            # This is a fixed Git builtin setting, not executable authority.
+            platform_args = ('-c', 'core.autocrlf=true')
         full_args = ('git', '-c', 'core.hooksPath=' + empty_hooks,
-                     '-c', 'core.fsmonitor=false') + args
+                     '-c', 'core.fsmonitor=false') + platform_args + args
         return runner(full_args, cwd=cwd, env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        input=input, text=text, timeout=30, check=False)

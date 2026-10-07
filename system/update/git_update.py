@@ -510,11 +510,21 @@ def _build_tree(entries: dict[str, tuple[str, str]], ephemeral, extra_env) -> st
             else:
                 mode, sha = value
                 lines.append(f'{mode} blob {sha}\t{name}')
+        # mktree consumes a Git plumbing protocol whose record terminator is
+        # LF, not the host platform's text newline. Passing a str through
+        # subprocess text mode on Windows translates LF to CRLF; mktree then
+        # treats the stray CR bytes as part of path components and creates a
+        # tree that git archive rejects as an invalid Windows path. Send the
+        # protocol as bytes so its framing is identical on every platform.
+        payload = ('\n'.join(lines) + '\n').encode('utf-8')
         result = controlled_git(
-            'mktree', cwd=ephemeral, extra_env=extra_env, input='\n'.join(lines) + '\n')
+            'mktree', cwd=ephemeral, extra_env=extra_env, input=payload, text=False)
         if result.returncode != 0:
             raise TargetMaterializationError('candidate_tree_build_failed')
-        return (result.stdout or '').strip()
+        try:
+            return (result.stdout or b'').decode('ascii').strip()
+        except UnicodeDecodeError as error:
+            raise TargetMaterializationError('candidate_tree_build_failed') from error
 
     return build(root)
 
@@ -653,7 +663,15 @@ def _identify_worktree_entry(root, path, extra_env) -> tuple | None:
             'hash-object', '--no-filters', '--', path, cwd=root, extra_env=extra_env)
         if result.returncode != 0:
             return None
-        mode = '100755' if os.access(file_path, os.X_OK) else '100644'
+        if os.name == 'nt':
+            # NTFS has no Git-compatible executable bit to inspect here.
+            # Git's index is the authoritative mode on Windows; content
+            # identity remains the raw worktree hash so byte-level concurrent
+            # edits are still detected independently of the index.
+            indexed = _identify_index_entry(root, path, extra_env)
+            mode = indexed[0] if indexed is not None else '100644'
+        else:
+            mode = '100755' if os.access(file_path, os.X_OK) else '100644'
         return (mode, (result.stdout or '').strip())
     return None
 
@@ -751,21 +769,24 @@ def _write_entry(ephemeral, root, path, entry, extra_env) -> tuple[bool, bool]:
     return result.returncode == 0, True
 
 
-def _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env) -> bool:
-    """Restore `path` to `before_entry`, but only if its CURRENT worktree
-    AND index state each still equal exactly `written_entry` (what the
-    updater itself wrote) or already equal `before_entry` (nothing to
-    do, e.g. this path was never reached before a sibling path's
-    mutation failed); any other current state means an external process
-    has touched it since, and it is left completely untouched — neither
-    worktree nor index — rather than risk overwriting that change.
+def _restore_entry(ephemeral, root, path, before_entry, written_entry,
+                   before_worktree_entry, extra_env) -> bool:
+    """Restore `path` to `before_entry` without overwriting concurrency.
+
+    The Git-tree identity and the exact pre-mutation worktree identity are
+    intentionally separate. On Windows a verified-clean CRLF worktree can
+    hash differently with `--no-filters` from its canonical LF index blob.
+    Recovery therefore accepts the raw worktree snapshot captured before the
+    final clean recheck, while the index must still equal the canonical
+    `before_entry`. The updater-written state remains the other safe state.
     """
     current_worktree = _identify_worktree_entry(root, path, extra_env)
     current_index = _identify_index_entry(root, path, extra_env)
-    safe_states = (before_entry, written_entry)
-    if current_worktree not in safe_states or current_index not in safe_states:
+    if current_worktree not in (before_worktree_entry, written_entry):
         return False
-    if current_worktree == before_entry and current_index == before_entry:
+    if current_index not in (before_entry, written_entry):
+        return False
+    if current_worktree == before_worktree_entry and current_index == before_entry:
         return True
     ok, _attempted = _write_entry(ephemeral, root, path, before_entry, extra_env)
     return ok
@@ -824,19 +845,20 @@ def _post_mutation_integrity_ok(root, ephemeral, candidate_tree_sha, touched_pat
     return changed <= set(touched_paths)
 
 
-def _attempt_recovery(ephemeral, root, record: dict, extra_env) -> bool:
-    """Restore every touched path in `record` to its pre-update state, in
-    dependency-safe order toward that previous state (see
-    `_ordered_recovery_paths` — the same reasoning `_write_entry`'s
-    forward ordering uses, reversed); complete only if every single path
-    was safely restorable (see `_restore_entry`) — one externally-changed
-    path is enough to make this `False`, even though the other paths
-    were still restored.
+def _attempt_recovery(ephemeral, root, record: dict, verified_worktree: dict,
+                      extra_env) -> bool:
+    """Restore touched paths to the verified pre-update Git state safely.
+
+    `verified_worktree` is the exact raw worktree identity captured before
+    the final clean recheck. It lets Windows preserve the concurrency boundary
+    even when a clean CRLF worktree does not raw-hash to the LF index blob.
     """
     complete = True
     for path in _ordered_recovery_paths(record):
         before_entry, written_entry = record[path]
-        if not _restore_entry(ephemeral, root, path, before_entry, written_entry, extra_env):
+        if not _restore_entry(
+                ephemeral, root, path, before_entry, written_entry,
+                verified_worktree[path], extra_env):
             complete = False
     return complete
 
@@ -940,6 +962,16 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 if _before_recheck is not None:
                     _before_recheck()
 
+                # Snapshot exact raw worktree identities BEFORE the final
+                # clean recheck. The recheck below then proves that this
+                # snapshot belonged to a clean, unchanged checkout. Capturing
+                # after the recheck would open a TOCTOU window in which an
+                # external change could become the accepted baseline.
+                verified_worktree = {
+                    path: _identify_worktree_entry(root, path, extra_env)
+                    for path in touched_paths
+                }
+
                 # FINAL recheck, immediately before the first live write:
                 # never trust anything validation/transfer/commit-tree
                 # observed to still hold by the time we get here.
@@ -952,14 +984,24 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         validation_ran=True, validation_passed=True,
                         failure='concurrent_change_pre_mutation', concurrent_change=True)
 
-                # Record every touched path's (before, written) tree
-                # identity up front — including paths not yet reached if
-                # a sibling path's write fails below — so recovery can
-                # treat "never actually mutated" as a trivially safe
-                # no-op via the same before/written comparison, rather
-                # than losing track of what happened on a partial failure.
+                # Record every touched path's canonical Git-tree identity for
+                # recovery. Index identity must still equal that canonical
+                # state; worktree concurrency is compared to the verified raw
+                # snapshot above so Windows CRLF/LF normalization never
+                # requires executing a configured clean filter.
                 record = {path: (current_tree.get(path), target_tree.get(path))
                           for path in touched_paths}
+                verified_index = {
+                    path: _identify_index_entry(root, path, extra_env)
+                    for path in touched_paths
+                }
+                if any(
+                    verified_index[path] != current_tree.get(path)
+                    for path in touched_paths
+                ):
+                    return ApplyResult(
+                        validation_ran=True, validation_passed=True,
+                        failure='concurrent_change_pre_mutation', concurrent_change=True)
 
                 write_ok = True
                 mutation_started = False
@@ -967,12 +1009,15 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 for path in touched_paths:
                     if _before_path is not None:
                         _before_path(path)
-                    before_entry, written_entry = record[path]
-                    # Per-path concurrency check: a single check at the
-                    # top of this function cannot see a LATER path change
-                    # while an EARLIER path is still being written.
-                    if (_identify_worktree_entry(root, path, extra_env) != before_entry
-                            or _identify_index_entry(root, path, extra_env) != before_entry):
+                    _before_entry, written_entry = record[path]
+                    # Per-path concurrency check: a single check at the top of
+                    # this function cannot see a LATER path change while an
+                    # EARLIER path is still being written. Compare raw
+                    # worktree bytes to the pre-recheck snapshot and the
+                    # index to its verified canonical entry; neither check
+                    # invokes configured clean filters.
+                    if (_identify_worktree_entry(root, path, extra_env) != verified_worktree[path]
+                            or _identify_index_entry(root, path, extra_env) != verified_index[path]):
                         per_path_concurrent = True
                         write_ok = False
                         break
@@ -1014,7 +1059,8 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                             concurrent_change=per_path_concurrent,
                             failure='concurrent_change_pre_mutation' if per_path_concurrent
                             else 'mutation_failed')
-                    recovered = _attempt_recovery(ephemeral, root, record, extra_env)
+                    recovered = _attempt_recovery(
+                        ephemeral, root, record, verified_worktree, extra_env)
                     # An integrity-gate failure means something outside
                     # the narrow touched-path bookkeeping `record` covers
                     # has drifted (that is exactly what this gate exists
@@ -1038,7 +1084,8 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     # overall recovery boundary can never be reported
                     # complete here, regardless of how much of the
                     # touched-path state was restorable.
-                    _attempt_recovery(ephemeral, root, record, extra_env)
+                    _attempt_recovery(
+                        ephemeral, root, record, verified_worktree, extra_env)
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=False,
