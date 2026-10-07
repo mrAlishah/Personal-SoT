@@ -268,6 +268,28 @@ class ControlledGitExtraEnvTests(unittest.TestCase):
         self.assertNotIn('GIT_ALTERNATE_OBJECT_DIRECTORIES', captured['env'])
         self.assertNotIn('GIT_NO_REPLACE_OBJECTS', captured['env'])
 
+    def test_windows_controlled_git_preserves_required_systemroot_without_git_authority(self):
+        captured = {}
+
+        def spy(command, **kwargs):
+            captured['command'] = command
+            captured['env'] = kwargs['env']
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        injected = {
+            'SystemRoot': r'C:\\Windows',
+            'GIT_DIR': r'C:\\attacker\\repo',
+            'GIT_CONFIG_COUNT': '1',
+        }
+        with mock.patch.object(target.os, 'name', 'nt'), mock.patch.dict(
+                os.environ, injected, clear=False):
+            target.controlled_git('status', runner=spy)
+
+        self.assertEqual(r'C:\\Windows', captured['env']['SystemRoot'])
+        self.assertNotIn('GIT_DIR', captured['env'])
+        self.assertNotIn('GIT_CONFIG_COUNT', captured['env'])
+        self.assertIn('core.autocrlf=true', captured['command'])
+
 
 if __name__ == '__main__':
     unittest.main()
