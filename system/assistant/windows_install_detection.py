@@ -14,10 +14,18 @@ _REPARSE = 0x0400
 _DIRECTORY = 0x0010
 _DISK = 0x0001
 _READ_ATTRIBUTES = 0x0080
+_FILE_READ_DATA = 0x0001
+_FILE_TRAVERSE = 0x0020
+_SYNCHRONIZE = 0x00100000
 _GENERIC_READ = 0x80000000
 _SHARE_READ_WRITE = 0x00000001 | 0x00000002
 _OPEN_EXISTING = 3
 _OPEN_REPARSE_BACKUP = 0x00200000 | 0x02000000
+_FILE_OPEN = 0x00000001
+_FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
+_FILE_OPEN_FOR_BACKUP_INTENT = 0x00004000
+_FILE_OPEN_REPARSE_POINT = 0x00200000
+_OBJ_CASE_INSENSITIVE = 0x00000040
 _API = None
 
 
@@ -57,6 +65,29 @@ def _api():
             ('index_low', wintypes.DWORD),
         ]
 
+    class UnicodeString(ctypes.Structure):
+        _fields_ = [
+            ('Length', ctypes.c_ushort),
+            ('MaximumLength', ctypes.c_ushort),
+            ('Buffer', wintypes.LPWSTR),
+        ]
+
+    class ObjectAttributes(ctypes.Structure):
+        _fields_ = [
+            ('Length', wintypes.ULONG),
+            ('RootDirectory', wintypes.HANDLE),
+            ('ObjectName', ctypes.POINTER(UnicodeString)),
+            ('Attributes', wintypes.ULONG),
+            ('SecurityDescriptor', wintypes.LPVOID),
+            ('SecurityQualityOfService', wintypes.LPVOID),
+        ]
+
+    class IoStatusBlock(ctypes.Structure):
+        _fields_ = [
+            ('StatusOrPointer', wintypes.LPVOID),
+            ('Information', ctypes.c_size_t),
+        ]
+
     kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel32.CreateFileW.argtypes = (
         wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
@@ -76,7 +107,27 @@ def _api():
     kernel32.ReadFile.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
     kernel32.CloseHandle.restype = wintypes.BOOL
-    _API = (ctypes, wintypes, kernel32, Info)
+
+    ntdll = ctypes.WinDLL('ntdll')
+    ntdll.NtCreateFile.argtypes = (
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        ctypes.POINTER(ObjectAttributes),
+        ctypes.POINTER(IoStatusBlock),
+        wintypes.LPVOID,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.LPVOID,
+        wintypes.ULONG,
+    )
+    ntdll.NtCreateFile.restype = wintypes.LONG
+
+    _API = (
+        ctypes, wintypes, kernel32, Info,
+        ntdll, UnicodeString, ObjectAttributes, IoStatusBlock,
+    )
     return _API
 
 
@@ -90,14 +141,16 @@ def _close(handle) -> None:
         pass
 
 
-def _open(path: Path, *, read: bool = False):
+def _open(path: Path, *, read: bool = False, traverse: bool = False):
     api = _api()
     if api is None:
         return None
-    ctypes, wintypes, kernel32, info_type = api
+    ctypes, wintypes, kernel32, info_type = api[:4]
     handle = kernel32.CreateFileW(
         str(path),
-        _READ_ATTRIBUTES | (_GENERIC_READ if read else 0),
+        _READ_ATTRIBUTES
+        | (_GENERIC_READ if read else 0)
+        | (_FILE_TRAVERSE if traverse else 0),
         _SHARE_READ_WRITE,
         None,
         _OPEN_EXISTING,
@@ -107,6 +160,84 @@ def _open(path: Path, *, read: bool = False):
     if handle in (None, wintypes.HANDLE(-1).value):
         return None
 
+    info = info_type()
+    if (
+        not kernel32.GetFileInformationByHandle(handle, ctypes.byref(info))
+        or info.attributes & _REPARSE
+    ):
+        _close(handle)
+        return None
+
+    identity = (
+        int(info.volume),
+        (int(info.index_high) << 32) | int(info.index_low),
+    )
+    size = (int(info.size_high) << 32) | int(info.size_low)
+    return handle, info, identity, size
+
+
+def _open_relative(parent_handle, name: str, *, read: bool = False, traverse: bool = False):
+    """Open one child component relative to an already pinned directory.
+
+    Using NtCreateFile with OBJECT_ATTRIBUTES.RootDirectory is the Windows
+    equivalent of POSIX openat(): path resolution starts from the directory
+    handle, so swapping any pathname ancestor cannot redirect this open.
+    FILE_OPEN_REPARSE_POINT keeps the final component itself from being
+    followed; each intermediate component is opened separately and retained.
+    """
+    api = _api()
+    if api is None or not name or '\\' in name or '/' in name:
+        return None
+    (
+        ctypes, wintypes, kernel32, info_type,
+        ntdll, unicode_type, object_attributes_type, io_status_type,
+    ) = api
+
+    buffer = ctypes.create_unicode_buffer(name)
+    encoded_length = len(name.encode('utf-16-le'))
+    unicode_name = unicode_type(
+        encoded_length,
+        encoded_length + 2,
+        ctypes.cast(buffer, wintypes.LPWSTR),
+    )
+    parent_value = getattr(parent_handle, 'value', parent_handle)
+    attributes = object_attributes_type(
+        ctypes.sizeof(object_attributes_type),
+        wintypes.HANDLE(parent_value),
+        ctypes.pointer(unicode_name),
+        _OBJ_CASE_INSENSITIVE,
+        None,
+        None,
+    )
+    io_status = io_status_type()
+    child = wintypes.HANDLE()
+    desired_access = (
+        _READ_ATTRIBUTES
+        | _SYNCHRONIZE
+        | (_FILE_READ_DATA if read else 0)
+        | (_FILE_TRAVERSE if traverse else 0)
+    )
+    status = ntdll.NtCreateFile(
+        ctypes.byref(child),
+        desired_access,
+        ctypes.byref(attributes),
+        ctypes.byref(io_status),
+        None,
+        0,
+        _SHARE_READ_WRITE,
+        _FILE_OPEN,
+        (
+            _FILE_SYNCHRONOUS_IO_NONALERT
+            | _FILE_OPEN_FOR_BACKUP_INTENT
+            | _FILE_OPEN_REPARSE_POINT
+        ),
+        None,
+        0,
+    )
+    if status < 0 or not child.value:
+        return None
+
+    handle = child.value
     info = info_type()
     if (
         not kernel32.GetFileInformationByHandle(handle, ctypes.byref(info))
@@ -136,7 +267,7 @@ class _Pin:
 
 def _pin(root):
     path = Path(os.path.abspath(os.fspath(root)))
-    opened = _open(path)
+    opened = _open(path, traverse=True)
     if opened is None:
         return None
     handle, info, identity, _size = opened
@@ -150,16 +281,22 @@ def _walk(pin: _Pin, relative: str, *, read: bool = False):
     parts = _parts(relative)
     if not parts:
         return None
-    path = pin.path
+    parent = pin.handles[0]
     opened = None
     for index, part in enumerate(parts):
-        path = path / part
-        opened = _open(path, read=read and index == len(parts) - 1)
+        intermediate = index < len(parts) - 1
+        opened = _open_relative(
+            parent,
+            part,
+            read=read and not intermediate,
+            traverse=intermediate,
+        )
         if opened is None:
             return None
         pin.handles.append(opened[0])
-        if index < len(parts) - 1 and not opened[1].attributes & _DIRECTORY:
+        if intermediate and not opened[1].attributes & _DIRECTORY:
             return None
+        parent = opened[0]
     return opened
 
 
@@ -228,7 +365,7 @@ def detect(root, marker_paths) -> str:
                     and bool(first_line[len('gitdir:'):].strip())
                 )
 
-        current = _open(pin.path)
+        current = _open(pin.path, traverse=True)
         if current is None:
             return 'unknown'
         try:
