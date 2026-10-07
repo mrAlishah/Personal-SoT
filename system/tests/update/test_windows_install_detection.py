@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from system.assistant import update_reporting, windows_install_detection
 from system.assistant.update_reporting import HostCapability
@@ -67,6 +68,64 @@ class WindowsInstallDetectionTests(unittest.TestCase):
             (root / 'system' / 'validation' / 'validate_v1.py').write_text('x\n')
 
             self.assertEqual('git', update_reporting.detect_install_type(root, _FULL))
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
+    def test_windows_marker_walk_is_handle_relative_after_root_pin(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            root = Path(workdir, 'root')
+            (root / 'workspace' / 'adapters').mkdir(parents=True)
+            marker = root / 'workspace' / 'adapters' / 'runtime_entrypoint.md'
+            marker.write_text('x\n')
+
+            pin = windows_install_detection._pin(root)
+            self.assertIsNotNone(pin)
+            try:
+                with mock.patch.object(
+                    windows_install_detection,
+                    '_open',
+                    side_effect=AssertionError('child walk must not reopen absolute paths'),
+                ):
+                    self.assertTrue(
+                        windows_install_detection._regular(
+                            pin, 'workspace/adapters/runtime_entrypoint.md'
+                        )
+                    )
+            finally:
+                pin.close()
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
+    def test_windows_linked_worktree_gitfile_routes_to_git(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            main_repo = Path(workdir, 'main')
+            subprocess.run(['git', 'init', '-q', '-b', 'main', str(main_repo)], check=True)
+            subprocess.run(
+                ['git', '-C', str(main_repo), 'config', 'user.email', 'x@example.com'],
+                check=True,
+            )
+            subprocess.run(
+                ['git', '-C', str(main_repo), 'config', 'user.name', 'x'],
+                check=True,
+            )
+            (main_repo / 'workspace' / 'adapters').mkdir(parents=True)
+            (main_repo / 'workspace' / 'adapters' / 'runtime_entrypoint.md').write_text('x\n')
+            (main_repo / 'system' / 'validation').mkdir(parents=True)
+            (main_repo / 'system' / 'validation' / 'validate_v1.py').write_text('x\n')
+            subprocess.run(['git', '-C', str(main_repo), 'add', '-A'], check=True)
+            subprocess.run(
+                ['git', '-C', str(main_repo), 'commit', '-q', '-m', 'initial'],
+                check=True,
+            )
+
+            worktree = Path(workdir, 'worktree')
+            subprocess.run(
+                [
+                    'git', '-C', str(main_repo), 'worktree', 'add', '-q',
+                    '--detach', str(worktree), 'main',
+                ],
+                check=True,
+            )
+            self.assertTrue((worktree / '.git').is_file())
+            self.assertEqual('git', update_reporting.detect_install_type(worktree, _FULL))
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows regression')
     def test_valid_windows_archive_routes_to_zip(self):
