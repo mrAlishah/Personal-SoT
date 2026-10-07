@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  canonical-gates:
+  linux-gates:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,11 +41,9 @@ jobs:
       - name: Check diff hygiene
         run: git diff --check origin/develop...HEAD
 
-  windows-update:
+  windows-update-gate:
     runs-on: windows-latest
-    env:
-      PYTHONUTF8: "1"
-      PYTHONIOENCODING: "utf-8"
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,8 +57,7 @@ jobs:
         run: >-
           python -B -m unittest
           system.tests.update.test_windows_install_detection
-          system.tests.update.test_update_e2e.GitWorkflowE2ETests.test_git_e2e_full_update_success
-          system.tests.update.test_update_e2e.GitWorkflowE2ETests.test_noob_cli_completes_update_with_one_confirmation
+          system.tests.update.test_update_cli
 
       - name: Validate public distribution
         run: python -B system/validation/validate_public.py
