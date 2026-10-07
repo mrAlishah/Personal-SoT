@@ -132,6 +132,8 @@ validation: full_relevant
 
 For public product work, start from current `develop` and use the public branch flow. For private product/runtime maintenance or sync, start from current private `main` and use the private branch flow.
 
+If a material mutation does not clearly satisfy `help_docs`, `private_context_content`, or `private_context_structure`, classify it as `system_change`. Do not invent a lighter class.
+
 ## Mixed changes
 
 A proposal uses the strongest applicable class.
