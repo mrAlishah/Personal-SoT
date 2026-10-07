@@ -10,9 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  linux-gates:
+  ubuntu-gates:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,9 +40,8 @@ jobs:
       - name: Check diff hygiene
         run: git diff --check origin/develop...HEAD
 
-  windows-update-gate:
+  windows-update-gates:
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,9 +53,10 @@ jobs:
 
       - name: Run Windows Safe Update regressions
         run: >-
-          python -B -m unittest
+          python -B -m unittest -v
           system.tests.update.test_windows_install_detection
           system.tests.update.test_update_cli
+          system.tests.update.test_update_e2e.GitWorkflowE2ETests
 
       - name: Validate public distribution
         run: python -B system/validation/validate_public.py
@@ -67,3 +66,6 @@ jobs:
 
       - name: Validate prompts
         run: python -B system/validation/validate_prompts.py
+
+      - name: Check diff hygiene
+        run: git diff --check origin/develop...HEAD
