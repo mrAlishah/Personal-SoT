@@ -39,11 +39,12 @@ You can also just ask naturally.
 
 ## First use
 
-1. [Install and set up](setup.md).
-2. Open your private `sot` in Codex or Claude Code.
-3. Run `@do:sot`.
-4. Run `@do:setup`.
-5. Start a real task.
+1. [Install Personal-SoT](install.md).
+2. [Finish setup](setup.md).
+3. Open your private `sot` in Codex or Claude Code.
+4. Run `@do:sot`.
+5. Run `@do:setup`.
+6. Start a real task.
 
 Examples:
 
@@ -100,6 +101,7 @@ See [Doctor](doctor.md).
 
 ## Common tasks
 
+- Installation: [Install on Windows, macOS, or Linux](install.md)
 - Projects: [Create and use a project](create_and_use_project.md)
 - Existing prompts: [Find a prompt](find_and_use_prompts.md)
 - New prompts: [Build a prompt](build_a_prompt.md)

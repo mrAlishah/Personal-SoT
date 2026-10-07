@@ -11,6 +11,8 @@ sot public
 
 You do not need to understand Git, YAML, schemas, or internal paths.
 
+If Personal-SoT is not installed yet, start with the [Install guide](install.md) for prerequisites and OS-specific commands.
+
 ## Quick path
 
 ### 1. Clone and run the installer
