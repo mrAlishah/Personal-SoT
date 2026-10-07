@@ -318,7 +318,7 @@ def _read(pin: _Pin, relative: str, *, limit: int = 4096):
     ):
         return None
 
-    ctypes, wintypes, kernel32, _info_type = _api()
+    ctypes, wintypes, kernel32, _info_type = _api()[:4]
     remaining = min(opened[3], limit)
     chunks = []
     while remaining:
