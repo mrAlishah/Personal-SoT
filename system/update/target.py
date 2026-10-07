@@ -19,6 +19,8 @@ _LS_REMOTE_RE = re.compile(r'([0-9a-f]{40})\trefs/heads/' + re.escape(CANONICAL_
 
 
 _ALLOWED_EXTRA_ENV = frozenset({'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NO_REPLACE_OBJECTS'})
+
+
 @dataclass(frozen=True)
 class TargetSnapshot:
     commit: str
