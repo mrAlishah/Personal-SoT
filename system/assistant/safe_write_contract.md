@@ -19,9 +19,8 @@ understand intent
 → preview
 → explicit confirmation
 → re-check current state and host permission
-→ write the confirmed patch
-→ validate when policy requires
-→ persist/commit/push when capability allows
+→ apply/persist the confirmed patch using the host's real write transaction
+→ validate when policy requires and capability allows
 → report
 ```
 
@@ -68,6 +67,10 @@ Validation follows `system/governance/change_policy.md`:
 - `full_relevant` — the owning engineered workflow must pass its required suite before integration.
 
 For direct private-main context writes, persist the confirmed change with a commit and push when the host exposes those capabilities. A successful remote-provider commit to private `main` already represents the remote persistence step.
+
+Host transaction order may differ: a remote provider may create the commit as the write itself, while a local client may edit, validate when applicable, then commit/push. Do not invent a sequencing capability the host does not expose.
+
+For `system_change`, candidate-branch commits may exist before validation, but integration into the canonical target branch still requires the owning engineered workflow's required checks.
 
 A failed required validator means the operation is not reported as validated/successful. Report the failure truthfully and route repair through a new bounded proposal unless the correction is purely mechanical and cannot change meaning.
 
