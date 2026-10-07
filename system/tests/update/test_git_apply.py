@@ -164,8 +164,46 @@ class ApplyCandidateTests(unittest.TestCase):
             self.assertEqual(note_mtime_before, Path(root, 'workspace', 'note.md').stat().st_mtime_ns)
             parents = _run(['git', '-C', root, 'rev-parse', 'HEAD^1', 'HEAD^2']).stdout.split()
             self.assertEqual([current_sha, target_sha], parents)
+            identity = _run([
+                'git', '-C', root, 'show', '-s', '--format=%an%n%ae%n%cn%n%ce', 'HEAD'
+            ]).stdout.splitlines()
+            self.assertEqual([
+                'Personal-SoT Safe Update',
+                'safe-update@personal-sot.invalid',
+                'Personal-SoT Safe Update',
+                'safe-update@personal-sot.invalid',
+            ], identity)
             status = _run(['git', '-C', root, 'status', '--porcelain']).stdout
             self.assertEqual('', status.strip())
+
+    def test_apply_needs_no_user_git_identity(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'shipped\n'})
+            root, target_dir, base_sha, current_sha, target_sha = _diverging_repos(
+                workdir, base, {}, {'system/a.md': 'shipped v2\n'})
+            plan, digest = _confirm(root, target_dir, target_sha)
+
+            # The real installer may have no repository-local identity, and
+            # controlled_git intentionally hides global/system Git config.
+            _run(['git', '-C', root, 'config', '--unset-all', 'user.email'], check=False)
+            _run(['git', '-C', root, 'config', '--unset-all', 'user.name'], check=False)
+
+            result = _do_apply(root, target_dir, target_sha, plan, digest)
+
+            self.assertTrue(result.mutation_started)
+            self.assertTrue(result.validation_ran)
+            self.assertTrue(result.validation_passed)
+            self.assertIsNotNone(result.commit)
+            self.assertIsNone(result.failure)
+            identity = _run([
+                'git', '-C', root, 'show', '-s', '--format=%an%n%ae%n%cn%n%ce', 'HEAD'
+            ]).stdout.splitlines()
+            self.assertEqual([
+                'Personal-SoT Safe Update',
+                'safe-update@personal-sot.invalid',
+                'Personal-SoT Safe Update',
+                'safe-update@personal-sot.invalid',
+            ], identity)
 
     def test_candidate_built_outside_live_checkout(self):
         created = []
