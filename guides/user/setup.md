@@ -42,9 +42,15 @@ A Google Drive sharing URL alone is not a writable local folder.
 
 The installer runs the core checks and Doctor before it reports success.
 
-## 2. Open your private sot
+## 2. Connect your AI client to the private sot
 
-Open the resulting private repository/folder in an authorized AI client such as Codex or Claude Code.
+For a local authorized client such as Codex or Claude Code, open the resulting private repository/folder directly.
+
+For a web client with a GitHub-backed private `sot`, first install/connect the provider's GitHub integration and authorize that specific private repository. A locator or project instruction identifies the intended source; it does not grant provider access.
+
+Use [GitHub access for ChatGPT, Codex, and Claude](github_ai_connections.md) for GitHub App installation and repository access.
+
+Then use [ChatGPT Web setup](chatgpt_web.md) for the ChatGPT Personalization locator, or the Claude Web project-instruction template in the GitHub access guide.
 
 Remember:
 
@@ -59,6 +65,8 @@ sot public
 Do not put Personal facts or private configuration in `sot public`.
 
 ## 3. Connect the chat
+
+Before running the command, the current client must actually be able to read the configured private source. If ChatGPT Web receives `404 Not Found` for a private GitHub repository, fix the GitHub app's repository access first; do not fall back to `sot public` or stale chat context.
 
 Run:
 
