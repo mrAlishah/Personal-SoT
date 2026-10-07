@@ -580,7 +580,17 @@ class GitWorkflowE2ETests(unittest.TestCase):
             self.assertNotIn(_SECRET, preview_result.beginner.headline + ' '.join(preview_result.beginner.details))
 
             archive_calls = []
+            recheck_diagnostics = {
+                'preflight': [],
+                'current': [],
+                'configured': [],
+                'attribute_unsafe': [],
+            }
             real_controlled_git = git_update.controlled_git
+            real_preflight = git_update._preflight
+            real_current = git_update._current_commit
+            real_configured = git_update._configured_drivers
+            real_attribute_unsafe = git_update._candidate_attribute_unsafe
 
             def capture_archive(*args, **kwargs):
                 result = real_controlled_git(*args, **kwargs)
@@ -588,14 +598,42 @@ class GitWorkflowE2ETests(unittest.TestCase):
                     archive_calls.append((result.returncode, result.stderr))
                 return result
 
-            with mock.patch.object(git_update, 'controlled_git', side_effect=capture_archive):
+            def capture_preflight(*args, **kwargs):
+                result = real_preflight(*args, **kwargs)
+                recheck_diagnostics['preflight'].append(result)
+                return result
+
+            def capture_current(*args, **kwargs):
+                result = real_current(*args, **kwargs)
+                recheck_diagnostics['current'].append(result)
+                return result
+
+            def capture_configured(*args, **kwargs):
+                result = real_configured(*args, **kwargs)
+                recheck_diagnostics['configured'].append(result)
+                return result
+
+            def capture_attribute_unsafe(*args, **kwargs):
+                result = real_attribute_unsafe(*args, **kwargs)
+                recheck_diagnostics['attribute_unsafe'].append(result)
+                return result
+
+            with mock.patch.object(git_update, 'controlled_git', side_effect=capture_archive), \
+                 mock.patch.object(git_update, '_preflight', side_effect=capture_preflight), \
+                 mock.patch.object(git_update, '_current_commit', side_effect=capture_current), \
+                 mock.patch.object(git_update, '_configured_drivers', side_effect=capture_configured), \
+                 mock.patch.object(
+                     git_update, '_candidate_attribute_unsafe',
+                     side_effect=capture_attribute_unsafe,
+                 ):
                 applied_result = _git_run(
                     root, target_dir, target_sha, capability=_FULL,
                     confirm_digest=preview_result.digest)
 
             self.assertTrue(
                 applied_result.applied,
-                f'{applied_result!r}; archive_calls={archive_calls!r}',
+                f'{applied_result!r}; archive_calls={archive_calls!r}; '
+                f'rechecks={recheck_diagnostics!r}',
             )
             self.assertTrue(applied_result.ready, repr(applied_result))
             self.assertEqual('Update applied and validation passed.', applied_result.beginner.headline)
