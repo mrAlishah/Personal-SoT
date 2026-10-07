@@ -22,7 +22,7 @@ When a branch is required, use:
 <type>_<scope>_<goal>
 ```
 
-Direct-branch flows explicitly allowed by the change policy do not create a bookkeeping branch.
+Direct-to-canonical-branch flows explicitly allowed by the change policy do not create a bookkeeping branch.
 
 ## Commits
 
