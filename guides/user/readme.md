@@ -55,6 +55,8 @@ Update my project. I passed A1.
 
 Find a prompt for reviewing code.
 
+Help me make a difficult decision using a specialist council.
+
 Make my answers shorter.
 
 I don't know what I need — recommend one.
@@ -105,6 +107,7 @@ See [Doctor](doctor.md).
 - GitHub AI clients: [Install/authorize ChatGPT, Codex, and Claude GitHub access](github_ai_connections.md)
 - ChatGPT Web: [Configure Personalization](chatgpt_web.md)
 - Projects: [Create and use a project](create_and_use_project.md)
+- Decision-making: [AI Decision Council](decision_council.md)
 - Existing prompts: [Find a prompt](find_and_use_prompts.md)
 - New prompts: [Build a prompt](build_a_prompt.md)
 - Response style: [Customize responses](customize_responses.md)

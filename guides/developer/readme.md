@@ -157,6 +157,14 @@ advanced detail later
 
 Do not copy full runtime contracts into guides. Summarize and link to the canonical owner.
 
+## User-visible change log
+
+For each accepted user-facing feature, behavior change, important fix, or removal,
+update the root [change log](../../change_log.md) with the date, what changed,
+why it matters, and how to use or migrate. Add only verified changes; do not
+invent historical entries. Keep this as user documentation, not a second
+runtime or governance owner.
+
 ## References
 
 - `system/governance/public_v1_product_contract.md`
