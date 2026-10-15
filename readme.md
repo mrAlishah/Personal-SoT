@@ -121,6 +121,8 @@ Update my project. I finished A1.
 
 Find a prompt for reviewing code.
 
+Find and run the AI Decision Council to compare important options.
+
 Make my answers shorter.
 
 I don't know what I need - recommend one.
@@ -147,9 +149,11 @@ If something looks wrong:
 | Diagnose problems | [Doctor](guides/user/doctor.md) |
 | Update safely | [Update](guides/user/update.md) |
 | Create a project | [First project](guides/user/create_and_use_project.md) |
+| Make an informed decision | [AI Decision Council](guides/user/decision_council.md) |
 | Find/build prompts | [Prompt discovery](guides/user/find_and_use_prompts.md) / [Prompt builder](guides/user/build_a_prompt.md) |
 | Customize responses | [Customization](guides/user/customize_responses.md) |
 | Develop the public product | [Developer guide](guides/developer/readme.md) |
+| See dated feature changes | [Change log](change_log.md) |
 
 ## Why use Personal-SoT?
 
