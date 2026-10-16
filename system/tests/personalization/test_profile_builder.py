@@ -763,71 +763,64 @@ class ProfileBuilderTests(unittest.TestCase):
             self.assertIsNone(result.validation_passed)
             self.assertTrue((root / proposal.target).is_file())
 
-    def test_successful_create_and_edit_run_all_relevant_validators(self):
+    def test_successful_create_and_edit_run_only_focused_profile_validator(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
             create = preview_change(
-                root,
-                "create",
-                "formalshort",
-                self.source(),
-                same_semantic_owner=False,
-                fact_safe=True,
-                write_capable=True,
+                root, "create", "formalshort", self.source(),
+                same_semantic_owner=False, fact_safe=True, write_capable=True,
             )
 
-            with patch.object(validate_v1, "run", wraps=validate_v1.run) as core:
-                with patch.object(validate_prompts, "run", wraps=validate_prompts.run) as prompts:
-                    with patch.object(validate_public, "run", wraps=validate_public.run) as public:
-                        created = apply_change(root, create, create.confirmation_digest)
+            with patch.object(validate_v1, "validate_profile_source", wraps=validate_v1.validate_profile_source) as focused:
+                with patch.object(validate_v1, "run", side_effect=AssertionError("unexpected Core validation")) as core:
+                    with patch.object(validate_prompts, "run", side_effect=AssertionError("unexpected full Prompt validation")) as prompts:
+                        with patch.object(validate_public, "run", side_effect=AssertionError("unexpected Public validation")) as public:
+                            created = apply_change(root, create, create.confirmation_digest)
 
             self.assertTrue(created.success, created.validation_errors)
-            core.assert_called_once_with(root.resolve(), "core")
-            prompts.assert_called_once_with(root.resolve())
-            public.assert_called_once_with(root.resolve())
+            self.assertGreaterEqual(focused.call_count, 2)
+            focused.assert_any_call(root.resolve(), root.resolve() / create.target, create.content)
+            core.assert_not_called()
+            prompts.assert_not_called()
+            public.assert_not_called()
 
             edit = preview_change(
-                root,
-                "edit",
-                "formalshort",
-                self.source(extra="formats: []\n"),
-                same_semantic_owner=True,
-                fact_safe=True,
-                write_capable=True,
+                root, "edit", "formalshort", self.source(extra="formats: []\n"),
+                same_semantic_owner=True, fact_safe=True, write_capable=True,
             )
             edited = apply_change(root, edit, edit.confirmation_digest)
             self.assertTrue(edited.success, edited.validation_errors)
-
     def test_post_write_validation_failure_is_explicit_and_recoverable(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
             self.add_dependencies(root)
-            private_marker = "mrAlishah/" + "obsidian-ai-context-source-of-truth"
             proposal = preview_change(
-                root,
-                "create",
-                "formalshort",
-                self.source(),
-                same_semantic_owner=False,
-                fact_safe=True,
-                write_capable=True,
+                root, "create", "formalshort", self.source(),
+                same_semantic_owner=False, fact_safe=True, write_capable=True,
             )
-            (root / "guides/private_source.md").write_text(
-                f"repository: {private_marker}\n", encoding="utf-8"
-            )
+            original = validate_v1.validate_profile_source
+            count = 0
 
-            result = apply_change(root, proposal, proposal.confirmation_digest)
+            def fail_only_after_write(root_arg, target_arg, source_arg):
+                nonlocal count
+                count += 1
+                if count > 1:
+                    return ["simulated post-write Profile validation failure"]
+                return original(root_arg, target_arg, source_arg)
+
+            with patch.object(validate_v1, "validate_profile_source", side_effect=fail_only_after_write):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertTrue(result.write_applied)
             self.assertTrue(result.validation_ran)
             self.assertFalse(result.validation_passed)
             self.assertFalse(result.success)
+            self.assertTrue(any(error.startswith("profile: ") for error in result.validation_errors))
             self.assertEqual(proposal.diff, result.diff)
             self.assertTrue((root / result.affected_path).is_file())
-
 
 if __name__ == "__main__":
     unittest.main()

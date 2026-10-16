@@ -340,41 +340,40 @@ class PromptBuilderSafeWriteTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertEqual([], validate_prompts.run(root))
 
-    def test_successful_local_create_runs_all_relevant_validators(self):
+    def test_successful_local_create_runs_only_focused_prompt_validator(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
             proposal = self.preview(root)
 
-            with patch.object(validate_prompts, "run", wraps=validate_prompts.run) as prompts:
-                with patch.object(validate_v1, "run", wraps=validate_v1.run) as core:
-                    with patch.object(validate_public, "run", wraps=validate_public.run) as public:
-                        result = apply_change(root, proposal, proposal.confirmation_digest)
+            with patch.object(validate_prompts, "validate_path", wraps=validate_prompts.validate_path) as focused:
+                with patch.object(validate_v1, "run", side_effect=AssertionError("unexpected Core validation")) as core:
+                    with patch.object(validate_public, "run", side_effect=AssertionError("unexpected Public validation")) as public:
+                        with patch.object(validate_prompts, "run", side_effect=AssertionError("unexpected full Prompt validation")) as all_prompts:
+                            result = apply_change(root, proposal, proposal.confirmation_digest)
 
-            self.assertTrue(result.success)
-            prompts.assert_called_once_with(root.resolve())
-            core.assert_called_once_with(root.resolve(), "core")
-            public.assert_called_once_with(root.resolve())
-
-    def test_write_applied_but_repository_validation_failed_is_explicit_and_recoverable(self):
+            self.assertTrue(result.success, result.validation_errors)
+            focused.assert_called_once_with(root.resolve(), root.resolve() / proposal.target)
+            core.assert_not_called()
+            public.assert_not_called()
+            all_prompts.assert_not_called()
+    def test_write_applied_but_focused_validation_failed_is_explicit_and_recoverable(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.repository(root)
-            private_identifier = "mrAlishah/" + "obsidian-ai-context-source-of-truth"
-            content = self.source(f"repository: {private_identifier}")
-            proposal = self.preview(root, content=content)
+            proposal = self.preview(root)
 
-            result = apply_change(root, proposal, proposal.confirmation_digest)
+            with patch.object(validate_prompts, "validate_path", return_value=["simulated target validation failure"]):
+                result = apply_change(root, proposal, proposal.confirmation_digest)
 
             self.assertTrue(result.write_applied)
             self.assertTrue(result.validation_ran)
             self.assertFalse(result.validation_passed)
             self.assertFalse(result.success)
-            self.assertTrue(any(error.startswith("public: ") for error in result.validation_errors))
+            self.assertTrue(any(error.startswith("prompts: ") for error in result.validation_errors))
             self.assertEqual(proposal.before_content, result.before_content)
             self.assertEqual(proposal.diff, result.diff)
             self.assertTrue((root / result.affected_path).is_file())
-
 
 if __name__ == "__main__":
     unittest.main()

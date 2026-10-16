@@ -40,11 +40,13 @@ and show the complete manifest and diff. Route confirmation and apply through
 `safe_write_contract.md`.
 
 After confirmation, re-read the target and validation dependencies. If either
-changed, stop and produce a new preview. A successful local write runs the
-repository-owned Profile/Core, prompt, and public-distribution validators. The
-result reports separately whether the write occurred, whether validation ran,
-and whether validation passed. A failed post-write validation never hides that
-the file changed; repair requires a new proposal.
+changed, stop and produce a new preview. A confirmed user-owned Profile write uses focused Profile source/reference
+checks before and after the change. A private content edit does not require
+the full Python suite or unrelated repository-wide Core, Prompt, or Public
+validators. Product-owned and system/schema modifications retain the governed
+development flow. The result reports separately whether the write occurred,
+whether validation ran, and whether validation passed. A failed post-write
+validation never hides that the file changed; repair requires a new proposal.
 
 Local Builder applies for the same Profile are serialized with a short-lived
 per-Profile lock. Creates use an atomic no-clobber operation, and all writes are
@@ -59,6 +61,10 @@ owners.
 
 ## Client capability
 
-No-write clients provide the same questions and complete preview, then state
-that nothing was written and validation was not run. Confirmation does not add
-write capability.
+Write capability and local-command capability are independent. An authorized
+repository-backed web client may apply a confirmed private custom Profile
+change when it can reliably establish the required focused checks and
+ownership/access protections; otherwise it leaves a reviewable proposal and
+reports the limitation. No-write clients provide the same questions and
+complete preview, then state that nothing was written and validation was not
+run. Confirmation does not add write capability.

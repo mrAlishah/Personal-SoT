@@ -4,6 +4,36 @@ This user-facing log records **dated changes to the public Personal-SoT product*
 
 Entries are listed newest first. For future user-visible features, behavior changes, significant fixes, and removals, add a dated entry with **What**, **Why**, and **How to use / migrate**. Keep entries tied to actual accepted changes, not proposed work or assumptions. Earlier releases are not reconstructed here without verified evidence.
 
+## 2026-10-16 — Improved: Private user-owned workspace updates
+
+**What changed**
+- Verified private user-owned Context content, Prompt templates, custom Profiles,
+  and eligible user-owned Presentation content may be saved directly to private
+  `main` after a complete preview, confirmation, current-state checks, and
+  focused validation appropriate to the changed owner.
+- Routine user-owned content changes no longer require a temporary branch,
+  merge, full Python unit suite, or unrelated repository-wide validators.
+- Prompt and Profile Builders use focused target checks after writes while
+  retaining preflight, ownership, dependencies, and concurrency protections.
+  Structural context/access changes retain their targeted checks.
+- Private adapter, governance, product-shipped module, and public product
+  changes remain under their protected development workflows.
+
+**Why**
+- Remove unnecessary friction for personal content maintenance, including
+  authorized web-based AI clients, without weakening product/privacy boundaries.
+
+**How to use**
+Ask your connected Personal SoT Assistant to update personal project content
+or to create/edit a custom Prompt/Profile. Review the full preview and confirm.
+With real write permission and established focused checks, the change goes
+directly to private `main`. Otherwise, the Assistant explains the blocker
+instead of claiming validation or a commit succeeded.
+
+**Compatibility:** Public product changes continue through governed
+branch/CI/release. Existing private installations must import the released
+public code using normal Safe Update and reconcile their private Branch Flow.
+
 ## 2026-10-15 — Added: Adaptive AI Decision Council (MVP)
 
 **What changed**
