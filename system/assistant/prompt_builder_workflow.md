@@ -80,7 +80,7 @@ classify and reconcile identity/ownership
 → explicit confirmation
 → re-read/version check
 → authorized write
-→ strongest relevant validation
+→ focused Prompt validation required by the resolved change class
 → truthful report
 ```
 
@@ -88,10 +88,17 @@ Deletion is outside this workflow.
 
 ## Client capability
 
-Local agents may apply a confirmed proposal only with actual repository write
-and command capability. Web/read-only clients use the same discovery,
-classification, questions, and preview, then explicitly state that nothing was
-written and validation was not run there.
+A confirmed user-owned Prompt create/edit in a private workspace uses
+focused source/dependency checks and may write directly to private `main`
+under active private governance. It does not require a full unit suite or
+unrelated repository-wide validators solely for this content change.
+Product-owned and system/schema changes retain their governed flow.
+
+Write capability and local-command capability are independent. An authorized
+repository-backed web client may apply a confirmed private content change
+when it can reliably establish the required focused checks. Otherwise,
+it stops before mutation and states the unavailable check. No-write clients
+provide discovery and preview only, never claiming a write or validation.
 
 Adapters declare capability only and never copy this decision order.
 

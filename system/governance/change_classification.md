@@ -40,6 +40,52 @@ Required rigor in a private Personal-SoT workspace:
 
 If an edit also creates/removes an owner, changes routing/registry structure, or changes `ai_access`, classify it as a structural context change.
 
+### 1a. User-owned workspace content change
+
+Use for ordinary creation or editing of verified **user-owned** content in a
+private Personal-SoT workspace:
+
+```text
+workspace/context/       existing non-structural context content
+workspace/prompts/       user-authored Prompt templates
+workspace/profiles/      custom, non-product-owned Profiles
+workspace/presentation/ verified user-owned presentation content
+```
+
+Classification follows **ownership and effects**, not file path alone.
+Product-shipped Prompts, Profiles, formats, and public-owned modules do not
+become user-owned merely because they reside in `workspace/`. For private
+presentation files without an ownership marker, verify private provenance and
+absence of conflicting product ownership. Uncertain ownership must be resolved
+before proposing a lightweight write.
+
+Required rigor in a private user-owned workspace:
+
+- show complete proposed content/diff and obtain explicit confirmation;
+- re-read the latest owner, access metadata, and relevant dependencies;
+- reject stale, conflicting, unsafe, unauthorized, or nonconforming writes;
+- use the focused source/identity/reference validator, or an equivalent
+  reliable check of the affected domain, before and after a content write;
+- apply only the confirmed content directly to private `main` where
+  authorized write capability and required checks are actually available;
+- do not require a temporary branch, merge, full Python unit suite, or
+  repository-wide validators solely for a user-owned content change;
+- verify the resulting write/commit where possible and truthfully report
+  what was checked and applied.
+
+Creating/removing context owners, changing context registry/routing, or changing
+`ai_access` remains a **structural context change** with targeted structural
+validation. Changes to adapters, governance, system implementation, schemas,
+protected product-shipped content, or product-sync behavior remain
+**system/runtime/governance** regardless of file location. Deletion/rename
+with unresolved dependencies is not ordinary content maintenance.
+Use the most protective applicable class for mixed proposals.
+
+When required focused checks cannot be established on the active host, stop
+before mutation and report the limitation. Confirmation never creates
+authorization or validation capability. Public product development remains
+subject to public repository governance and full required gates.
+
 ### 2. Structural context change
 
 Use for Personal-context changes that modify context shape, routing, registration, or access semantics.
@@ -118,6 +164,8 @@ system/runtime/governance
 >
 structural context change
 >
+user-owned workspace content change
+>
 context update
 ```
 
@@ -129,7 +177,7 @@ Do not split one coherent semantic change merely to obtain a lower validation cl
 
 Write capability and local-command capability are independent.
 
-A host with authorized remote repository write capability may apply a confirmed private-workspace change when the selected class does not require unavailable local commands. In particular, a normal private context update does not become blocked merely because the host cannot run local Python validators.
+A host with authorized remote repository write capability may apply a confirmed private-workspace change when the selected class does not require unavailable local commands. In particular, a normal private context update or user-owned content edit does not become blocked merely because the host cannot run local Python validators, provided its required focused checks and access protections can be established.
 
 A host must never claim a required validator or test passed when it could not actually run it. If the selected class requires checks unavailable on the current host, leave the change in a reviewable candidate state or provide the smallest truthful handoff required by repository governance.
 

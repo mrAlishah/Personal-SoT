@@ -10,7 +10,7 @@ from secrets import token_hex
 import stat
 
 from system.routing.runtime_naming import is_profile_identity
-from system.validation import validate_prompts, validate_public, validate_v1
+from system.validation import validate_v1
 
 
 @dataclass(frozen=True)
@@ -337,14 +337,13 @@ def apply_change(root: Path, proposal: ProfileProposal, confirmation_digest: str
         lock_name = None
 
         validation_ran = True
+        # Recheck the persisted user-owned Profile against its existing
+        # references; full product gates are not content-edit requirements.
         validation_errors = tuple(
-            f"{owner}: {error}"
-            for owner, errors in (
-                ("validate_v1", validate_v1.run(root, "core")),
-                ("validate_prompts", validate_prompts.run(root)),
-                ("validate_public", validate_public.run(root)),
+            f"profile: {error}"
+            for error in validate_v1.validate_profile_source(
+                root, target, target.read_text(encoding="utf-8")
             )
-            for error in errors
         )
         passed = not validation_errors
         return ApplyResult(relative, proposal.diff, True, True, passed, validation_errors, passed)
