@@ -8,7 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
 
-from system.validation import validate_prompts, validate_public, validate_v1
+from system.validation import validate_prompts
 
 
 @dataclass(frozen=True)
@@ -225,10 +225,12 @@ def apply_change(root: Path, proposal: PromptProposal, confirmation_digest: str)
             temporary.unlink(missing_ok=True)
 
     try:
+        # User-owned Prompt content is checked against its referenced state
+        # before write; revalidate only the persisted target after write.
+        # Product-wide gates belong to governed product development.
         errors = tuple(
-            [f"prompts: {error}" for error in validate_prompts.run(root)]
-            + [f"core: {error}" for error in validate_v1.run(root, "core")]
-            + [f"public: {error}" for error in validate_public.run(root)]
+            f"prompts: {error}"
+            for error in validate_prompts.validate_path(root, target)
         )
     except Exception as error:  # preserve explicit post-write state on validator failure
         return ApplyResult(
