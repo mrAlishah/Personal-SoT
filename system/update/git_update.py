@@ -959,12 +959,17 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
             report('candidate_build', 'passed')
 
             touched_paths = _ordered_touched_paths(fresh_plan.upstream_only, target_tree)
+            report('attribute_check', 'started')
             if _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured):
+                report('attribute_check', 'failed')
                 return ApplyResult(failure='unsafe_repository_state')
+            report('attribute_check', 'passed')
 
             with _extracted_candidate(ephemeral, candidate_tree_sha, extra_env) as candidate_root:
                 report('candidate_validation', 'started')
                 personal_ok, prompts_ok = _validate_candidate(candidate_root)
+                report('personal_validation', 'passed' if personal_ok else 'failed')
+                report('prompts_validation', 'passed' if prompts_ok else 'failed')
                 if not (personal_ok and prompts_ok):
                     report('candidate_validation', 'failed')
                     return ApplyResult(
