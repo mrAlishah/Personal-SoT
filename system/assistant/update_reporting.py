@@ -777,8 +777,20 @@ def advanced_report(install_type: str, result=None, *, root=None, candidate_path
 
 # --- workflow orchestration -------------------------------------------------
 
-def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) -> WorkflowResult:
+def _trace(callback, stage: str, status: str) -> None:
+    if callback is not None:
+        try:
+            callback(stage, status)
+        except Exception:
+            pass
+
+
+def _git_workflow(root, capability: HostCapability, confirm_digest: str | None,
+                  stage_callback=None) -> WorkflowResult:
+    _trace(stage_callback, 'classification', 'started')
     plan = git_update.classify(root)
+    _trace(stage_callback, 'classification',
+           'blocked' if plan.blocked or plan.conflict else 'passed')
     preview = git_update.preview(plan)
     fresh_digest = preview.digest
     confirmed = confirm_digest is not None and confirm_digest == fresh_digest
@@ -810,22 +822,30 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None) 
             _stale_preview_report(git_beginner_report(plan, preview.summary, None)),
             failure='stale_state', confirmation_required=True)
 
-    result = git_update.apply(root, plan, fresh_digest)
+    _trace(stage_callback, 'apply', 'started')
+    if stage_callback is None:
+        result = git_update.apply(root, plan, fresh_digest)
+    else:
+        result = git_update.apply(root, plan, fresh_digest, on_stage=stage_callback)
     succeeded = _git_apply_succeeded(result)
+    _trace(stage_callback, 'apply', 'passed' if succeeded else 'failed')
     return WorkflowResult('git', fresh_digest, succeeded, succeeded,
                            git_beginner_report(plan, preview.summary, result), failure=result.failure)
 
 
 def _zip_workflow(root, destination, capability: HostCapability, confirm_digest: str | None,
-                   exclude: frozenset) -> WorkflowResult:
+                   exclude: frozenset, stage_callback=None) -> WorkflowResult:
     if destination is None:
         return WorkflowResult(
             'zip', None, False, False,
             BeginnerReport('A new destination folder is needed to update this installation.'),
             failure='destination_required')
 
+    _trace(stage_callback, 'classification', 'started')
     sbs_preview = side_by_side.preview(root, destination, exclude=exclude)
     plan = sbs_preview.plan
+    _trace(stage_callback, 'classification',
+           'blocked' if plan.blocked or plan.conflicts or plan.registry.conflicts or plan.rejected_unsafe else 'passed')
     fresh_digest = sbs_preview.digest
     confirmed = confirm_digest is not None and confirm_digest == fresh_digest
 
@@ -847,14 +867,17 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
             _stale_preview_report(zip_beginner_report(plan, None)),
             failure='stale_state', confirmation_required=True)
 
+    _trace(stage_callback, 'migration', 'started')
     result = side_by_side.migrate(root, destination, plan, fresh_digest, exclude=exclude)
+    _trace(stage_callback, 'migration', 'passed' if result.ready else 'failed')
     return WorkflowResult('zip', fresh_digest, result.ready, result.ready,
                            zip_beginner_report(plan, result), failure=result.failure)
 
 
 def run_update_workflow(root, destination=None, *, capability: HostCapability,
                          confirm_digest: str | None = None,
-                         exclude: frozenset = frozenset()) -> WorkflowResult:
+                         exclude: frozenset = frozenset(),
+                         stage_callback=None) -> WorkflowResult:
     """The one Loop 5 entry point: Explain → Recommend → Preview →
     Apply. Routes ONLY to the existing canonical owners
     (`git_update`/`side_by_side`) for every classification, apply/
@@ -881,12 +904,14 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
         return WorkflowResult('unknown', None, False, False, _no_local_command_report(),
                                failure='no_local_command_capability')
 
+    _trace(stage_callback, 'installation_check', 'started')
     install_type = detect_install_type(root, capability)
+    _trace(stage_callback, 'installation_check', 'passed' if install_type != 'unknown' else 'failed')
     if install_type == 'unknown':
         return WorkflowResult(
             'unknown', None, False, False,
             BeginnerReport('This installation could not be checked safely.'),
             failure='unknown_install_type')
     if install_type == 'git':
-        return _git_workflow(root, capability, confirm_digest)
-    return _zip_workflow(root, destination, capability, confirm_digest, exclude)
+        return _git_workflow(root, capability, confirm_digest, stage_callback)
+    return _zip_workflow(root, destination, capability, confirm_digest, exclude, stage_callback)
