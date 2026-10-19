@@ -180,18 +180,27 @@ def main(argv=None, *, default_root=None) -> int:
         return run(sys.stdout)
     try:
         location = _log_target(_absolute(args.root), _absolute(args.log_file))
-        with location.open('x', encoding='utf-8') as log:
-            out = _Tee(sys.stdout, log)
-            result = run(out)
-            out.flush()
-            if out.failed:
-                print("Warning: diagnostic log could not be written completely.",
-                      file=sys.stderr)
-            return result
+        log = location.open('x', encoding='utf-8')
     except (OSError, ValueError):
         print("Could not create diagnostic log outside the installation; "
               "update was not attempted.", file=sys.stderr)
         return 2
+
+    # Never mistake a runtime/apply failure for a log creation failure.
+    # In particular, no diagnostic I/O exception may suppress recovery.
+    out = _Tee(sys.stdout, log)
+    try:
+        result = run(out)
+        out.flush()
+        return result
+    finally:
+        try:
+            log.close()
+        except OSError:
+            out.failed = True
+        if out.failed:
+            print("Warning: diagnostic log could not be written completely.",
+                  file=sys.stderr)
 
 
 if __name__ == "__main__":
