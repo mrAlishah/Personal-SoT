@@ -1,4 +1,6 @@
 from io import StringIO
+from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
@@ -75,6 +77,61 @@ class UpdateCliTests(unittest.TestCase):
 
         self.assertEqual(2, rc)
         self.assertEqual(1, workflow.call_count)
+
+    def test_failure_code_is_visible_and_sanitized(self):
+        failure = WorkflowResult('git', None, False, False,
+                                 BeginnerReport('Update not applied.'),
+                                 failure='object_transfer_failed')
+        output = StringIO()
+        cli._render(failure, output)
+        self.assertIn('failure_code: object_transfer_failed', output.getvalue())
+        unsafe = WorkflowResult('git', None, False, False,
+                                BeginnerReport('Failed.'),
+                                failure='private/path or token')
+        output = StringIO()
+        cli._render(unsafe, output)
+        self.assertIn('failure_code: unknown', output.getvalue())
+        self.assertNotIn('private/path', output.getvalue())
+
+    def test_verbose_stage_callback_and_failure(self):
+        def fake_workflow(*args, **kwargs):
+            kwargs['stage_callback']('candidate_validation', 'started')
+            kwargs['stage_callback']('candidate_validation', 'failed')
+            return WorkflowResult('git', None, False, False,
+                                  BeginnerReport('Update not applied.'),
+                                  failure='validation_failed')
+
+        output = StringIO()
+        with mock.patch.object(cli, 'run_update_workflow', side_effect=fake_workflow):
+            rc = cli.run_non_interactive('.', out=output, verbose=True)
+        self.assertEqual(2, rc)
+        self.assertIn('stage: candidate_validation = failed', output.getvalue())
+        self.assertIn('failure_code: validation_failed', output.getvalue())
+
+    def test_logging_inside_installation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(cli, 'run_interactive') as interactive:
+                rc = cli.main(['--root', str(root),
+                               '--log-file', str(root / 'update.log')])
+            self.assertEqual(2, rc)
+            interactive.assert_not_called()
+            self.assertFalse((root / 'update.log').exists())
+
+    def test_log_file_captures_safe_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'installed'
+            root.mkdir()
+            log_path = Path(directory) / 'trace.log'
+            blocked = WorkflowResult('git', None, False, False,
+                                     BeginnerReport('Update not applied.'),
+                                     failure='object_transfer_failed')
+            with mock.patch.object(cli, 'run_update_workflow', return_value=blocked):
+                rc = cli.main(['--root', str(root), '--preview',
+                               '--log-file', str(log_path)])
+            self.assertEqual(2, rc)
+            self.assertIn('failure_code: object_transfer_failed',
+                          log_path.read_text(encoding='utf-8'))
 
     def test_agent_preview_prints_exact_digest(self):
         preview = WorkflowResult(

@@ -874,7 +874,7 @@ def _attempt_recovery(ephemeral, root, record: dict, verified_worktree: dict,
 
 
 def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=None,
-          _before_path=None) -> ApplyResult:
+          _before_path=None, on_stage=None) -> ApplyResult:
     """Advance the installed clone from `plan.current` to `plan.target`,
     recoverably, per update_contract.md's apply/recovery section.
 
@@ -911,7 +911,17 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
     trigger the recovery path; any other exception propagates uncaught,
     exactly as a real process kill/crash would).
     """
+    def report(stage: str, status: str) -> None:
+        # Diagnostic callbacks are non-fatal, including during rollback.
+        # Never forward Git output, Personal paths or file contents.
+        if on_stage is not None:
+            try:
+                on_stage(stage, status)
+            except Exception:
+                pass
+
     root = os.path.abspath(os.fspath(root))
+    report('reclassification', 'started')
     fresh_plan = classify(root)
     fresh_preview = preview(fresh_plan)
     if fresh_preview.digest != digest:
@@ -922,6 +932,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
         return ApplyResult(failure='conflict')
     if fresh_plan.no_op:
         return ApplyResult(no_op=True)
+    report('reclassification', 'passed')
 
     current = fresh_plan.current
     commit_t = fresh_plan.target
@@ -936,6 +947,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
     if configured is None:
         return ApplyResult(failure='status_check_failed')
 
+    report('candidate_build', 'started')
     try:
         with _materialized_target(commit_t) as ephemeral:
             target_tree = _ls_tree(ephemeral, commit_t, extra_env)
@@ -944,29 +956,44 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
             if _candidate_path_conflict(candidate_entries):
                 return ApplyResult(failure='candidate_path_conflict')
             candidate_tree_sha = _build_tree(candidate_entries, ephemeral, extra_env)
+            report('candidate_build', 'passed')
 
             touched_paths = _ordered_touched_paths(fresh_plan.upstream_only, target_tree)
+            report('attribute_check', 'started')
             if _candidate_attribute_unsafe(root, ephemeral, candidate_tree_sha, touched_paths, configured):
+                report('attribute_check', 'failed')
                 return ApplyResult(failure='unsafe_repository_state')
+            report('attribute_check', 'passed')
 
             with _extracted_candidate(ephemeral, candidate_tree_sha, extra_env) as candidate_root:
+                report('candidate_validation', 'started')
                 personal_ok, prompts_ok = _validate_candidate(candidate_root)
+                report('personal_validation', 'passed' if personal_ok else 'failed')
+                report('prompts_validation', 'passed' if prompts_ok else 'failed')
                 if not (personal_ok and prompts_ok):
+                    report('candidate_validation', 'failed')
                     return ApplyResult(
                         validation_ran=True, validation_passed=False, failure='validation_failed')
+                report('candidate_validation', 'passed')
 
+                report('object_transfer', 'started')
                 if not _transfer_objects(ephemeral, current, commit_t, candidate_tree_sha, root, extra_env):
+                    report('object_transfer', 'failed')
                     return ApplyResult(
                         validation_ran=True, validation_passed=True, failure='object_transfer_failed')
+                report('object_transfer', 'passed')
 
+                report('commit_creation', 'started')
                 commit_result = controlled_git(
                     *_PROVENANCE_GIT_IDENTITY,
                     'commit-tree', candidate_tree_sha, '-p', current, '-p', commit_t,
                     cwd=root, extra_env=extra_env, input=_provenance_message(current, commit_t))
                 if commit_result.returncode != 0:
+                    report('commit_creation', 'failed')
                     return ApplyResult(
                         validation_ran=True, validation_passed=True, failure='object_transfer_failed')
                 new_commit = (commit_result.stdout or '').strip()
+                report('commit_creation', 'passed')
 
                 if _before_recheck is not None:
                     _before_recheck()
@@ -984,11 +1011,13 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                 # FINAL recheck, immediately before the first live write:
                 # never trust anything validation/transfer/commit-tree
                 # observed to still hold by the time we get here.
+                report('final_recheck', 'started')
                 final_configured = _configured_drivers(root)
                 if (_preflight(root) is not None or _current_commit(root) != current
                         or final_configured is None
                         or _candidate_attribute_unsafe(
                             root, ephemeral, candidate_tree_sha, touched_paths, final_configured)):
+                    report('final_recheck', 'failed')
                     return ApplyResult(
                         validation_ran=True, validation_passed=True,
                         failure='concurrent_change_pre_mutation', concurrent_change=True)
@@ -1008,10 +1037,13 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     verified_index[path] != current_tree.get(path)
                     for path in touched_paths
                 ):
+                    report('final_recheck', 'failed')
                     return ApplyResult(
                         validation_ran=True, validation_passed=True,
                         failure='concurrent_change_pre_mutation', concurrent_change=True)
+                report('final_recheck', 'passed')
 
+                report('worktree_write', 'started')
                 write_ok = True
                 mutation_started = False
                 per_path_concurrent = False
@@ -1059,6 +1091,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     integrity_failed = True
 
                 if not write_ok:
+                    report('worktree_write', 'failed')
                     if not mutation_started:
                         # Nothing was ever actually written; there is
                         # nothing to roll back, and claiming an attempt
@@ -1068,6 +1101,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                             concurrent_change=per_path_concurrent,
                             failure='concurrent_change_pre_mutation' if per_path_concurrent
                             else 'mutation_failed')
+                    report('recovery', 'started')
                     recovered = _attempt_recovery(
                         ephemeral, root, record, verified_worktree, extra_env)
                     # An integrity-gate failure means something outside
@@ -1077,15 +1111,20 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                     # that, so "complete" can never be truthfully claimed
                     # here regardless of its own return value.
                     rollback_completed = recovered and not integrity_failed
+                    report('recovery', 'passed' if rollback_completed else 'failed')
                     return ApplyResult(
                         mutation_started=True, validation_ran=True, validation_passed=True,
                         rollback_attempted=True, rollback_completed=rollback_completed,
                         concurrent_change=per_path_concurrent or integrity_failed or not rollback_completed,
                         failure='post_mutation_failure')
 
+                report('worktree_write', 'passed')
+                report('ref_update', 'started')
                 cas = controlled_git(
                     'update-ref', 'HEAD', new_commit, current, cwd=root, extra_env=extra_env)
                 if cas.returncode != 0:
+                    report('ref_update', 'failed')
+                    report('recovery', 'started')
                     # Recovery may still restore every updater-written
                     # worktree/index path it can safely verify, but the
                     # ref itself is deliberately never overwritten back
@@ -1100,7 +1139,9 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
                         rollback_attempted=True, rollback_completed=False,
                         concurrent_change=True, failure='ref_cas_failed')
 
+                report('ref_update', 'passed')
                 return ApplyResult(
                     mutation_started=True, validation_ran=True, validation_passed=True, commit=new_commit)
     except TargetMaterializationError as error:
+        report('candidate_build', 'failed')
         return ApplyResult(failure=error.reason)
