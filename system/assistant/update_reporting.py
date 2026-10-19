@@ -807,8 +807,9 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None,
     # of any caller-held digest. In particular, "already current" needs no
     # confirmation and a real conflict must never become actionable.
     if plan.blocked is not None or plan.conflict or plan.no_op:
+        reason = plan.blocked or ('conflict' if plan.conflict else None)
         return WorkflowResult('git', fresh_digest, plan.no_op, False,
-                               git_beginner_report(plan, preview.summary, None))
+                               git_beginner_report(plan, preview.summary, None), failure=reason)
 
     if confirm_digest is None:
         return WorkflowResult(
@@ -854,7 +855,10 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
         return WorkflowResult('zip', fresh_digest, False, False, _with_no_write_notice(base_report))
 
     if plan.blocked is not None or plan.conflicts or plan.registry.conflicts or plan.rejected_unsafe:
-        return WorkflowResult('zip', fresh_digest, False, False, zip_beginner_report(plan, None))
+        reason = plan.blocked or ('conflict' if plan.conflicts or plan.registry.conflicts
+                                  else 'unsafe_personal_items')
+        return WorkflowResult('zip', fresh_digest, False, False,
+                              zip_beginner_report(plan, None), failure=reason)
 
     if confirm_digest is None:
         return WorkflowResult(
