@@ -72,6 +72,28 @@ isolated. The wrapper also pins `core.autocrlf=true` as a fixed built-in Git
 setting. This lets a normal CRLF worktree compare cleanly against canonical LF
 index blobs without enabling any executable filter or helper authority.
 
+## diagnostic_reporting
+
+The existing Safe Update engine owns success/failure decisions. Optional
+diagnostics expose only fixed, product-owned stage/status tokens and the
+closed failure reason already present on its result. The CLI prints the
+bounded `failure_code` even in normal mode when a failure exists.
+
+A stage event is observational, not a new validation or authority decision:
+`started` means that operation was entered, `passed` is emitted only after
+its existing check succeeds, and `failed` means that check rejected the
+attempt. Neither a stage event nor a validator flag alone proves the update
+was applied. Recovery and rollback status retain their existing truth
+conditions. Missing `passed` does not independently identify a root cause.
+
+Optional diagnostic sinks are non-fatal: a failed observer/log must not
+interrupt the update or its recovery. Stage events never include user-owned
+paths, raw Git subprocess output, Personal contents or secrets. CLI diagnostic
+files must be new, outside the live installation, and explicitly requested.
+They are support evidence, never an alternate authority or a substitute for
+current checkout/validator checks. Normal preview/confirmation/digest gates
+remain unchanged.
+
 ## failure_vocabulary
 
 Target resolution reuses `system.connectors.source.Failure` for the
