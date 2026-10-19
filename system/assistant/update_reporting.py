@@ -917,5 +917,9 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
             BeginnerReport('This installation could not be checked safely.'),
             failure='unknown_install_type')
     if install_type == 'git':
+        if stage_callback is None:
+            return _git_workflow(root, capability, confirm_digest)
         return _git_workflow(root, capability, confirm_digest, stage_callback)
+    if stage_callback is None:
+        return _zip_workflow(root, destination, capability, confirm_digest, exclude)
     return _zip_workflow(root, destination, capability, confirm_digest, exclude, stage_callback)
