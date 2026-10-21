@@ -12,6 +12,7 @@ import re
 import sys
 
 from system.assistant.update_reporting import HostCapability, WorkflowResult, run_update_workflow
+from system.update.private_origin_sync import private_origin_url, synchronize
 
 
 _LOCAL_CAPABILITY = HostCapability(
@@ -57,8 +58,38 @@ def _stage_output(out):
     return report
 
 
+def _sync_private_root(root: Path, input_fn, out) -> int:
+    """One explicit destination approval; never infer that public update == push."""
+    url = private_origin_url(root)
+    if url is None:
+        print("Local update complete. No supported private GitHub origin was verified for sync.",
+              file=out)
+        return 0
+    answer = input_fn(
+        "Sync validated changes to your private GitHub origin/main? [y/N] "
+    ).strip().lower()
+    if answer not in {'y', 'yes'}:
+        print("Local update complete; private GitHub sync was skipped.", file=out)
+        return 0
+    print("Checking private origin and validating the combined result...", file=out)
+    result = synchronize(root, url)
+    if result.status == 'synchronized':
+        print("Local and private GitHub origin/main synchronized and validated.", file=out)
+        return 0
+    print("Private GitHub sync did not complete.", file=out)
+    if result.failure:
+        print("failure_code: " + _safe_token(result.failure), file=out)
+    if result.rollback_completed is not None:
+        print("merge_rollback: " + (
+            'completed' if result.rollback_completed else 'incomplete'), file=out)
+    if result.status == 'local_only':
+        print("Validated changes remain in local Git history; private GitHub was not updated.",
+              file=out)
+    return 2
+
+
 def run_interactive(root, destination=None, *, input_fn=input, out=None,
-                    verbose: bool = False) -> int:
+                    verbose: bool = False, private_sync: bool = True) -> int:
     """Preview once; confirm the current digest; apply and report truthfully."""
     out = sys.stdout if out is None else out
     root = _absolute(root)
@@ -78,6 +109,8 @@ def run_interactive(root, destination=None, *, input_fn=input, out=None,
     while True:
         _render(result, out)
         if result.ready:
+            if private_sync and result.install_type == 'git':
+                return _sync_private_root(root, input_fn, out)
             return 0
         if not result.confirmation_required:
             return 2
@@ -161,6 +194,10 @@ def main(argv=None, *, default_root=None) -> int:
         "--log-file", type=Path,
         help="Create a new diagnostic log outside the installation (never overwrite).",
     )
+    parser.add_argument(
+        "--local-only", action="store_true",
+        help="Apply the public update locally without offering private GitHub sync.",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--preview", action="store_true",
                       help="Print one fresh preview/digest without prompting or updating.")
@@ -174,7 +211,8 @@ def main(argv=None, *, default_root=None) -> int:
             return run_non_interactive(args.root, args.destination,
                                        confirm_digest=args.confirm_digest,
                                        out=out, verbose=verbose)
-        return run_interactive(args.root, args.destination, out=out, verbose=verbose)
+        return run_interactive(args.root, args.destination, out=out, verbose=verbose,
+                               private_sync=not args.local_only)
 
     if args.log_file is None:
         return run(sys.stdout)
