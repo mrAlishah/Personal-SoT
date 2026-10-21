@@ -50,6 +50,7 @@ def _run(root: Path, hooks_dir: str, *args, timeout: int = 120):
            if not key.upper().startswith("GIT_")}
     cmd = ["git", "-c", "core.hooksPath=" + hooks_dir,
            "-c", "core.fsmonitor=false",
+           "-c", "http.followRedirects=false",
            "-c", "protocol.ext.allow=never",
            "-c", "protocol.file.allow=never",
            "-c", "submodule.recurse=false"]
@@ -248,6 +249,14 @@ def synchronize(root: Path, url: str) -> SyncResult:
                     raise ValueError("diff check failed")
                 if not _validate(root, hooks):
                     raise ValueError("validation failed")
+                # Do not commit an index that changed during the validators,
+                # or accept newly untracked files created while testing.
+                if not _ok(_run(root, hooks, "diff", "--exit-code")):
+                    raise ValueError("unstaged changes after validation")
+                untracked = _run(root, hooks, "ls-files", "--others",
+                                 "--exclude-standard")
+                if not _ok(untracked) or untracked.stdout.strip():
+                    raise ValueError("untracked changes after validation")
             except (OSError, UnicodeError, ValueError):
                 aborted = _ok(_run(root, hooks, "merge", "--abort"))
                 return SyncResult("failed", "final_validation_failed", aborted)
