@@ -49,33 +49,25 @@ class PrivateOriginSyncTests(unittest.TestCase):
         with mock.patch.object(sync.urlrequest, "urlopen", side_effect=OSError()):
             self.assertFalse(sync._is_proven_private(PRIVATE))
 
-    def test_normalize_only_registry_mapping_preserves_other_content(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            registry = root / "system/routing/context_registry.md"
-            registry.parent.mkdir(parents=True)
-            (root / "workspace/context/personal/projects/fullstack").mkdir(
-                parents=True)
-            before = (
-                "# registry\n\n## entry_shape\n\n```text\n"
-                "runtime_scope → repository_relative_directory\n```\n\n"
-                "## registered_scopes\n\n```text\n"
-                "personal/projects/fullstack → workspace/context/personal/projects/fullstack/\n"
-                "```\n\n## rules\nunchanged → words\n"
-            )
-            registry.write_text(before, encoding="utf-8")
-            self.assertTrue(sync._normalize_registry(root))
-            after = registry.read_text(encoding="utf-8")
-            self.assertIn("personal/projects/fullstack\n"
-                          "→ workspace/context/personal/projects/fullstack/\n", after)
-            self.assertIn("runtime_scope → repository_relative_directory", after)
-            self.assertIn("unchanged → words", after)
-            self.assertFalse(sync._normalize_registry(root))
-            self.assertIn(
+    def test_legacy_and_two_line_registry_formats_are_both_recognized(self):
+        source = (
+            "# registry\n\n## entry_shape\n\n```text\n"
+            "runtime_scope → repository_relative_canonical_directory\n"
+            "```\n\n## registered_scopes\n\n```text\n"
+            "personal/projects/fullstack → workspace/context/personal/projects/fullstack/\n"
+            "personal/projects/other\n"
+            "→ workspace/context/personal/projects/other/\n"
+            "```\n"
+        )
+        self.assertEqual(
+            [
                 ("personal/projects/fullstack",
                  "workspace/context/personal/projects/fullstack/"),
-                context_registry_entries(after),
-            )
+                ("personal/projects/other",
+                 "workspace/context/personal/projects/other/"),
+            ],
+            context_registry_entries(source),
+        )
 
     def test_validated_local_can_push_if_remote_is_ancestor(self):
         called = []
