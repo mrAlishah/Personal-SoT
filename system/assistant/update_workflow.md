@@ -57,6 +57,32 @@ digest remains invalid. The runner returns the fresh preview/digest; interactive
 mode shows it and asks again. A genuine unresolved conflict still fails closed
 and routes to repair/decision handling rather than being guessed through.
 
+## Private origin publication after local Git update
+
+The local public update and publication to a user's private GitHub origin
+are distinct operations and **never** share one success claim. After a
+successful local Git update (or a no-op public update), the interactive
+runner may offer a second explicit confirmation for eligible
+`origin/main` destinations. The confirmation binds the fixed repository
+remote; never infer approval from the public update confirmation.
+
+`system/update/private_origin_sync.py` owns this conservative optional
+reconciliation. It requires clean `main`, authenticated private GitHub
+fetch, and anonymous GitHub visibility verification to prevent sending
+Personal contents to a public repository. It merges with `--no-commit`,
+normalizes only unambiguous legacy registry entries, then runs Personal,
+Prompt and affected-system test gates before creating a merge commit.
+Unresolved conflicts/validation failures abort a pending merge. It never
+force-pushes; a changed remote or push rejection is reported as
+`local_only`, not synchronized. It is not used for ZIP installations.
+
+Normal `update.py` offers this step so a beginner need not perform Git
+merges and pushes manually, but always allows skipping it. Existing
+non-interactive preview/digest flows remain scoped to public local update
+only. Private repository credentials are sourced from the user's
+configured local Git installation; the command does not request, print or
+persist secrets.
+
 ## Install-type routing
 
 Step 1 determines whether the installation is a real Git clone/worktree or a
