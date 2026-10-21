@@ -51,7 +51,7 @@ For a Git installation on `main` whose `origin` is a supported GitHub
 private-workspace repository, the same command then offers a **separate,
 explicit confirmation** to reconcile and push to `origin/main`. This step
 fetches the private branch, merges without discarding Personal files,
-normalizes unambiguous legacy one-line context registry entries, validates
+accepts existing one-line or two-line context registry entries, validates
 the entire combined result (and tests system changes), commits and pushes
 only after success. Nothing is pushed to `sot public`.
 
