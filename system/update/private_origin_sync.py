@@ -21,10 +21,6 @@ from system.update import git_update
 _PRIVATE_HTTPS = re.compile(
     r"https://github[.]com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:[.]git)?\Z"
 )
-_ONE_LINE_SCOPE = re.compile(
-    r"^([a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)*) +→ +(workspace/context/[a-z0-9_/-]+/)\s*$"
-)
-_REGISTRY = Path("system/routing/context_registry.md")
 _IDENTITY = (
     "-c", "user.name=Personal-SoT Private Sync",
     "-c", "user.email=private-sync@personal-sot.invalid",
@@ -176,40 +172,6 @@ def _unsafe_external_attributes(root: Path, hooks: str) -> bool:
     return False
 
 
-def _normalize_registry(root: Path) -> bool:
-    """Convert only unambiguous one-line mappings within registered_scopes.
-
-    The original parser owns two-line entries. Never invent a scope, rewrite
-    project contents, touch a symlink or alter mappings outside this section.
-    """
-    path = root / _REGISTRY
-    if not path.is_file() or path.is_symlink():
-        return False
-    original = path.read_text(encoding="utf-8")
-    lines = original.splitlines(keepends=True)
-    in_section = False
-    in_fence = False
-    rewritten = []
-    for line in lines:
-        clean = line.strip()
-        if clean.startswith("## "):
-            in_section = clean == "## registered_scopes"
-            in_fence = False
-        elif in_section and clean.startswith("```"):
-            in_fence = not in_fence
-        match = _ONE_LINE_SCOPE.fullmatch(clean) if in_section and in_fence else None
-        if match and (root / match.group(2).rstrip("/")).is_dir():
-            suffix = "\r\n" if line.endswith("\r\n") else "\n"
-            rewritten.append(match.group(1) + suffix)
-            rewritten.append("→ " + match.group(2) + suffix)
-        else:
-            rewritten.append(line)
-    changed = "".join(rewritten) != original
-    if changed:
-        path.write_text("".join(rewritten), encoding="utf-8", newline="")
-    return changed
-
-
 def _validate(root: Path, hooks: str) -> bool:
     """Validate the FINAL merged state, not only the public-only candidate."""
     checks = [
@@ -297,10 +259,6 @@ def synchronize(root: Path, url: str) -> SyncResult:
                 return SyncResult("failed", "private_merge_conflict", aborted)
 
             try:
-                normalized = _normalize_registry(root)
-                if normalized and not _ok(_run(
-                        root, hooks, "add", "--", str(_REGISTRY))):
-                    raise ValueError("registry staging failed")
                 if not _ok(_run(root, hooks, "diff", "--cached", "--check")):
                     raise ValueError("diff check failed")
                 verified_tree = _text(_run(root, hooks, "write-tree"))

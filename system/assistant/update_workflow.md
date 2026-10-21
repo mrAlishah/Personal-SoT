@@ -70,7 +70,7 @@ remote; never infer approval from the public update confirmation.
 reconciliation. It requires clean `main`, authenticated private GitHub
 fetch, and anonymous GitHub visibility verification to prevent sending
 Personal contents to a public repository. It merges with `--no-commit`,
-normalizes only unambiguous legacy registry entries, then runs Personal,
+preserves existing registry entries while running Personal,
 Prompt and affected-system test gates before creating a merge commit.
 Unresolved conflicts/validation failures abort a pending merge. It never
 force-pushes; a changed remote or push rejection is reported as
