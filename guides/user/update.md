@@ -47,6 +47,57 @@ The runner inspects the installation, shows the beginner-safe preview, asks
 confirmation. If the available update changes while you are confirming, it
 refreshes the preview and asks again instead of applying stale approval.
 
+For a Git installation on `main` whose `origin` is a supported GitHub
+private-workspace repository, the same command then offers a **separate,
+explicit confirmation** to reconcile and push to `origin/main`. This step
+fetches the private branch, merges without discarding Personal files,
+accepts existing one-line or two-line context registry entries, validates
+the entire combined result (and tests system changes), commits and pushes
+only after success. Nothing is pushed to `sot public`.
+
+The private origin must be verifiably non-public to unauthenticated GitHub
+requests, and local Git credentials must already be configured. If the
+private repository is public, unverified, unavailable, changed concurrently,
+or the merge fails validation, the tool stops without forcing a push. A
+failed merge is aborted where safe; a push rejection leaves the validated
+local commit available for a later retry. The tool reports local success
+and remote sync success as **different** outcomes.
+
+Use `--local-only` to skip the private sync offer. `--preview` remains
+read-only and `--confirm-digest` applies only the existing public update
+transaction; scripted clients must explicitly manage private publication.
+
+## If an update fails (Windows / macOS / Linux)
+
+The normal command prints a safe `failure_code` on failure. To capture
+stage-by-stage diagnostics in a **new** log file outside the private SoT,
+use a fresh log filename each time:
+
+Windows PowerShell:
+
+```powershell
+py -3 update.py --verbose --log-file "$env:TEMP\sot-update-diagnostic.log"
+```
+
+Linux/macOS:
+
+```bash
+python3 update.py --verbose --log-file /tmp/sot-update-diagnostic.log
+```
+
+The command still requires confirmation to apply changes; `--verbose`
+and `--log-file` do **not** authorize an update. For a read-only diagnostic
+preview, add `--preview`.
+
+The report includes fixed step names and statuses, plus a bounded failure
+code. It never intentionally includes Personal contents, raw Git stderr,
+user-owned filenames, or secrets. Review the file before sharing it.
+A stage marked `started` without `passed` identifies the operation
+being attempted, not proof of its exact root cause.
+
+The log must be outside the installation and will not overwrite an
+existing file. If the filename is already used, choose a new one.
+
 ## What happens
 
 ```text

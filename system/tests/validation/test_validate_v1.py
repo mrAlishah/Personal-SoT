@@ -7,6 +7,29 @@ from system.validation import validate_prompts, validate_v1
 
 
 class CoreValidationTests(unittest.TestCase):
+    def test_registry_legacy_and_documented_scope_formats_are_valid(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("fullstack", "other"):
+                folder = root / "workspace/context/personal/projects" / name
+                folder.mkdir(parents=True)
+                (folder / "project.md").write_text("# Project\n", encoding="utf-8")
+            registry = root / "system/routing/context_registry.md"
+            registry.parent.mkdir(parents=True)
+            registry.write_text(
+                "# registry\n\n## entry_shape\n\n```text\n"
+                "runtime_scope → repository_relative_canonical_directory\n"
+                "```\n\n## registered_scopes\n\n```text\n"
+                "personal/projects/fullstack → workspace/context/personal/projects/fullstack/\n"
+                "personal/projects/other\n"
+                "→ workspace/context/personal/projects/other/\n"
+                "```\n",
+                encoding="utf-8",
+            )
+            errors = []
+            validate_v1.validate_context_registry(root, errors)
+            self.assertEqual([], errors)
+
     def test_ignores_python_bytecode_cache(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -615,8 +615,12 @@ def context_registry_entries(source: str) -> List[Tuple[str, str]]:
     entries = []
     in_fence = False
     pending_scope = None
+    in_registered_scopes = False
     for raw in source.splitlines():
         stripped = raw.strip()
+        if stripped.startswith("## "):
+            in_registered_scopes = stripped == "## registered_scopes"
+            pending_scope = None
         if stripped.startswith("```"):
             in_fence = not in_fence
             pending_scope = None
@@ -624,6 +628,13 @@ def context_registry_entries(source: str) -> List[Tuple[str, str]]:
             if stripped.startswith("→ "):
                 if pending_scope is not None:
                     entries.append((pending_scope, stripped[2:].strip()))
+                pending_scope = None
+            elif in_registered_scopes and "→" in stripped:
+                # Backward compatible with the documented one-line entry,
+                # but never interpret the entry_shape example as a real scope.
+                scope, target = stripped.split("→", 1)
+                if scope.strip() and target.strip():
+                    entries.append((scope.strip(), target.strip()))
                 pending_scope = None
             elif "→" not in stripped and not stripped.startswith("#"):
                 pending_scope = stripped
