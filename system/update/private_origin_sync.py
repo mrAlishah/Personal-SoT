@@ -21,10 +21,6 @@ from system.update import git_update
 _PRIVATE_HTTPS = re.compile(
     r"https://github[.]com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:[.]git)?\Z"
 )
-_ONE_LINE_SCOPE = re.compile(
-    r"^([a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)*) +→ +(workspace/context/[a-z0-9_/-]+/)\s*$"
-)
-_REGISTRY = Path("system/routing/context_registry.md")
 _IDENTITY = (
     "-c", "user.name=Personal-SoT Private Sync",
     "-c", "user.email=private-sync@personal-sot.invalid",
