@@ -233,6 +233,15 @@ def synchronize(root: Path, url: str) -> SyncResult:
                 return SyncResult("failed", "merge_driver_check_failed")
             if configured_drivers.returncode == 0:
                 return SyncResult("failed", "unsafe_merge_driver")
+            # Merge and staging must not execute user-configured clean/smudge
+            # filters or external diff programs from either local/global Git.
+            filter_drivers = _run(
+                root, hooks, "config", "--get-regexp",
+                r"^(filter[.].+[.](clean|smudge|process)|diff[.].+[.](textconv|command))$")
+            if filter_drivers is None or filter_drivers.returncode not in (0, 1):
+                return SyncResult("failed", "filter_driver_check_failed")
+            if filter_drivers.returncode == 0:
+                return SyncResult("failed", "unsafe_filter_driver")
 
             merge = _run(root, hooks, "merge", "--no-commit", "--no-ff",
                          "refs/remotes/origin/main")
@@ -247,10 +256,15 @@ def synchronize(root: Path, url: str) -> SyncResult:
                     raise ValueError("registry staging failed")
                 if not _ok(_run(root, hooks, "diff", "--cached", "--check")):
                     raise ValueError("diff check failed")
+                verified_tree = _text(_run(root, hooks, "write-tree"))
+                if not re.fullmatch(r"[0-9a-f]{40}", verified_tree):
+                    raise ValueError("unable to snapshot merged tree")
                 if not _validate(root, hooks):
                     raise ValueError("validation failed")
                 # Do not commit an index that changed during the validators,
                 # or accept newly untracked files created while testing.
+                if _text(_run(root, hooks, "write-tree")) != verified_tree:
+                    raise ValueError("index changed during validation")
                 if not _ok(_run(root, hooks, "diff", "--exit-code")):
                     raise ValueError("unstaged changes after validation")
                 untracked = _run(root, hooks, "ls-files", "--others",
@@ -267,6 +281,10 @@ def synchronize(root: Path, url: str) -> SyncResult:
                 # A merge in progress can still be aborted safely.
                 aborted = _ok(_run(root, hooks, "merge", "--abort"))
                 return SyncResult("failed", "private_commit_failed", aborted)
+
+        # The ref and checkout must still agree before any private upload.
+        if git_update._preflight(str(root)) is not None:
+            return SyncResult("local_only", "post_commit_checkout_changed")
 
         # A remote race is never resolved by force. GitHub may still reject
         # the non-fast-forward push after this check; report local-only then.
