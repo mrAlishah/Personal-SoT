@@ -43,7 +43,8 @@ class PrivateOriginE2ETest(unittest.TestCase):
                 "p = Path('workspace/context/personal/projects/fullstack/project.md')\n"
                 "r = Path('system/routing/context_registry.md').read_text()\n"
                 "if p.exists():\n"
-                "    assert 'personal/projects/fullstack\\n→ workspace/context/personal/projects/fullstack/' in r\n",
+                "    assert ('personal/projects/fullstack → workspace/context/personal/projects/fullstack/' in r\n"
+                "            or 'personal/projects/fullstack\\n→ workspace/context/personal/projects/fullstack/' in r)\n",
                 encoding="utf-8",
             )
             (scripts / "validate_prompts.py").write_text(
@@ -129,9 +130,11 @@ class PrivateOriginE2ETest(unittest.TestCase):
             local_project = local / "workspace/context/personal/projects/fullstack/project.md"
             self.assertEqual("# Private Fullstack\n",
                              local_project.read_text(encoding="utf-8"))
-            normalized = reg.read_text(encoding="utf-8")
-            self.assertIn("personal/projects/fullstack\n"
-                          "→ workspace/context/personal/projects/fullstack/", normalized)
+            preserved = reg.read_text(encoding="utf-8")
+            self.assertIn(
+                "personal/projects/fullstack → workspace/context/personal/projects/fullstack/",
+                preserved,
+            )
             self.assertFalse(git(local, "status", "--porcelain"))
 
 
