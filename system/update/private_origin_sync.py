@@ -124,6 +124,58 @@ def _is_proven_private(url: str) -> bool:
         return False
 
 
+def _unsafe_external_attributes(root: Path, hooks: str) -> bool:
+    """Check Git's own attribute resolution before a private merge.
+
+    Global Git Credential Manager and LFS configuration may exist without
+    being selected by any affected file. Reject only a configured executable
+    filter/diff driver selected by effective local or incoming attributes.
+    Fail closed if any plumbing read cannot be completed.
+    """
+    configured = _run(
+        root, hooks, "config", "--get-regexp",
+        r"^(filter[.].+[.](clean|smudge|process)|diff[.].+[.](textconv|command))$")
+    if configured is None or configured.returncode not in (0, 1):
+        return True
+    if configured.returncode == 1:
+        return False
+
+    filter_names, diff_names = set(), set()
+    for item in configured.stdout.splitlines():
+        key = item.split(" ", 1)[0]
+        matched = re.fullmatch(
+            r"(filter|diff)[.](.+)[.](clean|smudge|process|textconv|command)", key)
+        if matched is None:
+            return True
+        (filter_names if matched.group(1) == "filter" else diff_names).add(
+            matched.group(2))
+
+    changed = _run(root, hooks, "diff", "--no-ext-diff", "--no-textconv",
+                   "--name-only", "-z", "HEAD", "refs/remotes/origin/main")
+    if not _ok(changed):
+        return True
+    paths = [p for p in changed.stdout.split("\0") if p]
+    if not paths:
+        return False
+    for revision in ("HEAD", "refs/remotes/origin/main"):
+        resolved = _run(root, hooks, "check-attr", "--source=" + revision,
+                        "--all", "-z", "--", *paths)
+        if not _ok(resolved):
+            return True
+        fields = resolved.stdout.split("\0")
+        if fields and fields[-1] == "":
+            fields.pop()
+        if len(fields) % 3 != 0:
+            return True
+        for i in range(0, len(fields), 3):
+            _path, attribute, value = fields[i:i+3]
+            if attribute == "filter" and value in filter_names:
+                return True
+            if attribute == "diff" and value in diff_names:
+                return True
+    return False
+
+
 def _normalize_registry(root: Path) -> bool:
     """Convert only unambiguous one-line mappings within registered_scopes.
 
@@ -233,14 +285,9 @@ def synchronize(root: Path, url: str) -> SyncResult:
                 return SyncResult("failed", "merge_driver_check_failed")
             if configured_drivers.returncode == 0:
                 return SyncResult("failed", "unsafe_merge_driver")
-            # Merge and staging must not execute user-configured clean/smudge
-            # filters or external diff programs from either local/global Git.
-            filter_drivers = _run(
-                root, hooks, "config", "--get-regexp",
-                r"^(filter[.].+[.](clean|smudge|process)|diff[.].+[.](textconv|command))$")
-            if filter_drivers is None or filter_drivers.returncode not in (0, 1):
-                return SyncResult("failed", "filter_driver_check_failed")
-            if filter_drivers.returncode == 0:
+            # A globally configured helper is harmless when no affected
+            # path selects it; use Git's own attribute resolution instead.
+            if _unsafe_external_attributes(root, hooks):
                 return SyncResult("failed", "unsafe_filter_driver")
 
             merge = _run(root, hooks, "merge", "--no-commit", "--no-ff",
