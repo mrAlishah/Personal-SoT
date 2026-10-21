@@ -16,11 +16,15 @@ Runtime `@ctx` values do not include the `workspace/context/` prefix.
 
 ## entry_shape
 
-```text
-runtime_scope → repository_relative_canonical_directory
-```
+An entry is **two consecutive lines** inside the registered-scopes code
+fence: the runtime scope alone, followed by the arrow and canonical target
+on the next line. The following indented example is explanatory, not an
+active registry entry:
 
-The registry stores identity/location only. It does not duplicate facts, policies, module access state, or module inventory.
+    personal/projects/example
+    → workspace/context/personal/projects/example/
+
+Do **not** put the scope and arrow on a single line. The registry stores identity/location only. It does not duplicate facts, policies, module access state, or module inventory.
 
 ## registered_scopes
 

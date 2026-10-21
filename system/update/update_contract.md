@@ -94,6 +94,39 @@ They are support evidence, never an alternate authority or a substitute for
 current checkout/validator checks. Normal preview/confirmation/digest gates
 remain unchanged.
 
+## optional_private_origin_sync
+
+After the canonical public Safe Update succeeds locally, the interactive
+CLI can **separately** offer synchronization with the user's existing
+GitHub private `origin/main`. This does not redefine the fixed public
+update authority, or alter classification/digest/recovery semantics in
+`git_update.py`. It never runs before user confirmation.
+
+The private-sync operation:
+- accepts only a verified eligible GitHub `origin` on checked-out `main`;
+- requires a clean checkout, an authenticated fetch, and an anonymous
+  GitHub API 404 visibility check (authenticated fetch proves existence)
+  before the first private merge or push;
+- uses no force-push and no alternative target remote;
+- merges without auto-commit, preserving private-owned paths, and
+  normalizes only unambiguous one-line registry entries within the
+  registered-scopes fenced block;
+- validates the **resulting merged private candidate** with Personal and
+  Prompt validators and, when system paths change, a nonempty unit suite;
+- aborts the pending merge if candidate validation fails and never pushes
+  that invalid candidate; reports incomplete rollback explicitly;
+- rechecks the remote ref before push; a push race can still reject
+  non-fast-forward, so publication must only be reported after push succeeds.
+
+This optional later operation uses the user's explicitly configured GitHub
+credentials while disabling Git hooks, fsmonitor and unsafe local/file/ext
+protocols. This credentialed remote workflow is a distinct authorization
+boundary from the isolated, canonical public-target `controlled_git`
+transport. It does not silently use `origin` as the public update source.
+Noninteractive digest confirmation and ZIP migrations do not publish private
+state. A successful local public update followed by a failed private sync
+is reported as **local-only**, never a complete private synchronization.
+
 ## failure_vocabulary
 
 Target resolution reuses `system.connectors.source.Failure` for the

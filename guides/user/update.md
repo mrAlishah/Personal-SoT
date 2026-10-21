@@ -47,6 +47,26 @@ The runner inspects the installation, shows the beginner-safe preview, asks
 confirmation. If the available update changes while you are confirming, it
 refreshes the preview and asks again instead of applying stale approval.
 
+For a Git installation on `main` whose `origin` is a supported GitHub
+private-workspace repository, the same command then offers a **separate,
+explicit confirmation** to reconcile and push to `origin/main`. This step
+fetches the private branch, merges without discarding Personal files,
+normalizes unambiguous legacy one-line context registry entries, validates
+the entire combined result (and tests system changes), commits and pushes
+only after success. Nothing is pushed to `sot public`.
+
+The private origin must be verifiably non-public to unauthenticated GitHub
+requests, and local Git credentials must already be configured. If the
+private repository is public, unverified, unavailable, changed concurrently,
+or the merge fails validation, the tool stops without forcing a push. A
+failed merge is aborted where safe; a push rejection leaves the validated
+local commit available for a later retry. The tool reports local success
+and remote sync success as **different** outcomes.
+
+Use `--local-only` to skip the private sync offer. `--preview` remains
+read-only and `--confirm-digest` applies only the existing public update
+transaction; scripted clients must explicitly manage private publication.
+
 ## If an update fails (Windows / macOS / Linux)
 
 The normal command prints a safe `failure_code` on failure. To capture

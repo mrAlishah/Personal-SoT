@@ -133,6 +133,49 @@ class UpdateCliTests(unittest.TestCase):
             self.assertIn('failure_code: object_transfer_failed',
                           log_path.read_text(encoding='utf-8'))
 
+    def test_ready_git_update_can_sync_private_origin_with_confirmation(self):
+        ready = WorkflowResult(
+            'git', 'digest-1', True, True,
+            BeginnerReport('Update applied and validation passed.'),
+        )
+        outcome = mock.Mock(status='synchronized', failure=None,
+                            rollback_completed=None)
+        output = StringIO()
+        answers = iter(['yes'])
+        with mock.patch.object(cli, 'run_update_workflow', return_value=ready), \
+             mock.patch.object(cli, 'private_origin_url',
+                               return_value='https://github.com/A/myPersonal-SoT.git'), \
+             mock.patch.object(cli, 'synchronize', return_value=outcome) as sync:
+            rc = cli.run_interactive(
+                '.', input_fn=lambda _prompt: next(answers), out=output)
+        self.assertEqual(0, rc)
+        sync.assert_called_once()
+        self.assertIn('origin/main synchronized', output.getvalue())
+
+    def test_declined_private_sync_leaves_local_success_untouched(self):
+        ready = WorkflowResult(
+            'git', 'digest-1', True, True,
+            BeginnerReport('Update applied and validation passed.'),
+        )
+        with mock.patch.object(cli, 'run_update_workflow', return_value=ready), \
+             mock.patch.object(cli, 'private_origin_url',
+                               return_value='https://github.com/A/myPersonal-SoT.git'), \
+             mock.patch.object(cli, 'synchronize') as sync:
+            rc = cli.run_interactive('.', input_fn=lambda _prompt: 'n', out=StringIO())
+        self.assertEqual(0, rc)
+        sync.assert_not_called()
+
+    def test_local_only_does_not_probe_private_origin(self):
+        ready = WorkflowResult(
+            'git', 'digest-1', True, True,
+            BeginnerReport('Update applied and validation passed.'),
+        )
+        with mock.patch.object(cli, 'run_update_workflow', return_value=ready), \
+             mock.patch.object(cli, 'private_origin_url') as origin:
+            rc = cli.run_interactive('.', out=StringIO(), private_sync=False)
+        self.assertEqual(0, rc)
+        origin.assert_not_called()
+
     def test_agent_preview_prints_exact_digest(self):
         preview = WorkflowResult(
             'git', 'digest-1', False, False,
