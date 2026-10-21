@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib import error as urlerror, request as urlrequest
 
 from system.update import git_update
 
@@ -95,6 +96,31 @@ def private_origin_url(root) -> str | None:
     if name.lower() not in ("mypersonal-sot", "private-personal-sot"):
         return None
     return raw
+
+
+def _is_proven_private(url: str) -> bool:
+    """Fail closed unless an anonymous GitHub API check returns 404.
+
+    An authenticated fetch separately proves the repository exists. An
+    anonymous 404 therefore distinguishes it from a public repository.
+    No private tokens or Personal contents are sent to this endpoint.
+    """
+    match = _PRIVATE_HTTPS.fullmatch(url)
+    if match is None:
+        return False
+    owner, repository = match.groups()
+    req = urlrequest.Request(
+        "https://api.github.com/repos/" + owner + "/" + repository,
+        headers={"Accept": "application/vnd.github+json",
+                 "User-Agent": "Personal-SoT-Safe-Update"},
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=12):
+            return False  # Public/anonymous-readable: must never push.
+    except urlerror.HTTPError as exc:
+        return exc.code == 404
+    except (OSError, ValueError):
+        return False
 
 
 def _normalize_registry(root: Path) -> bool:
@@ -186,6 +212,8 @@ def synchronize(root: Path, url: str) -> SyncResult:
                      "+refs/heads/main:refs/remotes/origin/main")
         if not _ok(fetch):
             return SyncResult("failed", "private_fetch_failed")
+        if not _is_proven_private(url):
+            return SyncResult("failed", "private_visibility_unverified")
 
         remote = _text(_run(root, hooks, "rev-parse", "--verify", "refs/remotes/origin/main"))
         local = _text(_run(root, hooks, "rev-parse", "--verify", "HEAD"))
