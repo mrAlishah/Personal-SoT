@@ -105,6 +105,8 @@ class PrivateOriginSyncTests(unittest.TestCase):
                 return completed((REMOTE if "origin/main" in args[-1] else LOCAL) + "\n")
             if args[0] == "merge-base":
                 return completed(code=1)
+            if args[:2] == ("config", "--get-regexp"):
+                return completed(code=1)  # no custom merge driver configured
             return completed()
         with mock.patch.object(sync, "private_origin_url", return_value=PRIVATE), \
              mock.patch.object(sync.git_update, "_preflight", return_value=None), \
