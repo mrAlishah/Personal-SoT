@@ -109,8 +109,8 @@ The private-sync operation:
   before the first private merge or push;
 - uses no force-push and no alternative target remote;
 - merges without auto-commit, preserving private-owned paths, and
-  normalizes only unambiguous one-line registry entries within the
-  registered-scopes fenced block;
+  preserves private registry content, accepting the canonical one-line or
+  two-line scoped mappings through the shared validator;
 - validates the **resulting merged private candidate** with Personal and
   Prompt validators and, when system paths change, a nonempty unit suite;
 - aborts the pending merge if candidate validation fails and never pushes
