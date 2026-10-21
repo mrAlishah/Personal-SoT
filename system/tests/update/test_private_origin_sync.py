@@ -104,7 +104,6 @@ class PrivateOriginSyncTests(unittest.TestCase):
              mock.patch.object(sync.git_update, "_preflight", return_value=None), \
              mock.patch.object(sync, "_run", side_effect=fake_run), \
              mock.patch.object(sync, "_is_proven_private", return_value=True), \
-             mock.patch.object(sync, "_normalize_registry", return_value=False), \
              mock.patch.object(sync, "_validate", return_value=False):
             result = sync.synchronize(Path("."), PRIVATE)
         self.assertEqual("failed", result.status)
