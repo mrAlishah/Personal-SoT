@@ -112,6 +112,16 @@ inspect installation
 
 Nothing material is applied before you confirm the exact preview.
 
+If both Public and Private changed the same file, the Git updater now offers
+a guided choice for each conflicting item. You will see numbered entries
+with a general area name, not private filenames. Choose **Public** to
+accept the new released version of that entire file, or **Private** to
+preserve your existing file. Review the resulting preview and confirm
+before any change. If unsure about a choice, cancel; no file changes.
+The updater validates the combined candidate and keeps its normal rollback
+and concurrency protections. Noninteractive preview mode does not guess
+conflict choices.
+
 ## Git installation
 
 For a Git-backed private `sot`:

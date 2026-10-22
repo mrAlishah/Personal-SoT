@@ -786,9 +786,10 @@ def _trace(callback, stage: str, status: str) -> None:
 
 
 def _git_workflow(root, capability: HostCapability, confirm_digest: str | None,
-                  stage_callback=None) -> WorkflowResult:
+                  stage_callback=None, resolutions=None) -> WorkflowResult:
     _trace(stage_callback, 'classification', 'started')
-    plan = git_update.classify(root)
+    plan = (git_update.classify(root, resolutions=resolutions)
+            if resolutions is not None else git_update.classify(root))
     _trace(stage_callback, 'classification',
            'blocked' if plan.blocked or plan.conflict else 'passed')
     preview = git_update.preview(plan)
@@ -824,10 +825,12 @@ def _git_workflow(root, capability: HostCapability, confirm_digest: str | None,
             failure='stale_state', confirmation_required=True)
 
     _trace(stage_callback, 'apply', 'started')
-    if stage_callback is None:
-        result = git_update.apply(root, plan, fresh_digest)
-    else:
-        result = git_update.apply(root, plan, fresh_digest, on_stage=stage_callback)
+    apply_kwargs = {}
+    if stage_callback is not None:
+        apply_kwargs['on_stage'] = stage_callback
+    if resolutions is not None:
+        apply_kwargs['resolutions'] = resolutions
+    result = git_update.apply(root, plan, fresh_digest, **apply_kwargs)
     succeeded = _git_apply_succeeded(result)
     _trace(stage_callback, 'apply', 'passed' if succeeded else 'failed')
     return WorkflowResult('git', fresh_digest, succeeded, succeeded,
@@ -881,7 +884,7 @@ def _zip_workflow(root, destination, capability: HostCapability, confirm_digest:
 def run_update_workflow(root, destination=None, *, capability: HostCapability,
                          confirm_digest: str | None = None,
                          exclude: frozenset = frozenset(),
-                         stage_callback=None) -> WorkflowResult:
+                         stage_callback=None, resolutions=None) -> WorkflowResult:
     """The one Loop 5 entry point: Explain → Recommend → Preview →
     Apply. Routes ONLY to the existing canonical owners
     (`git_update`/`side_by_side`) for every classification, apply/
@@ -917,9 +920,16 @@ def run_update_workflow(root, destination=None, *, capability: HostCapability,
             BeginnerReport('This installation could not be checked safely.'),
             failure='unknown_install_type')
     if install_type == 'git':
+        if resolutions is not None:
+            return _git_workflow(root, capability, confirm_digest,
+                                 stage_callback, resolutions=resolutions)
         if stage_callback is None:
             return _git_workflow(root, capability, confirm_digest)
         return _git_workflow(root, capability, confirm_digest, stage_callback)
+    if resolutions is not None:
+        return WorkflowResult('zip', None, False, False,
+                              BeginnerReport('Conflict choices are supported for Git installations only.'),
+                              failure='unsupported_resolution')
     if stage_callback is None:
         return _zip_workflow(root, destination, capability, confirm_digest, exclude)
     return _zip_workflow(root, destination, capability, confirm_digest, exclude, stage_callback)

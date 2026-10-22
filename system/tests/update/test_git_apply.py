@@ -39,11 +39,11 @@ def _base_files(extra=None):
     return files
 
 
-def _confirm(root, target_dir, target_sha):
+def _confirm(root, target_dir, target_sha, resolutions=None):
     with mock.patch.object(git_update.target, 'resolve',
                             return_value=TargetSnapshot(target_sha, 'main', 'test')), \
          mock.patch.object(git_update.target, 'CANONICAL_URL', 'file://' + target_dir):
-        plan = git_update.classify(root)
+        plan = git_update.classify(root, resolutions=resolutions)
         digest = git_update.preview(plan).digest
     return plan, digest
 
@@ -53,6 +53,68 @@ def _do_apply(root, target_dir, target_sha, plan, digest, **kwargs):
                             return_value=TargetSnapshot(target_sha, 'main', 'test')), \
          mock.patch.object(git_update.target, 'CANONICAL_URL', 'file://' + target_dir):
         return git_update.apply(root, plan, digest, **kwargs)
+
+
+class GuidedConflictApplyTests(unittest.TestCase):
+    def test_accept_public_contract_and_keep_private_workspace(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/contract.md': 'old contract\n'})
+            root, target, _, before, target_sha = _diverging_repos(
+                workdir, base,
+                {'system/contract.md': 'local variant\n',
+                 'workspace/placeholder.md': 'my prompt settings\n'},
+                {'system/contract.md': 'new public contract\n',
+                 'workspace/placeholder.md': 'public prompt settings\n'})
+            choices = {'system/contract.md': 'public',
+                       'workspace/placeholder.md': 'private'}
+            plan, digest = _confirm(root, target, target_sha, choices)
+            self.assertEqual((), plan.conflict)
+            before_private_mtime = Path(root, 'workspace/placeholder.md').stat().st_mtime_ns
+            result = _do_apply(root, target, target_sha, plan, digest,
+                               resolutions=choices)
+            self.assertTrue(result.validation_ran and result.validation_passed)
+            self.assertIsNotNone(result.commit)
+            self.assertEqual('new public contract\n',
+                             Path(root, 'system/contract.md').read_text())
+            self.assertEqual('my prompt settings\n',
+                             Path(root, 'workspace/placeholder.md').read_text())
+            self.assertEqual(before_private_mtime,
+                             Path(root, 'workspace/placeholder.md').stat().st_mtime_ns)
+            parents = _run(['git', '-C', root, 'rev-parse', 'HEAD^1', 'HEAD^2']).stdout.split()
+            self.assertEqual([before, target_sha], parents)
+            self.assertEqual('', _run(['git', '-C', root, 'status', '--porcelain']).stdout)
+
+    def test_unapproved_or_changed_resolution_never_mutates(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'old\n'})
+            root, target, _, current, target_sha = _diverging_repos(
+                workdir, base,
+                {'system/a.md': 'private\n'},
+                {'system/a.md': 'public\n'})
+            choices = {'system/a.md': 'public'}
+            plan, digest = _confirm(root, target, target_sha, choices)
+            result = _do_apply(root, target, target_sha, plan, digest,
+                               resolutions={'system/a.md': 'private'})
+            self.assertEqual('stale_state', result.failure)
+            self.assertEqual(current, _run(['git', '-C', root, 'rev-parse', 'HEAD']).stdout.strip())
+
+    def test_keep_private_only_records_provenance_without_file_write(self):
+        with tempfile.TemporaryDirectory() as workdir:
+            base = _base_files({'system/a.md': 'old\n'})
+            root, target, _, current, target_sha = _diverging_repos(
+                workdir, base,
+                {'system/a.md': 'private\n'},
+                {'system/a.md': 'public\n'})
+            choices = {'system/a.md': 'private'}
+            plan, digest = _confirm(root, target, target_sha, choices)
+            result = _do_apply(root, target, target_sha, plan, digest,
+                               resolutions=choices)
+            self.assertIsNone(result.failure)
+            self.assertIsNotNone(result.commit)
+            self.assertTrue(result.validation_passed)
+            self.assertEqual('private\n', Path(root, 'system/a.md').read_text())
+            parents = _run(['git', '-C', root, 'rev-parse', 'HEAD^1', 'HEAD^2']).stdout.split()
+            self.assertEqual([current, target_sha], parents)
 
 
 class ApplyPreconditionTests(unittest.TestCase):

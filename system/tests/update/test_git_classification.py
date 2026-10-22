@@ -64,11 +64,11 @@ def _diverging_repos(workdir, base_files, current_files, target_files):
     return root, target_dir, base_sha, current_sha, target_sha
 
 
-def _classify(root, target_dir, target_sha):
+def _classify(root, target_dir, target_sha, resolutions=None):
     with mock.patch.object(git_update.target, 'resolve',
                             return_value=TargetSnapshot(target_sha, 'main', 'test')), \
          mock.patch.object(git_update.target, 'CANONICAL_URL', 'file://' + target_dir):
-        return git_update.classify(root)
+        return git_update.classify(root, resolutions=resolutions)
 
 
 class ClassificationTests(unittest.TestCase):
@@ -263,6 +263,53 @@ class ClassificationTests(unittest.TestCase):
 
             plan = _classify(root, target_dir, target_local_sha)
         self.assertEqual('ambiguous_lineage', plan.blocked)
+
+
+class GuidedConflictClassificationTests(unittest.TestCase):
+    def test_explicit_choices_are_digest_bound_and_not_automatic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, target, _, _, sha = _diverging_repos(
+                directory,
+                {'system/contract.md': 'base', 'workspace/prompt.md': 'base'},
+                {'system/contract.md': 'private contract',
+                 'workspace/prompt.md': 'private prompt'},
+                {'system/contract.md': 'public contract',
+                 'workspace/prompt.md': 'public prompt'},
+            )
+            unresolved = _classify(root, target, sha)
+            self.assertEqual(2, len(unresolved.conflict))
+            self.assertFalse(unresolved.no_op)
+            choices = {'system/contract.md': 'public',
+                       'workspace/prompt.md': 'private'}
+            chosen = _classify(root, target, sha, choices)
+            self.assertEqual((), chosen.conflict)
+            self.assertIn('system/contract.md', chosen.upstream_only)
+            self.assertIn('workspace/prompt.md', chosen.user_only)
+            self.assertEqual(tuple(sorted(choices.items())), chosen.resolution_choices)
+            self.assertNotEqual(git_update.preview(unresolved).digest,
+                                git_update.preview(chosen).digest)
+            other = _classify(root, target, sha,
+                              {'system/contract.md': 'private',
+                               'workspace/prompt.md': 'public'})
+            self.assertNotEqual(git_update.preview(chosen).digest,
+                                git_update.preview(other).digest)
+            self.assertEqual('invalid_resolution',
+                             _classify(root, target, sha,
+                                       {'system/unknown.md': 'public'}).blocked)
+            self.assertEqual('invalid_resolution',
+                             _classify(root, target, sha,
+                                       {'system/contract.md': 'maybe'}).blocked)
+
+    def test_keep_private_only_is_not_noop_until_target_is_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, target, _, _, sha = _diverging_repos(
+                directory, {'system/a.md': 'base'},
+                {'system/a.md': 'private'},
+                {'system/a.md': 'public'})
+            plan = _classify(root, target, sha, {'system/a.md': 'private'})
+            self.assertFalse(plan.no_op)
+            self.assertEqual((), plan.upstream_only)
+            self.assertEqual((), plan.conflict)
 
 
 class DirtyPreflightTests(unittest.TestCase):
