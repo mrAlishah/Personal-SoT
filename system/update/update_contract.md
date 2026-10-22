@@ -103,7 +103,12 @@ update authority, or alter classification/digest/recovery semantics in
 `git_update.py`. It never runs before user confirmation.
 
 The private-sync operation:
-- accepts only a verified eligible GitHub `origin` on checked-out `main`;
+- accepts only a strict, verified eligible GitHub `origin` on checked-out
+  `main`, supporting literal HTTPS, `git@github.com:owner/repo.git`
+  and `ssh://git@github.com/owner/repo.git`. URL rewrites, alternate
+  hosts, ports, users, unknown repo names and the public-product target
+  fail closed. An anonymous GitHub visibility check remains mandatory
+  for SSH exactly as for HTTPS;
 - requires a clean checkout, an authenticated fetch, and an anonymous
   GitHub API 404 visibility check (authenticated fetch proves existence)
   before the first private merge or push;

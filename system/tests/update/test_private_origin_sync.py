@@ -49,6 +49,94 @@ class PrivateOriginSyncTests(unittest.TestCase):
         with mock.patch.object(sync.urlrequest, "urlopen", side_effect=OSError()):
             self.assertFalse(sync._is_proven_private(PRIVATE))
 
+    def test_supported_https_and_ssh_origins_on_main(self):
+        accepted = (
+            "https://github.com/ExampleOwner/myPersonal-SoT.git",
+            "https://github.com/ExampleOwner/myPersonal-SoT",
+            "git@github.com:ExampleOwner/myPersonal-SoT.git",
+            "git@github.com:ExampleOwner/myPersonal-SoT",
+            "ssh://git@github.com/ExampleOwner/myPersonal-SoT.git",
+            "ssh://git@github.com/ExampleOwner/private-personal-sot",
+        )
+        for url in accepted:
+            with self.subTest(url=url):
+                def fake_run(root, hooks, *args, **kwargs):
+                    if args[0] == "symbolic-ref":
+                        return completed("main\n")
+                    return completed(url + "\n")
+                with mock.patch.object(sync, "_run", side_effect=fake_run):
+                    self.assertEqual(url, sync.private_origin_url(Path(".")))
+
+    def test_ssh_public_or_malformed_origins_are_rejected(self):
+        bad_urls = (
+            "git@github.com:mrAlishah/Personal-SoT.git",
+            "ssh://git@github.com/mrAlishah/Personal-SoT.git",
+            "git@github.com:ExampleOwner/random.git",
+            "git@evil.com:ExampleOwner/myPersonal-SoT.git",
+            "git@github.com:ExampleOwner/../myPersonal-SoT.git",
+            "git@github.com:ExampleOwner/myPersonal-SoT.git -oProxyCommand=evil",
+            "ssh://root@github.com/ExampleOwner/myPersonal-SoT.git",
+            "ssh://git@github.com:2222/ExampleOwner/myPersonal-SoT.git",
+            "github.com:ExampleOwner/myPersonal-SoT",
+            "https://evil.example/ExampleOwner/myPersonal-SoT.git",
+        )
+        for url in bad_urls:
+            with self.subTest(url=url):
+                def fake_run(root, hooks, *args, **kwargs):
+                    if args[0] == "symbolic-ref":
+                        return completed("main\n")
+                    return completed(url + "\n")
+                with mock.patch.object(sync, "_run", side_effect=fake_run):
+                    self.assertIsNone(sync.private_origin_url(Path(".")))
+                self.assertFalse(sync._is_proven_private(url))
+
+    def test_ssh_url_rewrite_and_wrong_branch_rejected(self):
+        origin = "git@github.com:ExampleOwner/myPersonal-SoT.git"
+        for branch, expanded in (
+            ("develop", origin),
+            ("main", "git@evil.com:ExampleOwner/myPersonal-SoT.git"),
+        ):
+            with self.subTest(branch=branch, expanded=expanded):
+                def fake_run(root, hooks, *args, **kwargs):
+                    if args[0] == "symbolic-ref":
+                        return completed(branch + "\n")
+                    if args[:2] == ("remote", "get-url"):
+                        return completed(expanded + "\n")
+                    return completed(origin + "\n")
+                with mock.patch.object(sync, "_run", side_effect=fake_run):
+                    self.assertIsNone(sync.private_origin_url(Path(".")))
+
+    def test_push_url_rewrite_is_rejected_for_ssh(self):
+        origin = "git@github.com:ExampleOwner/myPersonal-SoT.git"
+        def fake_run(root, hooks, *args, **kwargs):
+            if args[0] == "symbolic-ref":
+                return completed("main\n")
+            if args[:3] == ("remote", "get-url", "--push"):
+                return completed("git@github.com:Other/myPersonal-SoT.git\n")
+            return completed(origin + "\n")
+        with mock.patch.object(sync, "_run", side_effect=fake_run):
+            self.assertIsNone(sync.private_origin_url(Path(".")))
+
+    def test_ssh_visibility_uses_github_identity_and_fails_closed(self):
+        requested = []
+        hidden = urlerror.HTTPError("https://api.github.com/repos/x/y", 404,
+                                    "Not found", None, None)
+        def probe(request, timeout):
+            requested.append(request.full_url)
+            raise hidden
+        url = "git@github.com:ExampleOwner/myPersonal-SoT.git"
+        with mock.patch.object(sync.urlrequest, "urlopen", side_effect=probe):
+            self.assertTrue(sync._is_proven_private(url))
+        self.assertEqual(
+            "https://api.github.com/repos/ExampleOwner/myPersonal-SoT",
+            requested[0],
+        )
+        with mock.patch.object(sync.urlrequest, "urlopen",
+                               return_value=mock.MagicMock()):
+            self.assertFalse(sync._is_proven_private(url))
+        with mock.patch.object(sync.urlrequest, "urlopen", side_effect=OSError()):
+            self.assertFalse(sync._is_proven_private(url))
+
     def test_legacy_and_two_line_registry_formats_are_both_recognized(self):
         source = (
             "# registry\n\n## entry_shape\n\n```text\n"
