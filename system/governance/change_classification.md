@@ -74,8 +74,10 @@ Required rigor in a private user-owned workspace:
   what was checked and applied.
 
 Creating/removing context owners, changing context registry/routing, or changing
-`ai_access` remains a **structural context change** with targeted structural
-validation. Changes to adapters, governance, system implementation, schemas,
+`ai_access` remains a **structural context change**. The narrowly defined
+standard additive Personal-project exception below uses focused structural
+checks instead of a Python validator; other structural changes require their
+targeted validator. Changes to adapters, governance, system implementation, schemas,
 protected product-shipped content, or product-sync behavior remain
 **system/runtime/governance** regardless of file location. Deletion/rename
 with unresolved dependencies is not ordinary content maintenance.
@@ -89,6 +91,52 @@ subject to public repository governance and full required gates.
 ### 2. Structural context change
 
 Use for Personal-context changes that modify context shape, routing, registration, or access semantics.
+
+#### Standard additive private Personal project (focused-check exception)
+
+A private, single-user Personal installation may create a new ordinary
+`personal/projects/<project_id>` project or add a standard module to an
+already registered ordinary Personal project **directly on private `main`
+without a temporary branch or Python validator**, only when ALL of these
+conditions are established by real host/repository evidence:
+
+1. The change is additive: create new project-owned Markdown modules under
+   `workspace/context/personal/projects/<project_id>/`, with no deletion,
+   move, rename, or edit of existing context. A new project includes
+   `project.md` with a meaningful purpose; other modules are only justified
+   standard project modules from `system/context/module_catalog.md`.
+2. For new projects, the only non-context edit is exactly one new
+   `personal/projects/<project_id>` mapping to its matching directory in
+   `system/routing/context_registry.md`. For a new module in an existing
+   registered project, the registry is unchanged. Do not alter or remove any
+   existing scope or mapping.
+3. Validate exact lowercase_snake_case identifiers and repository paths,
+   unique scope and target mappings, existing project registration where
+   applicable, absence of an existing conflicting owner/path, and no
+   overlapping semantic owner. Reject unexpected files or dependencies.
+4. Every new module has valid Markdown/frontmatter with explicit
+   `ai_access: allow`. No changed access values, restricted/deny modules,
+   sensitive content, raw secrets, new policies or decisions, or product-owned
+   files qualify for this shortcut. Host authorization and scope/access
+   checks still apply.
+5. Before writing, re-read the current registry, affected target paths and
+   branch HEAD; confirm that the exact preview is still applicable. Apply
+   project files and any registry addition in **one atomic commit** on
+   private `main` using a current-HEAD concurrency guard; a sequence of
+   unrelated per-file commits is not an equivalent safe apply.
+6. Inspect the resulting committed diff and re-read the new owner/modules
+   and effective registry entry to verify the exact confirmed change, access
+   metadata, paths and coherent registration. Any missing capability,
+   unsupported check, unexpected diff or concurrent drift blocks completion.
+   Do not describe focused checks as a full Personal validator pass.
+
+These are bounded pre/post structural checks, not permission to skip
+validation. They may be carried out with repository read/write APIs (for
+example, on ChatGPT Web) and require **no local Python execution**. If
+the host cannot establish every condition, fail closed and use the
+ordinary targeted-validator path below. The exception changes only the
+validation method for this limited additive Personal-project case; it
+does not turn structural changes into ordinary context updates.
 
 Examples:
 
@@ -104,10 +152,10 @@ Required rigor in a private Personal-SoT workspace:
 - preview and explicit confirmation;
 - re-read all affected owners and registry/access entries before write;
 - direct write to the private canonical branch is allowed;
-- run only the targeted validator(s) owned by the affected structure;
+- use the focused pre/post checks above for an eligible standard additive private Personal project; otherwise run only the targeted validator(s) owned by the affected structure;
 - do not run the full system test suite merely because Personal structure changed.
 
-For ordinary Personal context structure or registry/access changes, the default targeted validator is:
+For all other Personal context structure or registry/access changes, the default targeted validator is:
 
 ```text
 python3 -B system/validation/validate_v1.py --mode personal
@@ -177,7 +225,7 @@ Do not split one coherent semantic change merely to obtain a lower validation cl
 
 Write capability and local-command capability are independent.
 
-A host with authorized remote repository write capability may apply a confirmed private-workspace change when the selected class does not require unavailable local commands. In particular, a normal private context update or user-owned content edit does not become blocked merely because the host cannot run local Python validators, provided its required focused checks and access protections can be established.
+A host with authorized remote repository write capability may apply a confirmed private-workspace change when the selected class does not require unavailable local commands. In particular, a normal private context update, user-owned content edit, or eligible standard additive Personal-project change does not become blocked merely because the host cannot run local Python validators, provided its required focused checks, atomicity and access protections can be established.
 
 A host must never claim a required validator or test passed when it could not actually run it. If the selected class requires checks unavailable on the current host, leave the change in a reviewable candidate state or provide the smallest truthful handoff required by repository governance.
 

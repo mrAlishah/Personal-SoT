@@ -52,21 +52,32 @@ Every created context module requires explicit `ai_access`. Do not create empty 
 
 The same proposal adds the exact scope mapping to `system/routing/context_registry.md`. Check for duplicate scope, target, identifier, or overlapping ownership first.
 
-Preview the understood project, proposed identifier, semantic modules, access state, registry mapping, complete new content, excluded items, and validation command. Then request explicit confirmation through `system/assistant/safe_write_contract.md`.
+Preview the understood project, proposed identifier, semantic modules, access state, registry mapping, complete new content, excluded items, and class-required validation method (focused checks or targeted validator). Then request explicit confirmation through `system/assistant/safe_write_contract.md`.
 
 ### Write and validate
 
 Project creation changes owner/registry structure, so classify it as a structural context change through `system/governance/change_classification.md`.
 
-On an authorized write-capable host, revalidate and apply project files plus registry mapping as one coherent patch. In a private Personal-SoT workspace, run the targeted Personal structural validator:
+On an authorized write-capable host, revalidate and apply project files plus
+registry mapping as one coherent patch. For a private standard additive
+Personal-project creation, use the **focused pre/post structural checks and
+single atomic direct-`main` commit** defined in
+`system/governance/change_classification.md`; no Python validator or temporary
+branch is required when all eligibility and host-capability checks succeed.
+Do not unconditionally request local Python merely because a standard
+Personal project adds one registry mapping.
 
-```text
-python3 -B system/validation/validate_v1.py --mode personal
-```
+For any ineligible structural creation, use the targeted structural validator
+required by the change-classification contract and active repository
+governance. Do not run `validate_public.py` for a private project; public
+distribution certification is a separate concern. Never claim creation,
+validation or acceptance when the required checks or write fail.
 
-Do not run `validate_public.py` merely because a private project was created; public-distribution certification is a different concern. Run another validator only when the confirmed proposal also changes the domain it owns. Never claim project creation if the patch or required validation failed.
-
-On a host that can write but cannot run the required targeted validator, leave the change in the reviewable state required by active repository governance and report validation as unavailable; do not claim accepted success. On a no-write host, return the same proposal, say nothing was written and validation was not run, and provide apply guidance without changing semantics.
+When a host can write but cannot establish the class-required checks, stop
+before mutation or leave a reviewable candidate per repository governance;
+state what was not validated. A no-write host returns the same proposal,
+states nothing was written and validation was not run, and offers the
+smallest safe handoff.
 
 ## Use
 
@@ -96,7 +107,7 @@ An explicit valid scope remains authoritative.
 6. Reconcile duplicates and conflicts with existing owners.
 7. Preview the exact diff and exclusions.
 8. Classify the proposal through `system/governance/change_classification.md`. An ordinary edit to existing owners is a context update; creating/removing owners, changing registry/routing, or changing `ai_access` is a structural context change.
-9. Confirm, revalidate, and write through the safe-write contract. For an ordinary private context update, no Python validator is required solely for the content edit. For a structural context change, run only the targeted structural validator(s).
+9. Confirm, revalidate, and write through the safe-write contract. For an ordinary private context update, no Python validator is required solely for the content edit. For a standard additive new module in an existing Personal project, use the focused structural checks only if every eligibility condition is met; otherwise run the relevant targeted structural validator(s).
 10. Report the update and one useful next request.
 
 Do not silently change objectives, constraints, decisions, or access state while updating current state. If such a change is justified, show it as a separate owner in the same proposal or defer it for clarification.
