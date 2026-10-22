@@ -71,5 +71,29 @@ class ProjectVerticalSliceTests(unittest.TestCase):
             self.assertEqual([], validate_v1.run(root, "personal"))
 
 
+    def test_private_standard_project_contract_requires_focused_remote_checks(self):
+        root = Path(__file__).resolve().parents[3]
+        classification = (root / "system/governance/change_classification.md").read_text(encoding="utf-8")
+        project_workflow = (root / "system/assistant/project_workflow.md").read_text(encoding="utf-8")
+        self.assertIn("Standard additive private Personal project (focused-check exception)", classification)
+        for boundary in (
+            "ai_access: allow",
+            "one atomic commit",
+            "private `main`",
+            "current-HEAD concurrency guard",
+            "no local Python execution",
+            "restricted/deny modules",
+            "new policies or decisions",
+        ):
+            self.assertIn(boundary, classification)
+        self.assertIn("single atomic direct-`main` commit", project_workflow)
+        self.assertIn("ineligible structural creation", project_workflow)
+
+    def test_other_personal_structural_changes_keep_targeted_validator(self):
+        root = Path(__file__).resolve().parents[3]
+        classification = (root / "system/governance/change_classification.md").read_text(encoding="utf-8")
+        self.assertIn("For all other Personal context structure", classification)
+        self.assertIn("python3 -B system/validation/validate_v1.py --mode personal", classification)
+
 if __name__ == "__main__":
     unittest.main()

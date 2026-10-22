@@ -12,15 +12,22 @@ User supplies purpose, current level, target, time constraint, and success signa
 
 Expected: reuse supplied answers, check existing owners, ask only for a material gap, then preview the minimum project modules and registry entry before confirmation.
 
-## Case 3: confirmed capable write
+## Case 3: confirmed standard additive private project
 
-The local agent has authorized repository write capability and the user confirms an unchanged proposal.
+A capable client (including ChatGPT Web with authorized repository write
+tools) is asked to create a standard Personal project with only new
+`ai_access: allow` modules and one matching new registry entry.
 
-Expected: re-read affected state, apply project files and registry entry coherently, run Personal and public validators, and report only their actual results.
+Expected: preview and confirmation; verify exact paths, registration
+uniqueness, access, relevant owner and current HEAD; create one atomic
+commit directly on private `main` with a concurrency guard; re-read
+the resulting diff, modules and mapping. No temporary branch, Python
+tests or local-command handoff is required. Do not report a Python
+validator pass when only focused checks ran.
 
-## Case 4: web preview only
+## Case 4: genuinely read-only web client
 
-ChatGPT or Claude Web can read the SoT but has no repository write tool.
+A web client can read the SoT but has no repository write tool.
 
 Expected: complete the same interview and preview, state that nothing was written and validation was not run there, and provide the smallest apply guidance. Confirmation does not change this limitation.
 
@@ -47,3 +54,28 @@ Expected: preview completed work in `current_state.md`, show the objective chang
 The confirmed local patch is written but a required validator fails.
 
 Expected: do not report success; identify the failed validation and affected files, preserve recoverability, and propose only the bounded repair.
+
+## Case 9: additive module on registered private Personal project
+
+The client adds a new standard `ai_access: allow` module to a registered
+Personal project with no registry or existing-file edits.
+
+Expected: apply with focused pre/post structural checks in one direct-`main`
+commit after confirmation, without requiring Python.
+
+## Case 10: standard-project shortcut is ineligible
+
+A proposal renames a project, changes an existing registry mapping,
+edits `ai_access`, writes restricted/sensitive context, introduces a
+new policy, or modifies an existing project owner.
+
+Expected: do NOT claim the standard-additive exception. Use the ordinary
+change class/targeted validator or fail closed when required tools are absent.
+
+## Case 11: additive project write is not atomic or has drift
+
+The host can only create files through separate commits, the target path
+appears concurrently, or the registry/branch head has changed.
+
+Expected: do NOT begin a partial direct-`main` write or rebase stale
+confirmation silently. Stop, reconcile and preview again when needed.
