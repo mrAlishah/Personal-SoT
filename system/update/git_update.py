@@ -68,6 +68,7 @@ class Plan:
     no_op: bool = False
     blocked: str | None = None
     blocked_by_area: tuple[tuple[str, int], ...] = ()
+    resolution_choices: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -117,8 +118,12 @@ class ApplyResult:
     failure: str | None = None
 
 
-def classify(root) -> Plan:
-    """Resolve C, T, B and classify every path per the design's state table."""
+def classify(root, resolutions: dict[str, str] | None = None) -> Plan:
+    """Classify C/T/B, optionally applying explicit choices to true conflicts.
+
+    A choice resolves one whole-file conflict, never a partial merge.
+    Missing choices remain blocking. Unknown paths or values fail closed.
+    """
     root = os.path.abspath(os.fspath(root))
     blocked = _preflight(root)
     if blocked is not None:
@@ -153,12 +158,26 @@ def classify(root) -> Plan:
         return Plan(current, resolved.commit, None, blocked=error.reason)
 
     aligned, upstream_only, user_only, conflict = _states(base_tree, current_tree, target_tree)
-    # Equivalent to (and subsumes) C == T, T ancestor of C, independently
-    # converged identical trees, and a target commit with no effective
-    # tree delta: no upstream-driven change remains to apply, and nothing
-    # is left unresolved that a downgrade/silent-merge would paper over.
-    no_op = not upstream_only and not conflict
-    return Plan(current, resolved.commit, base, aligned, upstream_only, user_only, conflict, no_op)
+    selected: tuple[tuple[str, str], ...] = ()
+    if resolutions is not None:
+        if (not isinstance(resolutions, dict)
+                or any(not isinstance(path, str) or choice not in ('public', 'private')
+                       for path, choice in resolutions.items())
+                or not set(resolutions).issubset(conflict)):
+            return Plan(current, resolved.commit, base, aligned, upstream_only,
+                        user_only, conflict, blocked='invalid_resolution')
+        selected = tuple(sorted(resolutions.items()))
+        upstream_only = tuple(sorted(upstream_only + tuple(
+            path for path, choice in selected if choice == 'public')))
+        user_only = tuple(sorted(user_only + tuple(
+            path for path, choice in selected if choice == 'private')))
+        conflict = tuple(path for path in conflict if path not in resolutions)
+    # A keep-private-only decision still records the target as an accepted
+    # merge parent. Without that provenance commit, the same conflict
+    # would reappear on every update, even though the owner resolved it.
+    no_op = not upstream_only and not conflict and not selected
+    return Plan(current, resolved.commit, base, aligned, upstream_only,
+                user_only, conflict, no_op, resolution_choices=selected)
 
 
 def preview(plan: Plan) -> Preview:
@@ -173,6 +192,8 @@ def preview(plan: Plan) -> Preview:
     for state in ('already_aligned', 'upstream_only', 'user_only', 'conflict'):
         for path in sorted(getattr(plan, state)):
             lines.append(f'{state}:{path}')
+    for path, choice in sorted(plan.resolution_choices):
+        lines.append(f'resolution:{choice}:{path}')
     for area, count in sorted(plan.blocked_by_area):
         lines.append(f'blocked_by_area:{area}:{count}')
     digest = sha256('\n'.join(lines).encode('utf-8')).hexdigest()
@@ -874,7 +895,7 @@ def _attempt_recovery(ephemeral, root, record: dict, verified_worktree: dict,
 
 
 def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=None,
-          _before_path=None, on_stage=None) -> ApplyResult:
+          _before_path=None, on_stage=None, resolutions: dict[str, str] | None = None) -> ApplyResult:
     """Advance the installed clone from `plan.current` to `plan.target`,
     recoverably, per update_contract.md's apply/recovery section.
 
@@ -922,7 +943,7 @@ def apply(root, plan: Plan, digest: str, _after_mutation=None, _before_recheck=N
 
     root = os.path.abspath(os.fspath(root))
     report('reclassification', 'started')
-    fresh_plan = classify(root)
+    fresh_plan = classify(root, resolutions=resolutions) if resolutions is not None else classify(root)
     fresh_preview = preview(fresh_plan)
     if fresh_preview.digest != digest:
         return ApplyResult(failure='stale_state')

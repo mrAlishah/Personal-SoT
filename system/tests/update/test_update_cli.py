@@ -78,6 +78,78 @@ class UpdateCliTests(unittest.TestCase):
         self.assertEqual(2, rc)
         self.assertEqual(1, workflow.call_count)
 
+    def test_guided_conflicts_choose_public_private_and_reconfirm(self):
+        blocked = WorkflowResult(
+            'git', 'initial-digest', False, False,
+            BeginnerReport('Update needs a decision.'), failure='conflict')
+        chosen = WorkflowResult(
+            'git', 'chosen-digest', False, False,
+            BeginnerReport('Ready to preview this update.'),
+            confirmation_required=True)
+        applied = WorkflowResult(
+            'git', 'chosen-digest', True, True,
+            BeginnerReport('Update applied and validation passed.'))
+        plan = mock.Mock(blocked=None,
+                         conflict=('system/contract.md', 'workspace/secret-project.md'))
+        digest = mock.Mock(digest='initial-digest')
+        prompts = []
+        answers = iter(['y', 'p', 'k', 'y'])
+        def answer(prompt):
+            prompts.append(prompt)
+            return next(answers)
+        output = StringIO()
+        with mock.patch.object(cli, 'run_update_workflow',
+                               side_effect=[blocked, chosen, applied]) as workflow, \
+             mock.patch.object(cli.git_update, 'classify', return_value=plan), \
+             mock.patch.object(cli.git_update, 'preview', return_value=digest):
+            rc = cli.run_interactive('.', input_fn=answer, out=output,
+                                     private_sync=False)
+        self.assertEqual(0, rc)
+        choices = {'system/contract.md': 'public',
+                   'workspace/secret-project.md': 'private'}
+        self.assertEqual(choices, workflow.call_args_list[1].kwargs['resolutions'])
+        self.assertEqual(choices, workflow.call_args_list[2].kwargs['resolutions'])
+        self.assertEqual('chosen-digest', workflow.call_args_list[2].kwargs['confirm_digest'])
+        self.assertEqual(4, len(prompts))
+        self.assertNotIn('secret-project', output.getvalue() + ''.join(prompts))
+        self.assertIn('workspace', ''.join(prompts))
+
+    def test_conflict_cancellation_is_nonmutating(self):
+        blocked = WorkflowResult('git', 'one', False, False,
+                                  BeginnerReport('Conflict.'), failure='conflict')
+        plan = mock.Mock(blocked=None, conflict=('system/a.md',))
+        digest = mock.Mock(digest='one')
+        output = StringIO()
+        with mock.patch.object(cli, 'run_update_workflow', return_value=blocked) as workflow, \
+             mock.patch.object(cli.git_update, 'classify', return_value=plan), \
+             mock.patch.object(cli.git_update, 'preview', return_value=digest):
+            rc = cli.run_interactive('.', input_fn=lambda _: 'n', out=output)
+        self.assertEqual(0, rc)
+        self.assertEqual(1, workflow.call_count)
+        self.assertIn('Nothing was changed.', output.getvalue())
+
+    def test_stale_resolved_preview_discards_choices(self):
+        blocked = WorkflowResult('git', 'one', False, False,
+                                  BeginnerReport('Conflict.'), failure='conflict')
+        chosen = WorkflowResult('git', 'two', False, False,
+                                BeginnerReport('Preview.'), confirmation_required=True)
+        stale = WorkflowResult('git', 'three', False, False,
+                               BeginnerReport('Stale.'), failure='stale_state',
+                               confirmation_required=True)
+        refreshed = WorkflowResult('git', None, False, False,
+                                   BeginnerReport('Update blocked.'), failure='source_unavailable')
+        plan = mock.Mock(blocked=None, conflict=('system/a.md',))
+        digest = mock.Mock(digest='one')
+        answers = iter(['y', 'p', 'y'])
+        with mock.patch.object(cli, 'run_update_workflow',
+                               side_effect=[blocked, chosen, stale, refreshed]) as workflow, \
+             mock.patch.object(cli.git_update, 'classify', return_value=plan), \
+             mock.patch.object(cli.git_update, 'preview', return_value=digest):
+            rc = cli.run_interactive('.', input_fn=lambda _: next(answers),
+                                     out=StringIO(), private_sync=False)
+        self.assertEqual(2, rc)
+        self.assertNotIn('resolutions', workflow.call_args_list[3].kwargs)
+
     def test_failure_code_is_visible_and_sanitized(self):
         failure = WorkflowResult('git', None, False, False,
                                  BeginnerReport('Update not applied.'),
