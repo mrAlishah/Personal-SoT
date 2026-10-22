@@ -117,28 +117,55 @@ inspect installation
 
 Nothing material is applied before you confirm the exact preview.
 
-### One-time recovery for installations with an older updater
+### Run the latest Public updater against an existing Private installation
 
-An older private installation may stop at a conflict **before** it can
-install this guided-resolution feature. If you have a separate, clean clone
-of the released public `Personal-SoT`, run its latest updater **against**
-your existing private installation (do not manually copy files or overwrite
-your private Git history):
+Use this method when the `update.py` in your private installation is
+outdated, or when it cannot update itself because of a conflict. You need
+**two separate Git clones**: the public `Personal-SoT` (the update
+program) and your private `myPersonal-SoT` (the installation to update).
+Make sure the private installation is on `main` with a clean working tree
+and that the public clone has no uncommitted changes before starting.
+
+**macOS / Linux (Terminal):**
 
 ```bash
 cd ~/Projects/Personal-SoT
 git switch main
 git pull --ff-only origin main
+
 python3 -B update.py --root ~/Projects/myPersonal-SoT
 ```
 
-The `--root` argument selects the private installation to inspect/update;
-the executable and update implementation come from the released public
-checkout. It still asks for each genuine conflict choice, shows the final
-preview, performs the normal candidate validators, and offers authorized
-private-origin synchronization after a successful update. Keep your private
-installation's own `main` clean before starting. Never point `--root`
-at the public clone for your private update.
+**Windows (PowerShell):**
+
+```powershell
+Set-Location "$HOME\Projects\Personal-SoT"
+git switch main
+git pull --ff-only origin main
+
+py -3 -B update.py --root "$HOME\Projects\myPersonal-SoT"
+```
+
+These examples assume both repositories are inside your `Projects`
+directory. Replace either directory path with its actual location if
+your clones are stored elsewhere. On Windows, use **PowerShell**, not
+Command Prompt, for the `$HOME` example.
+
+The `--root` argument selects the **private** installation to inspect
+and update, while `update.py` itself runs from the freshly updated
+**public** clone. Never point `--root` at the public repository when
+updating your private installation, and never push Personal data to the
+public repository.
+
+Review the preview and approve the local update only if correct. The
+updater validates the combined result; when your private GitHub
+`origin/main` is eligible, it then offers a **separate confirmation**
+to synchronize it (HTTPS or supported GitHub SSH). A successful local
+update alone does not prove that the private remote was updated.
+
+For ordinary future updates, once the installed private updater is
+current, use the single-command path above from the **private** clone:
+`python3 update.py` on macOS/Linux or `py -3 update.py` on Windows.
 
 If both Public and Private changed the same file, the Git updater now offers
 a guided choice for each conflicting item. You will see numbered entries
