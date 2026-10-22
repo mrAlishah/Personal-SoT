@@ -106,6 +106,17 @@ class PrivateOriginSyncTests(unittest.TestCase):
                 with mock.patch.object(sync, "_run", side_effect=fake_run):
                     self.assertIsNone(sync.private_origin_url(Path(".")))
 
+    def test_push_url_rewrite_is_rejected_for_ssh(self):
+        origin = "git@github.com:ExampleOwner/myPersonal-SoT.git"
+        def fake_run(root, hooks, *args, **kwargs):
+            if args[0] == "symbolic-ref":
+                return completed("main\n")
+            if args[:3] == ("remote", "get-url", "--push"):
+                return completed("git@github.com:Other/myPersonal-SoT.git\n")
+            return completed(origin + "\n")
+        with mock.patch.object(sync, "_run", side_effect=fake_run):
+            self.assertIsNone(sync.private_origin_url(Path(".")))
+
     def test_ssh_visibility_uses_github_identity_and_fails_closed(self):
         requested = []
         hidden = urlerror.HTTPError("https://api.github.com/repos/x/y", 404,

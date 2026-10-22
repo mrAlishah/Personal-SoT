@@ -99,7 +99,10 @@ def private_origin_url(root) -> str | None:
         branch = _text(_run(root, hooks, "symbolic-ref", "--quiet", "--short", "HEAD"))
         raw = _text(_run(root, hooks, "config", "--get", "remote.origin.url"))
         expanded = _text(_run(root, hooks, "remote", "get-url", "origin"))
-    if branch != "main" or not raw or expanded != raw:
+        push_expanded = _text(_run(root, hooks, "remote", "get-url", "--push", "origin"))
+    # Separate push URL rewriting/pushInsteadOf may otherwise send Personal
+    # data somewhere other than the origin that was reviewed.
+    if branch != "main" or not raw or expanded != raw or push_expanded != raw:
         return None
     identity = _github_repo_identity(raw)
     if identity is None:
