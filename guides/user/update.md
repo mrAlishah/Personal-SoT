@@ -112,6 +112,29 @@ inspect installation
 
 Nothing material is applied before you confirm the exact preview.
 
+### One-time recovery for installations with an older updater
+
+An older private installation may stop at a conflict **before** it can
+install this guided-resolution feature. If you have a separate, clean clone
+of the released public `Personal-SoT`, run its latest updater **against**
+your existing private installation (do not manually copy files or overwrite
+your private Git history):
+
+```bash
+cd ~/Projects/Personal-SoT
+git switch main
+git pull --ff-only origin main
+python3 -B update.py --root ~/Projects/myPersonal-SoT
+```
+
+The `--root` argument selects the private installation to inspect/update;
+the executable and update implementation come from the released public
+checkout. It still asks for each genuine conflict choice, shows the final
+preview, performs the normal candidate validators, and offers authorized
+private-origin synchronization after a successful update. Keep your private
+installation's own `main` clean before starting. Never point `--root`
+at the public clone for your private update.
+
 If both Public and Private changed the same file, the Git updater now offers
 a guided choice for each conflicting item. You will see numbered entries
 with a general area name, not private filenames. Choose **Public** to
