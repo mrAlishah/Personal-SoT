@@ -32,11 +32,20 @@ _PRIVATE_SSH_URL = re.compile(
 
 
 def _github_repo_identity(url: str) -> tuple[str, str] | None:
-    """Parse one literal owner/repo identity for either supported transport."""
+    """Return only a literal, eligible private-workspace GitHub identity.
+
+    Eligibility applies to both origin selection and visibility checks:
+    an arbitrary/private GitHub repo must never become an approved target.
+    """
     for pattern in (_PRIVATE_HTTPS, _PRIVATE_SSH_SCP, _PRIVATE_SSH_URL):
         match = pattern.fullmatch(url)
         if match is not None:
-            return match.groups()
+            owner, name = match.groups()
+            if owner.lower() == "mralishah" and name.lower() == "personal-sot":
+                return None
+            if name.lower() not in ("mypersonal-sot", "private-personal-sot"):
+                return None
+            return owner, name
     return None
 
 
@@ -107,13 +116,9 @@ def private_origin_url(root) -> str | None:
     identity = _github_repo_identity(raw)
     if identity is None:
         return None
-    owner, name = identity
-    if owner.lower() == "mralishah" and name.lower() == "personal-sot":
-        return None
-    # Only a private-workspace-shaped repository is eligible for automatic
-    # synchronization. This is a naming guard, not proof of GitHub privacy.
-    if name.lower() not in ("mypersonal-sot", "private-personal-sot"):
-        return None
+    # Naming is already checked by the shared identity parser. This is
+    # not proof of privacy: synchronize() still requires authenticated
+    # fetch and the anonymous GitHub API visibility test before push.
     return raw
 
 
