@@ -73,7 +73,9 @@ runner may offer a second explicit confirmation for eligible
 remote; never infer approval from the public update confirmation.
 
 `system/update/private_origin_sync.py` owns this conservative optional
-reconciliation. It requires clean `main`, authenticated private GitHub
+reconciliation. It supports literal GitHub HTTPS and standard GitHub SSH
+origins, with the same strict owner/repo identity and no URL rewrites.
+It requires clean `main`, authenticated private GitHub
 fetch, and anonymous GitHub visibility verification to prevent sending
 Personal contents to a public repository. It merges with `--no-commit`,
 preserves existing registry entries while running Personal,

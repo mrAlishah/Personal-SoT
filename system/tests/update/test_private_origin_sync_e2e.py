@@ -25,6 +25,51 @@ def git(root, *args, check=True):
 
 @unittest.skipUnless(shutil.which("git"), "Git required for integration test")
 class PrivateOriginE2ETest(unittest.TestCase):
+    def test_ssh_origin_is_recognized_and_pushed_through_safe_sync(self):
+        """Use real Git locally; reroute only the network transport."""
+        with tempfile.TemporaryDirectory(prefix="sot_private_ssh_") as directory:
+            root = Path(directory)
+            local, bare = root / "private", root / "origin.git"
+            local.mkdir()
+            git(local, "init", "-b", "main")
+            git(local, "config", "user.name", "Fixture")
+            git(local, "config", "user.email", "fixture@example.invalid")
+            (local / "workspace").mkdir()
+            (local / "workspace/notes.md").write_text("original\n")
+            git(local, "add", ".")
+            git(local, "commit", "-m", "base")
+            git(root, "init", "--bare", str(bare))
+            url = "git@github.com:FixtureOwner/myPersonal-SoT.git"
+            git(local, "remote", "add", "origin", url)
+            git(local, "push", str(bare), "main:refs/heads/main")
+            (local / "workspace/notes.md").write_text("private content\n")
+            git(local, "add", ".")
+            git(local, "commit", "-m", "private work")
+
+            original_run = sync._run
+            def fixture_git(cwd, hooks, *args, **kwargs):
+                if args and args[0] in ("fetch", "ls-remote", "push"):
+                    self.assertIn(url, args)
+                    translated = tuple(str(bare) if arg == url else arg
+                                       for arg in args)
+                    return subprocess.run(
+                        ["git", "-c", "protocol.file.allow=always", *translated],
+                        cwd=str(cwd), capture_output=True, text=True,
+                        timeout=90, check=False)
+                return original_run(cwd, hooks, *args, **kwargs)
+
+            with mock.patch.object(sync, "_run", side_effect=fixture_git), \
+                 mock.patch.object(sync, "_is_proven_private", return_value=True), \
+                 mock.patch.object(sync, "_validate", return_value=True):
+                outcome = sync.synchronize(local, url)
+            self.assertEqual("synchronized", outcome.status, outcome.failure)
+            self.assertEqual(git(local, "rev-parse", "HEAD"),
+                             git(root, "--git-dir", str(bare),
+                                 "rev-parse", "refs/heads/main"))
+            self.assertEqual("private content\n",
+                             (local / "workspace/notes.md").read_text())
+            self.assertFalse(git(local, "status", "--porcelain"))
+
     def test_public_update_and_divergent_private_fullstack_merge_and_push(self):
         with tempfile.TemporaryDirectory(prefix="sot_private_sync_test_") as work:
             base = Path(work)

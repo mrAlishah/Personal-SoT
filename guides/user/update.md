@@ -55,8 +55,13 @@ accepts existing one-line or two-line context registry entries, validates
 the entire combined result (and tests system changes), commits and pushes
 only after success. Nothing is pushed to `sot public`.
 
+The private origin may use HTTPS or GitHub SSH, including
+`git@github.com:owner/myPersonal-SoT.git` and
+`ssh://git@github.com/owner/myPersonal-SoT.git`. A supported SSH
+origin needs no URL reconfiguration; your GitHub SSH key must already
+work. HTTPS origins use the existing credential mechanism.
 The private origin must be verifiably non-public to unauthenticated GitHub
-requests, and local Git credentials must already be configured. If the
+requests; SSH never bypasses this check. If the
 private repository is public, unverified, unavailable, changed concurrently,
 or the merge fails validation, the tool stops without forcing a push. A
 failed merge is aborted where safe; a push rejection leaves the validated

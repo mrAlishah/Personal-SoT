@@ -21,6 +21,34 @@ from system.update import git_update
 _PRIVATE_HTTPS = re.compile(
     r"https://github[.]com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:[.]git)?\Z"
 )
+# Exact GitHub SSH forms. Do not accept host aliases, custom ports, URL
+# rewrites, alternate usernames or paths with additional shell arguments.
+_PRIVATE_SSH_SCP = re.compile(
+    r"git@github[.]com:([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:[.]git)?\Z"
+)
+_PRIVATE_SSH_URL = re.compile(
+    r"ssh://git@github[.]com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:[.]git)?\Z"
+)
+
+
+def _github_repo_identity(url: str) -> tuple[str, str] | None:
+    """Return only a literal, eligible private-workspace GitHub identity.
+
+    Eligibility applies to both origin selection and visibility checks:
+    an arbitrary/private GitHub repo must never become an approved target.
+    """
+    for pattern in (_PRIVATE_HTTPS, _PRIVATE_SSH_SCP, _PRIVATE_SSH_URL):
+        match = pattern.fullmatch(url)
+        if match is not None:
+            owner, name = match.groups()
+            if owner.lower() == "mralishah" and name.lower() == "personal-sot":
+                return None
+            if name.lower() not in ("mypersonal-sot", "private-personal-sot"):
+                return None
+            return owner, name
+    return None
+
+
 _IDENTITY = (
     "-c", "user.name=Personal-SoT Private Sync",
     "-c", "user.email=private-sync@personal-sot.invalid",
@@ -70,7 +98,7 @@ def _text(result) -> str:
 
 
 def private_origin_url(root) -> str | None:
-    """Accept only the fixed origin/main of a GitHub Personal-SoT Git clone.
+    """Accept only literal GitHub HTTPS/SSH origin/main for a private clone.
 
     Never push to the public canonical repository, another branch or a
     non-GitHub transport. Caller still explicitly confirms private ownership.
@@ -80,32 +108,31 @@ def private_origin_url(root) -> str | None:
         branch = _text(_run(root, hooks, "symbolic-ref", "--quiet", "--short", "HEAD"))
         raw = _text(_run(root, hooks, "config", "--get", "remote.origin.url"))
         expanded = _text(_run(root, hooks, "remote", "get-url", "origin"))
-    if branch != "main" or not raw or expanded != raw:
+        push_expanded = _text(_run(root, hooks, "remote", "get-url", "--push", "origin"))
+    # Separate push URL rewriting/pushInsteadOf may otherwise send Personal
+    # data somewhere other than the origin that was reviewed.
+    if branch != "main" or not raw or expanded != raw or push_expanded != raw:
         return None
-    match = _PRIVATE_HTTPS.fullmatch(raw)
-    if match is None:
+    identity = _github_repo_identity(raw)
+    if identity is None:
         return None
-    owner, name = match.groups()
-    if owner.lower() == "mralishah" and name.lower() == "personal-sot":
-        return None
-    # Only a private-workspace-shaped repository is eligible for automatic
-    # synchronization. This is a naming guard, not proof of GitHub privacy.
-    if name.lower() not in ("mypersonal-sot", "private-personal-sot"):
-        return None
+    # Naming is already checked by the shared identity parser. This is
+    # not proof of privacy: synchronize() still requires authenticated
+    # fetch and the anonymous GitHub API visibility test before push.
     return raw
 
 
 def _is_proven_private(url: str) -> bool:
-    """Fail closed unless an anonymous GitHub API check returns 404.
+    """Fail closed for HTTPS and SSH unless anonymous GitHub API returns 404.
 
     An authenticated fetch separately proves the repository exists. An
     anonymous 404 therefore distinguishes it from a public repository.
     No private tokens or Personal contents are sent to this endpoint.
     """
-    match = _PRIVATE_HTTPS.fullmatch(url)
-    if match is None:
+    identity = _github_repo_identity(url)
+    if identity is None:
         return False
-    owner, repository = match.groups()
+    owner, repository = identity
     req = urlrequest.Request(
         "https://api.github.com/repos/" + owner + "/" + repository,
         headers={"Accept": "application/vnd.github+json",
