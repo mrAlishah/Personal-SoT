@@ -52,6 +52,12 @@ summary, and after explicit approval call
 with an ad-hoc sequence of `git restore`, manual tree construction, branch
 movement, or copied Python snippets.
 
+On a genuine per-file Git conflict, the interactive runner asks for an
+explicit Public-versus-Private choice for each numbered, area-only item,
+then displays a fresh choice-bound preview for final confirmation. It routes
+these decisions to the canonical classifier/apply engine; it never guesses
+ownership, silently overwrites Personal content, or duplicates merge logic.
+
 If the target/current state changes between preview and confirmation, the old
 digest remains invalid. The runner returns the fresh preview/digest; interactive
 mode shows it and asks again. A genuine unresolved conflict still fails closed

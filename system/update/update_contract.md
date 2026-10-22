@@ -268,10 +268,39 @@ This covers creation, deletion, and modification uniformly, including
 "target deletes/renames a locally modified path" (a `conflict`, since `T`'s
 absence differs from both `B` and `C`) without a separate rule.
 
+### Guided resolution of genuine Git conflicts
+
+A clean private Git installation with genuine per-path `conflict` entries
+may explicitly resolve each conflicting whole-file state using
+`public` (accept the pinned target file, including deletion) or
+`private` (preserve the installed file, including deletion). No choice
+is inferred from a filename, `system/` ownership, a prior update, or
+a user's lack of response. Unknown paths, invalid choices, unresolved
+conflicts, and stale source/target state fail closed.
+
+The existing canonical classifier accepts an optional exact choice mapping,
+moves selected `public` paths to `upstream_only` and selected `private`
+paths to `user_only`, and records the explicit selections in the Plan.
+The choices and C/T/B are bound to the same deterministic preview digest.
+The apply engine independently reclassifies with those same choices, checks
+the digest, constructs and validates the combined candidate and uses the
+existing recoverable, concurrency-guarded two-parent provenance commit.
+Even a keep-private-only selection must record the accepted target parent
+to prevent the same conflict from reappearing next time.
+
+The interactive local CLI offers numbered, area-only conflict choices
+(no private filenames in beginner output), then one final complete
+preview and explicit apply confirmation. There is no hidden default,
+permanent preference, automatic text merge, or bypass of validation.
+If the state changes during resolution, discard all previous choices
+and ask the user to review the new conflicts. Noninteractive callers
+without explicit supported resolution options remain blocked.
+
 ## preview and privacy
 
 `preview(plan)` binds `C`, `T`, `B`, the complete classified plan, and any
-`blocked_by_area` breakdown into a `sha256` digest over a canonically
+`blocked_by_area` breakdown and any explicit whole-file conflict choices
+into a `sha256` digest over a canonically
 ordered serialization (fixed field order, sorted path lists, sorted
 `(area, count)` pairs), so digest equality does not depend on dict/set
 iteration order.

@@ -13,6 +13,7 @@ import sys
 
 from system.assistant.update_reporting import HostCapability, WorkflowResult, run_update_workflow
 from system.update.private_origin_sync import private_origin_url, synchronize
+from system.update import git_update
 
 
 _LOCAL_CAPABILITY = HostCapability(
@@ -44,10 +45,12 @@ def _render(result: WorkflowResult, out, *, show_digest: bool = False) -> None:
 
 
 def _workflow(root: Path, destination: Path | None, confirm_digest: str | None,
-              stage_callback=None) -> WorkflowResult:
+              stage_callback=None, resolutions=None) -> WorkflowResult:
     args = dict(capability=_LOCAL_CAPABILITY, confirm_digest=confirm_digest)
     if stage_callback is not None:
         args['stage_callback'] = stage_callback
+    if resolutions is not None:
+        args['resolutions'] = resolutions
     return run_update_workflow(root, destination, **args)
 
 
@@ -106,12 +109,60 @@ def run_interactive(root, destination=None, *, input_fn=input, out=None,
         destination = _absolute(selected)
         result = _workflow(root, destination, None, report)
 
+    resolutions = None
     while True:
         _render(result, out)
         if result.ready:
             if private_sync and result.install_type == 'git':
                 return _sync_private_root(root, input_fn, out)
             return 0
+
+        if result.failure == 'stale_state' and resolutions is not None:
+            # A changed C/T invalidates the meaning of per-file decisions.
+            # Never reuse selections across a refreshed update silently.
+            print("The update changed. Conflict choices must be reviewed again.", file=out)
+            resolutions = None
+            result = _workflow(root, destination, None, report)
+            continue
+
+        if result.failure == 'conflict' and result.install_type == 'git':
+            fresh = git_update.classify(root)
+            if (fresh.blocked is not None or
+                    git_update.preview(fresh).digest != result.digest):
+                print("The update changed; refreshing the conflict list.", file=out)
+                result = _workflow(root, destination, None, report)
+                continue
+            if not fresh.conflict or len(fresh.conflict) > 20:
+                print("Conflict review is unavailable for this update.", file=out)
+                return 2
+            answer = input_fn(
+                f"Review {len(fresh.conflict)} conflicting item(s)? [y/N] "
+            ).strip().lower()
+            if answer not in {'y', 'yes'}:
+                print("Nothing was changed.", file=out)
+                return 0
+            choices = {}
+            for number, path in enumerate(fresh.conflict, 1):
+                # Closed area labels only: no raw user/private paths in
+                # beginner output, log files, or input prompts.
+                area = path.split('/', 1)[0]
+                if area not in {'workspace', 'system', 'guides'}:
+                    area = 'other'
+                answer = input_fn(
+                    f"Conflict {number}/{len(fresh.conflict)} ({area}): "
+                    "[p] use Public / [k] keep Private / [c] cancel: "
+                ).strip().lower()
+                if answer in {'p', 'public'}:
+                    choices[path] = 'public'
+                elif answer in {'k', 'private'}:
+                    choices[path] = 'private'
+                else:
+                    print("Nothing was changed.", file=out)
+                    return 0
+            resolutions = choices
+            result = _workflow(root, destination, None, report, resolutions=resolutions)
+            continue
+
         if not result.confirmation_required:
             return 2
 
@@ -122,7 +173,8 @@ def run_interactive(root, destination=None, *, input_fn=input, out=None,
         if not result.digest:
             print("Update not applied: no confirmable preview was available.", file=out)
             return 2
-        result = _workflow(root, destination, result.digest, report)
+        result = _workflow(root, destination, result.digest, report,
+                           resolutions=resolutions)
 
 
 def run_non_interactive(root, destination=None, *, confirm_digest: str | None = None,
